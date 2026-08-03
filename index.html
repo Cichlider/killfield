@@ -19,18 +19,36 @@
 
   <div class="controls">
     <div class="scoreline" id="scoreline">&nbsp;</div>
+
+    <div class="row modes" role="group" aria-label="Mode">
+      <button id="mode-watch" type="button" class="mode active">Watch it play</button>
+      <button id="mode-play" type="button" class="mode">Play against it</button>
+    </div>
+
     <div class="row">
       <button id="reroll" type="button">New maze (R)</button>
       <label class="seedbox">
         seed
-        <input id="seed" type="text" inputmode="numeric" placeholder="random" size="10">
+        <input id="seed" type="text" inputmode="numeric" placeholder="random" size="9">
+      </label>
+      <label class="seedbox">
+        rays
+        <select id="rays">
+          <option value="2048" selected>2048 — full</option>
+          <option value="512">512 — lighter</option>
+          <option value="256">256 — mobile</option>
+        </select>
       </label>
     </div>
-    <p class="keys">
+
+    <p class="keys" id="keyhelp">
       <strong>Arrow keys</strong> or <strong>ESDF</strong> to drive &middot;
       <strong>M</strong> / <strong>Space</strong> / <strong>Q</strong> to fire &middot;
       <strong>R</strong> for a new maze
     </p>
+
+    <div class="telemetry" id="telemetry"></div>
+
     <p class="note">
       Bullets ricochet and stay lethal for ten seconds &mdash; including to whoever fired them.
       A round is not decided the instant someone dies: the world keeps running for three more
