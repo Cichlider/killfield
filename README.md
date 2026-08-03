@@ -13,17 +13,49 @@ shooting positions, which becomes both a navigation target and an aiming
 prior. Roughly three quarters of its kills are ricochets rather than direct
 shots.
 
-## Status
+## How the agent plans
 
-This is being built in two stages.
+Every frame it enumerates ten candidate first moves, rolls each one 36 frames
+forward in a sandbox, and scores the result. The sandbox shares everything a
+player could see and scrubs what they could not: the random stream is
+reseeded, and the opponent's controller is rebuilt so its internal goal stack
+cannot leak across.
 
-- **Stage 1 (in progress)** — the simulation, the maze generator, the renderer,
-  and the built-in scripted AI. Playable as human vs. the scripted AI. This
-  stage exists to verify the physics feel right before anything harder is
-  layered on top.
-- **Stage 2** — the search agent, plus a mode switch between watching it play
-  the scripted AI and playing against it yourself. Planning runs in a Web
-  Worker so the 25 FPS render loop never blocks on it.
+Scoring rewards climbing the density ladder, closing along the guidance
+gradient, and turning the turret toward the best firing angle from wherever it
+ends up. Firing is decided separately and conservatively: the field only ever
+*proposes*, and a shot is taken when the engine's own ballistics simulator
+confirms the current heading connects. There is no confidence threshold.
+
+Around that sits a small amount of hand-written machinery, each piece fixing a
+specific failure of naive per-frame replanning:
+
+- **Commitment** — a chosen move is held for a few frames, so the tank drives
+  in a line instead of dithering between near-tied candidates.
+- **Own-bullet guard** — a plan can predate a bullet we just fired, so any
+  movement that would drive into our own shot is replaced with the safest
+  alternative. Fire-then-chase-your-own-ricochet is otherwise a real way to
+  lose.
+- **Stuck detection** — if a commanded move produced no motion at all, that
+  whole throttle/turn pair is penalised, so it stops grinding against a wall.
+- **Post-kill survival** — during the three seconds after a kill, it stops
+  hunting and explicitly scores movements for bullet clearance.
+
+### Planning runs on the main thread
+
+The reference implementation pushes planning onto a background worker and
+accepts plans up to six frames stale, because a plan costs it 96 ms at the
+p95. Here the same plan, at the same 2048 rays, costs **4.7 ms** against a
+40 ms frame budget — so it runs synchronously and plans are never stale.
+
+Two things buy that. The engine is roughly 25x faster in JS than in Python,
+and it is engine stepping, not ray tracing, that dominates a plan. And
+sampling shooter positions reuses the bucketed wall index the collision system
+already maintains, which is an asymptotic improvement over scanning every wall
+per sample, not just a constant factor.
+
+Ray count is adjustable in the UI for slower devices; 256 rays cuts field
+construction from 18 ms to 1 ms.
 
 ## Running it
 
@@ -61,7 +93,34 @@ seed-to-seed spread.
 
 Headless throughput is about 220,000 frames/sec with the AI in the loop —
 roughly 25x the Python reference, and 8,800x real time. That headroom is what
-makes the stage 2 search agent viable in a browser at all.
+makes running the search agent in a browser viable at all.
+
+### The agent
+
+The density field itself is **bit-exact**. Handed an identical maze, this port
+and the reference produce the same vote count in every cell, the same tier
+assignment, and a guidance envelope matching to 0.0 absolute error.
+
+End to end against the scripted AI, over 150 rounds here and 45 on the
+reference:
+
+| | rounds | agent wins | unresolved |
+|---|---|---|---|
+| reference | 45 | 91.1% | 1 |
+| this port | 150 | 85.3% | 12 |
+
+That difference is not statistically significant (two-proportion z ≈ 1.0), and
+the seed-to-seed spread across five disjoint 30-round blocks here is
+76.7%–90.0%. Round length swings in *both* directions depending on which seed
+range you sample — the reference resolves faster on one set and slower on
+another — so it is maze-draw noise rather than a systematic gap. Forced-fire
+rate is identical (41 events over 10 matched rounds on both sides) and shots
+per round agree at 4.1 vs 4.6.
+
+Worth knowing: the reference agent has no official win rate to match against.
+The 98% figure that circulates in its notes belongs to a different agent
+entirely; this one was never formally graded. So the numbers above are the
+comparison, not a target.
 
 ## How the simulation works
 
