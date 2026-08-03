@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>killfield — port verification</title>
+<style>
+  body {
+    margin: 0; padding: 32px 16px 64px; background: #fbfaf8; color: #1b1f24;
+    font: 14px/1.6 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  main { max-width: 760px; margin: 0 auto; }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  .lede {
+    font-family: ui-sans-serif, -apple-system, "Segoe UI", sans-serif;
+    color: #6b7480; margin: 0 0 24px; max-width: 62ch;
+  }
+  h2 {
+    font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em;
+    color: #6b7480; margin: 24px 0 8px; font-weight: 600;
+  }
+  .check { display: flex; gap: 10px; padding: 2px 0; align-items: baseline; }
+  .tag { flex: none; font-weight: 700; font-size: 12px; }
+  .pass .tag { color: #1f7a4d; }
+  .fail .tag { color: #c0392b; }
+  .fail { background: #fdf0ee; }
+  .detail { color: #6b7480; }
+  #summary {
+    margin-top: 32px; padding: 14px 16px; border-radius: 8px;
+    font-weight: 700; font-size: 15px;
+  }
+  .ok { background: #e8f5ee; color: #1f7a4d; }
+  .bad { background: #fdf0ee; color: #c0392b; }
+</style>
+</head>
+<body>
+<main>
+  <h1>killfield — port verification</h1>
+  <p class="lede">
+    These assertions mirror the reference implementation's own test script. A failure
+    means the port has drifted from the simulation it was derived from, not merely
+    that something looks off.
+  </p>
+  <div id="out">Running…</div>
+  <div id="summary"></div>
+</main>
+<script type="module">
+import { runSuite, summarise } from "./suite.js";
+
+const out = document.getElementById("out");
+const summary = document.getElementById("summary");
+
+// Let the browser paint the "Running…" state before the suite blocks the thread.
+requestAnimationFrame(() => requestAnimationFrame(() => {
+  const results = runSuite();
+  out.innerHTML = "";
+  for (const group of results) {
+    const h = document.createElement("h2");
+    h.textContent = group.name;
+    out.appendChild(h);
+    for (const c of group.checks) {
+      const row = document.createElement("div");
+      row.className = "check " + (c.pass ? "pass" : "fail");
+      const tag = document.createElement("span");
+      tag.className = "tag";
+      tag.textContent = c.pass ? "PASS" : "FAIL";
+      const name = document.createElement("span");
+      name.textContent = c.name;
+      row.append(tag, name);
+      if (c.detail) {
+        const d = document.createElement("span");
+        d.className = "detail";
+        d.textContent = "— " + c.detail;
+        row.appendChild(d);
+      }
+      out.appendChild(row);
+    }
+  }
+  const s = summarise(results);
+  summary.className = s.fail === 0 ? "ok" : "bad";
+  summary.textContent = `${s.pass} passed, ${s.fail} failed, ${s.total} total`;
+}));
+</script>
+</body>
+</html>

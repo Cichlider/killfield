@@ -9,6 +9,7 @@
 
 import * as C from "./constants.js";
 import { Game } from "./game.js";
+import { LaikaAI } from "./laika.js";
 import { Renderer } from "./render.js";
 import { Keyboard } from "./input.js";
 import { Rng } from "./rng.js";
@@ -27,7 +28,7 @@ const renderer = new Renderer(canvas);
 const keyboard = new Keyboard();
 const shakeRng = new Rng(1);
 
-const LABELS = ["You", "Opponent"];
+const LABELS = ["You", "AI"];
 
 let game = null;
 
@@ -36,8 +37,8 @@ function newGame() {
   const seed = raw === "" ? null : Number(raw);
   game = new Game({
     seed: Number.isFinite(seed) ? seed : null,
-    // Stage 2 passes the search agent in here.
-    aiFactory: null,
+    // Stage 2 swaps in the search agent here.
+    aiFactory: (g, tank) => new LaikaAI(g, tank),
   });
 }
 
