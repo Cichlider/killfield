@@ -1,5 +1,7 @@
 # killfield
 
+**[Play it →](https://cichlider.github.io/killfield/)**
+
 A browser reimplementation of a maze tank duel, built as a testbed for a
 search-based game-playing agent.
 
