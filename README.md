@@ -33,6 +33,34 @@ python3 -m http.server 8000
 # then open http://localhost:8000
 ```
 
+## Verification
+
+Open `test/port.test.html` in a browser, or run the same suite headlessly with
+`node --input-type=module -e "import('./test/suite.js').then(...)"`. It is 42
+assertions mirroring the reference implementation's own test script: bullet
+speed and lifetime, the five-bullet cap, wall containment, the bucket index
+agreeing with brute-force collision on 4000 random points, and the exact round
+teardown timeline.
+
+Mechanical assertions cannot catch a subtly mis-ported AI, though — it would
+still obey every rule while playing wrong. So `test/benchmark.js` plays out
+whole rounds and compares the *character* of the result against the reference
+implementation running the identical scenario. Across five independent seed
+pairs each, 100 rounds against a flailing opponent:
+
+| | AI wins | opponent wins | mutual kills | seconds to kill |
+|---|---|---|---|---|
+| reference | 89–94 | 0–2 | 5–11 | 2.4–2.7 |
+| this port | 87–92 | 0–3 | 6–11 | 2.0–2.9 |
+
+The ranges overlap on every measure. Against a stationary opponent the
+reference's 8.4 s mean time to kill likewise falls inside this port's 5.9–8.6 s
+seed-to-seed spread.
+
+Headless throughput is about 220,000 frames/sec with the AI in the loop —
+roughly 25x the Python reference, and 8,800x real time. That headroom is what
+makes the stage 2 search agent viable in a browser at all.
+
 ## How the simulation works
 
 Fixed 25 FPS, no delta-time anywhere. A few details carry more weight than
