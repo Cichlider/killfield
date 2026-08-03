@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>killfield</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main>
+  <header>
+    <h1>killfield</h1>
+    <p class="tagline">A search-based agent for a maze tank duel. Most of its kills are bank shots.</p>
+  </header>
+
+  <div class="stage">
+    <canvas id="screen" width="712" height="500"></canvas>
+  </div>
+
+  <div class="controls">
+    <div class="scoreline" id="scoreline">&nbsp;</div>
+    <div class="row">
+      <button id="reroll" type="button">New maze (R)</button>
+      <label class="seedbox">
+        seed
+        <input id="seed" type="text" inputmode="numeric" placeholder="random" size="10">
+      </label>
+    </div>
+    <p class="keys">
+      <strong>Arrow keys</strong> or <strong>ESDF</strong> to drive &middot;
+      <strong>M</strong> / <strong>Space</strong> / <strong>Q</strong> to fire &middot;
+      <strong>R</strong> for a new maze
+    </p>
+    <p class="note">
+      Bullets ricochet and stay lethal for ten seconds &mdash; including to whoever fired them.
+      A round is not decided the instant someone dies: the world keeps running for three more
+      seconds, so a shot already in the air can still take the apparent winner with it.
+    </p>
+  </div>
+</main>
+<script type="module" src="src/main.js"></script>
+</body>
+</html>
