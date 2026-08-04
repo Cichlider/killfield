@@ -270,6 +270,14 @@ export class Bullet {
     this.deadly = C.BULLETDEADLY;
     this.removed = false;
     this.justCreated = false;
+    // The muzzle spawn point sits inside the owner's own barrel hit-shape, so
+    // a tank driving the same direction it just fired keeps pace with the
+    // bullet instead of separating from it, and would otherwise shoot itself
+    // on the very next hit test. Exempt the owner until the bullet has once
+    // been seen outside their shape; a ricochet almost always travels well
+    // past that boundary before it can bounce back, so this only changes the
+    // straight-line self-chase case.
+    this.hasExitedOwner = false;
   }
 
   update() {
@@ -300,11 +308,16 @@ export class Bullet {
       }
     }
 
-    // One hit test per frame, after all substeps. There is no exemption for
-    // the tank that fired.
+    // One hit test per frame, after all substeps. The tank that fired is only
+    // exempt until the bullet has cleared its own hit-shape once; after that
+    // there is no exemption, so a ricochet kills its owner same as anyone.
     if (this.deadly === 0) {
+      if (!this.hasExitedOwner && !this.owner.pointInShape(this.x, this.y)) {
+        this.hasExitedOwner = true;
+      }
       for (let i = 0; i < g.tanksCount; i++) {
         const tank = g.tanks[i];
+        if (tank === this.owner && !this.hasExitedOwner) continue;
         if (tank.alive && tank.pointInShape(this.x, this.y)) {
           g.registerHit(this.owner, tank);
           this.owner.bulletsFired -= 1;
