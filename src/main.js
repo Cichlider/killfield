@@ -34,6 +34,8 @@ const seedInput = document.getElementById("seed");
 const raysSelect = document.getElementById("rays");
 const watchButton = document.getElementById("mode-watch");
 const playButton = document.getElementById("mode-play");
+const stage = document.getElementById("stage");
+const fullscreenButton = document.getElementById("fullscreen");
 
 const renderer = new Renderer(canvas);
 const keyboard = new Keyboard();
@@ -118,6 +120,30 @@ function frame(now) {
   updateTelemetry();
   requestAnimationFrame(frame);
 }
+
+function fullscreenElement() {
+  return document.fullscreenElement || document.webkitFullscreenElement || null;
+}
+
+function toggleFullscreen() {
+  if (fullscreenElement()) {
+    (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+  } else {
+    const request = stage.requestFullscreen || stage.webkitRequestFullscreen;
+    request.call(stage);
+  }
+}
+
+function syncFullscreenButton() {
+  const active = fullscreenElement() === stage;
+  fullscreenButton.textContent = active ? "⤢" : "⛶";
+  fullscreenButton.setAttribute("aria-label", active ? "Exit fullscreen" : "Fullscreen");
+  renderer.resize();
+}
+
+fullscreenButton.addEventListener("click", toggleFullscreen);
+document.addEventListener("fullscreenchange", syncFullscreenButton);
+document.addEventListener("webkitfullscreenchange", syncFullscreenButton);
 
 keyboard.onReroll = newGame;
 rerollButton.addEventListener("click", () => {
