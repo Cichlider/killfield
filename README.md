@@ -1,151 +1,103 @@
 # killfield
 
-**[Play it →](https://cichlider.github.io/killfield/)**
+**[▶ 在线试玩](https://cichlider.github.io/killfield/)** — 点开就能和 AI 对战，无需安装。
 
-A browser reimplementation of a maze tank duel, built as a testbed for a
-search-based game-playing agent.
+浏览器里的迷宫坦克对战。游戏是载体，**重点是那个 AI 对手**。
+纯 ES 模块，零依赖、零构建步骤，约 3700 行 JavaScript。
 
-The interesting part is not the game — it is the opponent. The agent plans by
-inverting the problem: instead of asking *"if I shoot from here, do I hit?"*,
-it fires a fan of reverse rays out from the enemy's cell and asks *"which
-squares could a bullet have come from?"* That produces a density field over
-shooting positions, which becomes both a navigation target and an aiming
-prior. Roughly three quarters of its kills are ricochets rather than direct
-shots.
+---
 
-## How the agent plans
+## 我做了什么
 
-Every frame it enumerates ten candidate first moves, rolls each one 36 frames
-forward in a sandbox, and scores the result. The sandbox shares everything a
-player could see and scrubs what they could not: the random stream is
-reseeded, and the opponent's controller is rebuilt so its internal goal stack
-cannot leak across.
+#### 1. 把一款经典 Flash 游戏完整复刻进浏览器
 
-Scoring rewards climbing the density ladder, closing along the guidance
-gradient, and turning the turret toward the best firing angle from wherever it
-ends up. Firing is decided separately and conservatively: the field only ever
-*proposes*, and a shot is taken when the engine's own ballistics simulator
-confirms the current heading connects. There is no confidence threshold.
+迷宫生成、坦克操控、子弹反弹、回合判定全部重写，固定 25 FPS 确定性推演——
+同一个种子，每次跑出来逐帧一模一样。这是能做实验的前提。
 
-Around that sits a small amount of hand-written machinery, each piece fixing a
-specific failure of naive per-frame replanning:
+#### 2. 写了一个会算跳弹的 AI 对手
 
-- **Commitment** — a chosen move is held for a few frames, so the tank drives
-  in a line instead of dithering between near-tied candidates.
-- **Own-bullet guard** — a plan can predate a bullet we just fired, so any
-  movement that would drive into our own shot is replaced with the safest
-  alternative. Fire-then-chase-your-own-ricochet is otherwise a real way to
-  lose.
-- **Stuck detection** — if a commanded move produced no motion at all, that
-  whole throttle/turn pair is penalised, so it stops grinding against a wall.
-- **Post-kill survival** — during the three seconds after a kill, it stops
-  hunting and explicitly scores movements for bullet clearance.
+常规瞄准逻辑问：*"我从这里开枪，能打中吗？"*
 
-### Planning runs on the main thread
+这个 AI 反过来问：**"子弹可能是从哪些格子飞过来的？"**
 
-The reference implementation pushes planning onto a background worker and
-accepts plans up to six frames stale, because a plan costs it 96 ms at the
-p95. Here the same plan, at the same 2048 rays, costs **4.7 ms** against a
-40 ms frame budget — so it runs synchronously and plans are never stale.
+从敌人所在格向外发射 **2048 条反向射线**（含墙面反弹），得到一张
+「站在哪能打到他」的密度场。这张场同时当两件事用：**去哪**（往高密度区走）
+和 **朝哪开火**（沿最优射角）。
 
-Two things buy that. The engine is roughly 25x faster in JS than in Python,
-and it is engine stepping, not ray tracing, that dominates a plan. And
-sampling shooter positions reuses the bucketed wall index the collision system
-already maintains, which is an asymptotic improvement over scanning every wall
-per sample, not just a constant factor.
+结果是它会主动绕点、卡角、打反弹球——**约 3/4 的击杀来自跳弹**，而不是直射。
 
-Ray count is adjustable in the UI for slower devices; 256 rays cuts field
-construction from 18 ms to 1 ms.
+#### 3. 让它快到能和画面跑在同一个线程上
 
-## Running it
+原本在 Python 里单次决策要 96 ms，必须丢进后台线程、容忍 6 帧的陈旧数据。
+重写后压到 **4.7 ms**，主线程同步出招，永不陈旧。
+提速来自两处：引擎步进本身快了约 25 倍，以及采样射击位复用了碰撞系统已有的
+分桶墙体索引——这是复杂度层面的改进，不是常数优化。
 
-There is no build step and no dependencies. Serve the directory over HTTP —
-ES modules will not load from a `file://` URL:
+#### 4. 证明重写没有改变它的打法
 
-```sh
+移植最大的风险不是崩溃，而是**「守规矩但打法变了」**。所以除了 42 条机械断言，
+还专门比对行为本身：
+
+- 密度场**逐格数值完全一致**（两边每个格子的票数、梯队划分相同，引导包络误差 0.0）
+- 对阵同一个脚本 AI：本实现 150 回合胜 85.3%，Python 参考实现 45 回合胜 91.1%，
+  差异不显著（双比例 z ≈ 1.0），种子间自然波动就有 76.7%–90.0%
+- 强制开火频次两边完全相同（10 个配对回合各 41 次）
+
+---
+
+## 关键数字
+
+| | Python 参考实现 | 本实现（JS） |
+|---|---|---|
+| 单次规划 p95 | 96 ms | **4.7 ms** |
+| 规划位置 | 后台线程，容忍 6 帧陈旧 | **主线程同步，永不陈旧** |
+| 无头吞吐 | — | 22 万帧/秒（≈ 8800 倍实时） |
+| 机械断言 | — | 42/42 通过 |
+
+---
+
+## 运行
+
+无依赖、无构建。ES 模块不能从 `file://` 加载，起个 HTTP 服务即可：
+
+```bash
 python3 -m http.server 8000
-# then open http://localhost:8000
 ```
 
-## Verification
+跑测试：
 
-Open `test/port.test.html` in a browser, or run the same suite headlessly with
-`node --input-type=module -e "import('./test/suite.js').then(...)"`. It is 42
-assertions mirroring the reference implementation's own test script: bullet
-speed and lifetime, the five-bullet cap, wall containment, the bucket index
-agreeing with brute-force collision on 4000 random points, and the exact round
-teardown timeline.
+```bash
+node --input-type=module -e "import('./test/suite.js').then(m => console.log(m.summarise(m.runSuite())))"
+```
 
-Mechanical assertions cannot catch a subtly mis-ported AI, though — it would
-still obey every rule while playing wrong. So `test/benchmark.js` plays out
-whole rounds and compares the *character* of the result against the reference
-implementation running the identical scenario. Across five independent seed
-pairs each, 100 rounds against a flailing opponent:
+---
 
-| | AI wins | opponent wins | mutual kills | seconds to kill |
-|---|---|---|---|---|
-| reference | 89–94 | 0–2 | 5–11 | 2.4–2.7 |
-| this port | 87–92 | 0–3 | 6–11 | 2.0–2.9 |
+## 源码结构
 
-The ranges overlap on every measure. Against a stationary opponent the
-reference's 8.4 s mean time to kill likewise falls inside this port's 5.9–8.6 s
-seed-to-seed spread.
+```
+src/game.js          引擎：坦克、子弹、回合状态机（固定 25 FPS）
+src/maze.js          迷宫生成、连通性、距离场、分桶墙体索引
+src/killfield/
+  field.js           ★ 反向射线 → 射击位密度场（导航 + 瞄准先验）
+  teacher.js         ★ 搜索智能体主体：滚动时域控制
+  sandbox.js         隔离前推环境：重播种随机流、重建对手控制器
+  score.js           候选动作打分
+  chain.js           猎杀链奖励
+  risk.js            来袭火力风险估计
+src/laika.js         对照用的脚本 AI 对手
+test/                42 条断言 + 行为基准
+```
 
-Headless throughput is about 220,000 frames/sec with the AI in the loop —
-roughly 25x the Python reference, and 8,800x real time. That headroom is what
-makes running the search agent in a browser viable at all.
+**想看规划循环怎么跑、每个机制在修什么问题、验证方法的完整细节 →
+[DESIGN.md](DESIGN.md)**
 
-### The agent
+---
 
-The density field itself is **bit-exact**. Handed an identical maze, this port
-and the reference produce the same vote count in every cell, the same tier
-assignment, and a guidance envelope matching to 0.0 absolute error.
+## 归属与范围
 
-End to end against the scripted AI, over 150 rounds here and 45 on the
-reference:
+非官方、非商业的重实现，用于研究与课程作业。
+复刻 Mads Purup 的 Flash 游戏 *Tank Trouble* 的机制；
+与原作者无隶属或背书关系，不含任何原始代码或美术资源，不以营利为目的分发。
+原作全部权利归其所有者。
 
-| | rounds | agent wins | unresolved |
-|---|---|---|---|
-| reference | 45 | 91.1% | 1 |
-| this port | 150 | 85.3% | 12 |
-
-That difference is not statistically significant (two-proportion z ≈ 1.0), and
-the seed-to-seed spread across five disjoint 30-round blocks here is
-76.7%–90.0%. Round length swings in *both* directions depending on which seed
-range you sample — the reference resolves faster on one set and slower on
-another — so it is maze-draw noise rather than a systematic gap. Forced-fire
-rate is identical (41 events over 10 matched rounds on both sides) and shots
-per round agree at 4.1 vs 4.6.
-
-Worth knowing: the reference agent has no official win rate to match against.
-The 98% figure that circulates in its notes belongs to a different agent
-entirely; this one was never formally graded. So the numbers above are the
-comparison, not a target.
-
-## How the simulation works
-
-Fixed 25 FPS, no delta-time anywhere. A few details carry more weight than
-their size suggests:
-
-- **Tanks slide along walls.** Forward motion only tests the front collision
-  probes and reverse only the rear ones, so grazing a wall deflects you rather
-  than stopping you.
-- **Bullets are lethal to their owner** from the muzzle onward. A straight shot
-  never kills you because the first hit test happens a full frame after firing,
-  but a ricochet off a nearby wall absolutely will.
-- **Rounds do not end at the kill.** The world keeps simulating for 75 frames
-  (3 s) afterwards, during which a bullet still in flight can kill the
-  survivor too. Only then does it freeze and score. A double kill scores for
-  nobody.
-- **Cell size changes every round.** It is derived from the maze dimensions,
-  so nothing in the renderer or the physics may assume a fixed grid pitch.
-
-## Attribution and scope
-
-This is an unofficial, non-commercial reimplementation written for research
-and coursework. It reproduces the mechanics of the Flash game *Tank Trouble*
-by Mads Purup; it is not affiliated with or endorsed by the original author,
-contains none of the original code or artwork, and is not distributed for
-profit. All rights in the original game remain with its owner.
-
-If you are the rights holder and would like this taken down, open an issue.
+如果你是权利持有人并希望下架，请提 issue。
