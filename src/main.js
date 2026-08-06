@@ -16,7 +16,7 @@ import * as C from "./constants.js";
 import { Game } from "./game.js";
 import { LaikaAI } from "./laika.js";
 import { KillFieldAgent } from "./killfield/teacher.js";
-import { Renderer } from "./render.js";
+import { Renderer, THEME } from "./render.js";
 import { Keyboard } from "./input.js";
 import { Rng } from "./rng.js";
 
@@ -26,7 +26,10 @@ const STEP_MS = 1000 / C.FPS; // 40 ms
 const MAX_CATCHUP_MS = 250;
 
 const canvas = document.getElementById("screen");
-const scoreline = document.getElementById("scoreline");
+const roundline = document.getElementById("roundline");
+const nameLabels = [0, 1].map((i) => document.getElementById(`name-${i}`));
+const scoreLabels = [0, 1].map((i) => document.getElementById(`score-${i}`));
+const swatches = [0, 1].map((i) => document.getElementById(`swatch-${i}`));
 const telemetryBox = document.getElementById("telemetry");
 const keyhelp = document.getElementById("keyhelp");
 const rerollButton = document.getElementById("reroll");
@@ -44,9 +47,16 @@ const shakeRng = new Rng(1);
 // The agent always drives tank 0. In watch mode the scripted AI drives tank 1;
 // in play mode you do.
 const MODES = {
-  watch: { labels: ["Agent", "Scripted AI"], humanTank: null },
-  play: { labels: ["Agent", "You"], humanTank: 1 },
+  watch: { labels: ["killfield AI", "Laika"], humanTank: null },
+  play: { labels: ["killfield AI", "You"], humanTank: 1 },
 };
+
+// Take the swatch colours from the renderer rather than restating them in CSS,
+// so the legend cannot drift from what is actually drawn on the canvas.
+swatches.forEach((swatch, i) => {
+  swatch.style.background = THEME.tanks[i].turret;
+  swatch.style.borderColor = THEME.tanks[i].base;
+});
 
 let mode = "watch";
 let game = null;
@@ -71,12 +81,19 @@ function setMode(next) {
   newGame();
 }
 
-function updateScoreline() {
+function updateScoreboard() {
   const { labels } = MODES[mode];
-  const parts = labels.map((label, i) => `${label} ${game.scores[i]}`);
-  let text = `${parts.join("  :  ")}   ·   round ${game.roundNumber}`;
-  if (game.frozen) text += "   ·   round over";
-  scoreline.textContent = text;
+  for (let i = 0; i < 2; i++) {
+    if (nameLabels[i].textContent !== labels[i]) {
+      nameLabels[i].textContent = labels[i];
+    }
+    const score = String(game.scores[i]);
+    if (scoreLabels[i].textContent !== score) scoreLabels[i].textContent = score;
+  }
+  const text = game.frozen
+    ? `round ${game.roundNumber} · round over`
+    : `round ${game.roundNumber}`;
+  if (roundline.textContent !== text) roundline.textContent = text;
 }
 
 let telemetryTick = 0;
@@ -116,7 +133,7 @@ function frame(now) {
     accumulator -= STEP_MS;
   }
   renderer.draw(game, shakeRng);
-  updateScoreline();
+  updateScoreboard();
   updateTelemetry();
   requestAnimationFrame(frame);
 }

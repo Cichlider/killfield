@@ -42,14 +42,18 @@ h1 {
   border-radius: 10px;
   background: #fff;
   padding: 10px;
-  display: inline-block;
+  /* border-box, so this is 712 of canvas + 20 padding + 2 border. Below that
+     width the stage just narrows and the canvas narrows with it. */
+  max-width: 734px;
   line-height: 0;
 }
 
 canvas {
   display: block;
-  /* Keep the fixed 712x500 logical size legible on narrow screens. */
-  max-width: 100%;
+  width: 100%;
+  /* Height must stay auto. The renderer publishes an aspect-ratio, and that is
+     what keeps the picture in shape as the width shrinks; pinning a pixel
+     height here is what squashed it on phones. */
   height: auto;
 }
 
@@ -72,6 +76,8 @@ canvas {
   justify-content: center;
   width: 100%;
   height: 100%;
+  /* The page cap must not follow us into fullscreen. */
+  max-width: none;
   padding: 0;
   border: none;
   border-radius: 0;
@@ -94,11 +100,52 @@ canvas {
 
 .controls { margin-top: 18px; }
 
-.scoreline {
-  font-variant-numeric: tabular-nums;
-  font-size: 16px;
+.scoreboard {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin-bottom: 4px;
+}
+
+.side {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.swatch {
+  width: 15px;
+  height: 15px;
+  flex: none;
+  border-radius: 5px;
+  border: 2px solid transparent;
+}
+
+.side-name {
+  font-size: 14px;
   font-weight: 600;
-  margin-bottom: 10px;
+  white-space: nowrap;
+}
+
+.side-score {
+  font-variant-numeric: tabular-nums;
+  font-size: 30px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+
+.vs {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.roundline {
+  margin: 0 0 14px;
+  color: var(--muted);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
 }
 
 .row {
@@ -189,4 +236,15 @@ select {
   max-width: 62ch;
   color: var(--muted);
   font-size: 13px;
+}
+
+@media (max-width: 560px) {
+  body { padding: 20px 12px 40px; }
+  h1 { font-size: 20px; }
+  .tagline { font-size: 13px; }
+  .stage { padding: 6px; border-radius: 8px; }
+  .side-score { font-size: 26px; }
+  .scoreboard { gap: 6px 12px; }
+  .keys, .note { font-size: 12px; }
+  .telemetry { font-size: 11px; grid-template-columns: 1fr 1fr; gap: 0 12px; }
 }

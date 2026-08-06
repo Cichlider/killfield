@@ -26,22 +26,62 @@ export class Renderer {
   constructor(canvas) {
     this.canvas = canvas;
     this.ctx = canvas.getContext("2d");
+    // Drawing always happens in this fixed logical space. How large it appears
+    // on screen is the stylesheet's business, not the renderer's.
     this.width = C.MOVIEWIDTH + 20;
     this.height = C.MOVIEHEIGHT + 20;
+    // Publish the ratio so CSS can reserve a correctly shaped box. Without it
+    // a percentage width and a fixed height fight, and the picture squashes.
+    canvas.style.aspectRatio = `${this.width} / ${this.height}`;
+    if (typeof ResizeObserver !== "undefined") {
+      // Catches rotation, fullscreen and layout shifts, not just window resize.
+      // Keep the reference: an observer nothing holds may be collected.
+      this.observer = new ResizeObserver(() => this.resize());
+      this.observer.observe(canvas);
+    }
+    this.sizeCheckTick = 0;
     this.resize();
   }
 
-  /** Match the backing store to the device pixel ratio so lines stay sharp. */
+  /**
+   * Match the backing store to the element's real on-screen size.
+   *
+   * The renderer must not write style.width/style.height: doing so pins a
+   * pixel height that `max-width: 100%` then contradicts, which is exactly
+   * how the canvas ends up squashed on a phone. Measure instead, and fold
+   * the logical-to-display ratio into the context transform.
+   */
   resize() {
     const dpr = window.devicePixelRatio || 1;
-    this.canvas.width = Math.round(this.width * dpr);
-    this.canvas.height = Math.round(this.height * dpr);
-    this.canvas.style.width = this.width + "px";
-    this.canvas.style.height = this.height + "px";
-    this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const rect = this.canvas.getBoundingClientRect();
+    const cssWidth = rect.width || this.width;
+    const cssHeight = rect.height || this.height;
+    const deviceWidth = Math.max(1, Math.round(cssWidth * dpr));
+    const deviceHeight = Math.max(1, Math.round(cssHeight * dpr));
+    if (this.canvas.width !== deviceWidth) this.canvas.width = deviceWidth;
+    if (this.canvas.height !== deviceHeight) this.canvas.height = deviceHeight;
+    this.ctx.setTransform(
+      deviceWidth / this.width, 0, 0, deviceHeight / this.height, 0, 0);
+  }
+
+  /**
+   * Belt-and-braces net for the observer: some environments resize the
+   * viewport without firing either a window resize or an observation. Four
+   * checks a second is far too cheap to matter, and a missed resize leaves
+   * the backing store mismatched against the box it is displayed in.
+   */
+  syncSize() {
+    if (this.sizeCheckTick++ % 15 !== 0) return;
+    const rect = this.canvas.getBoundingClientRect();
+    if (!rect.width) return;
+    const dpr = window.devicePixelRatio || 1;
+    if (Math.abs(Math.round(rect.width * dpr) - this.canvas.width) > 1) {
+      this.resize();
+    }
   }
 
   draw(game, rng) {
+    this.syncSize();
     const ctx = this.ctx;
     const g = game;
     ctx.clearRect(0, 0, this.width, this.height);
