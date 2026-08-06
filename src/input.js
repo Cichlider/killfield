@@ -23,6 +23,7 @@ export class Keyboard {
   constructor(target = window) {
     this.pressed = new Set();
     this.onReroll = null;
+    this.onPause = null;
 
     this._down = (e) => {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
@@ -30,6 +31,10 @@ export class Keyboard {
       if (SWALLOW.has(k)) e.preventDefault();
       if (k === "r") {
         if (this.onReroll) this.onReroll();
+        return;
+      }
+      if (k === "p") {
+        if (this.onPause) this.onPause();
         return;
       }
       this.pressed.add(k);

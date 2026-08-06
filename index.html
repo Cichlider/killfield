@@ -16,34 +16,41 @@
     <p class="tagline" id="tagline">A search-based agent for a maze tank duel. Most of its kills are bank shots.</p>
   </header>
 
-  <div class="scoreboard" id="scoreboard">
-    <div class="side">
-      <span class="swatch" id="swatch-0"></span>
-      <span class="side-name" id="name-0">killfield AI</span>
-      <span class="side-score" id="score-0">0</span>
-    </div>
-    <span class="vs">vs</span>
-    <div class="side side-right">
-      <span class="side-score" id="score-1">0</span>
-      <span class="side-name" id="name-1">Laika</span>
-      <span class="swatch" id="swatch-1"></span>
-    </div>
-  </div>
-  <p class="roundline" id="roundline">round 1</p>
-
   <div class="stage" id="stage">
-    <canvas id="screen" width="712" height="500"></canvas>
-    <button id="fullscreen" type="button" class="fullscreen-toggle" aria-label="Fullscreen">⛶</button>
+    <div class="stage-overlay" id="stage-overlay">
+      <div class="scoreboard" id="scoreboard">
+        <div class="side">
+          <span class="swatch" id="swatch-0"></span>
+          <span class="side-name" id="name-0">killfield AI</span>
+          <span class="side-score" id="score-0">0</span>
+        </div>
+        <span class="vs">vs</span>
+        <div class="side side-right">
+          <span class="side-score" id="score-1">0</span>
+          <span class="side-name" id="name-1">Laika</span>
+          <span class="swatch" id="swatch-1"></span>
+        </div>
+      </div>
+      <p class="roundline" id="roundline">round 1</p>
+      <p class="streakline" id="streakline">win streak 0 · best 0</p>
+    </div>
+    <div class="canvas-wrap">
+      <canvas id="screen" width="712" height="500"></canvas>
+      <button id="pause" type="button" class="pause-toggle" aria-label="Pause (P)">⏸</button>
+      <button id="fullscreen" type="button" class="fullscreen-toggle" aria-label="Fullscreen">⛶</button>
+    </div>
   </div>
 
   <div class="controls">
     <div class="row modes" role="group" aria-label="Mode">
       <button id="mode-watch" type="button" class="mode active">Watch it play</button>
       <button id="mode-play" type="button" class="mode">Play against it</button>
+      <button id="mode-selfplay" type="button" class="mode">AI vs AI</button>
     </div>
 
     <div class="row">
       <button id="reroll" type="button">New maze (R)</button>
+      <button id="reset-score" type="button">Reset score</button>
       <label class="seedbox">
         <span id="seed-label">seed</span>
         <input id="seed" type="text" inputmode="numeric" placeholder="random" size="9">

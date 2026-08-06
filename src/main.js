@@ -16,6 +16,7 @@ import * as C from "./constants.js";
 import { Game } from "./game.js";
 import { LaikaAI } from "./laika.js";
 import { KillFieldAgent } from "./killfield/teacher.js";
+import { mirrorView } from "./killfield/mirror.js";
 import { Renderer, THEME } from "./render.js";
 import { Keyboard } from "./input.js";
 import { Rng } from "./rng.js";
@@ -25,22 +26,31 @@ const STEP_MS = 1000 / C.FPS; // 40 ms
 // After a tab switch the clock can jump by minutes. Cap the catch-up rather
 // than running thousands of steps in one frame.
 const MAX_CATCHUP_MS = 250;
+// A round starting the instant the previous one ends reads as relentless
+// when a human is on the sticks. Play mode only — watch/self-play have no
+// human waiting to catch a breath.
+const ROUND_START_DELAY_FRAMES = Math.round(0.5 * C.FPS);
+const STREAK_STORAGE_KEY = "killfield-streak";
 
 const canvas = document.getElementById("screen");
 const roundline = document.getElementById("roundline");
+const streakline = document.getElementById("streakline");
 const nameLabels = [0, 1].map((i) => document.getElementById(`name-${i}`));
 const scoreLabels = [0, 1].map((i) => document.getElementById(`score-${i}`));
 const swatches = [0, 1].map((i) => document.getElementById(`swatch-${i}`));
 const telemetryBox = document.getElementById("telemetry");
 const keyhelp = document.getElementById("keyhelp");
 const rerollButton = document.getElementById("reroll");
+const resetScoreButton = document.getElementById("reset-score");
 const seedInput = document.getElementById("seed");
 const raysSelect = document.getElementById("rays");
 const oppModelSelect = document.getElementById("oppmodel");
 const oppModelHint = document.getElementById("oppmodel-hint");
 const watchButton = document.getElementById("mode-watch");
 const playButton = document.getElementById("mode-play");
+const selfplayButton = document.getElementById("mode-selfplay");
 const stage = document.getElementById("stage");
+const pauseButton = document.getElementById("pause");
 const fullscreenButton = document.getElementById("fullscreen");
 const langToggle = document.getElementById("lang-toggle");
 const tagline = document.getElementById("tagline");
@@ -59,11 +69,13 @@ const keyboard = new Keyboard();
 const shakeRng = new Rng(1);
 
 // The agent always drives tank 0. In watch mode the scripted AI drives tank 1;
-// in play mode you do. Only tank 1's opponent-facing label changes with
-// language ("You" / "你"); "killfield AI" and "Laika" are names, left as-is.
+// in play mode you do; in self-play a second KillFieldAgent does. Only tank
+// 1's opponent-facing label changes with language ("You" / "你");
+// "killfield AI" and "Laika" are names, left as-is.
 const MODES = {
   watch: { humanTank: null },
   play: { humanTank: 1 },
+  selfplay: { humanTank: null },
 };
 
 let lang = loadLang();
@@ -73,7 +85,63 @@ function t() {
 }
 
 function opponentLabel() {
-  return mode === "watch" ? "Laika" : t().nameYou;
+  if (mode === "watch") return "Laika";
+  if (mode === "selfplay") return "killfield AI";
+  return t().nameYou;
+}
+
+function loadStreak() {
+  try {
+    const raw = localStorage.getItem(STREAK_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Number.isFinite(parsed.current) && Number.isFinite(parsed.longest)) {
+        return { current: parsed.current, longest: parsed.longest };
+      }
+    }
+  } catch {
+    // localStorage can throw, or hold something we no longer trust; start fresh.
+  }
+  return { current: 0, longest: 0 };
+}
+
+function saveStreak() {
+  try {
+    localStorage.setItem(STREAK_STORAGE_KEY, JSON.stringify(streak));
+  } catch {
+    // Non-fatal: the streak just won't survive a reload.
+  }
+}
+
+// The match score and win streak used to be read straight off game.scores —
+// but that field lives on the Game instance and resets to [0, 0] every time
+// one is rebuilt (reroll, seed change, rays change, opponent-model change,
+// and apparently some fullscreen-exit paths too). Tallying it ourselves off
+// round_end events means those actions no longer wipe the board. Only an
+// explicit mode switch or the reset button clears it on purpose.
+let matchScore = [0, 0];
+// Win streak survives even a full page reload, per an explicit ask; match
+// score does not need to (a reload is a fresh session either way).
+let streak = loadStreak();
+
+function resetScore() {
+  matchScore = [0, 0];
+  streak.current = 0;
+  saveStreak();
+  updateScoreboard();
+}
+
+function applyRoundEnd(winner) {
+  // winner is undefined on a mutual kill — no score change, streak untouched.
+  if (winner !== 0 && winner !== 1) return;
+  matchScore[winner] += 1;
+  if (winner === 0) {
+    streak.current += 1;
+    if (streak.current > streak.longest) streak.longest = streak.current;
+  } else {
+    streak.current = 0;
+  }
+  saveStreak();
 }
 
 function applyLanguage() {
@@ -84,7 +152,9 @@ function applyLanguage() {
   tagline.textContent = s.tagline;
   watchButton.textContent = s.modeWatch;
   playButton.textContent = s.modePlay;
+  selfplayButton.textContent = s.modeSelfplay;
   rerollButton.textContent = s.reroll;
+  resetScoreButton.textContent = s.resetScore;
   seedLabel.textContent = s.seedLabel;
   raysLabel.textContent = s.raysLabel;
   rays2048.textContent = s.rays2048;
@@ -97,6 +167,7 @@ function applyLanguage() {
   keyhelp.innerHTML = s.keyhelpHtml;
   note.textContent = s.note;
   syncFullscreenButton();
+  syncPauseButton();
   updateScoreboard();
 }
 
@@ -110,6 +181,10 @@ swatches.forEach((swatch, i) => {
 let mode = "watch";
 let game = null;
 let agent = null;
+let agentB = null; // self-play only: the second KillFieldAgent, driving tank 1
+let mirrored = null; // self-play only: mirrorView(game), tank 1's-eye view
+let paused = false;
+let freezeFrames = 0; // >0 while a round hasn't started moving yet
 
 function newGame() {
   const raw = seedInput.value.trim();
@@ -119,33 +194,52 @@ function newGame() {
     seed,
     aiFactory: mode === "watch" ? (g, tank) => new LaikaAI(g, tank) : null,
   });
-  agent = new KillFieldAgent({
-    seed: 0,
-    rayCount: Number(raysSelect.value),
-    oppModel: oppModelSelect.value,
-  });
+  const rayCount = Number(raysSelect.value);
+  const oppModel = oppModelSelect.value;
+  agent = new KillFieldAgent({ seed: 0, rayCount, oppModel });
+  if (mode === "selfplay") {
+    agentB = new KillFieldAgent({ seed: 1, rayCount, oppModel });
+    mirrored = mirrorView(game);
+  } else {
+    agentB = null;
+    mirrored = null;
+  }
+  // The constructor's own setupBattle() pushes round 1's "new_round" event
+  // before we ever call step() — step() resets the events array on its very
+  // first call, so that event never reaches tick()'s loop below. Priming the
+  // delay here is what covers round 1; every later round is caught there.
+  freezeFrames = mode === "play" ? ROUND_START_DELAY_FRAMES : 0;
 }
 
 function setMode(next) {
   mode = next;
   watchButton.classList.toggle("active", next === "watch");
   playButton.classList.toggle("active", next === "play");
+  selfplayButton.classList.toggle("active", next === "selfplay");
   keyhelp.style.display = next === "play" ? "" : "none";
+  // A mode switch changes who tank 1 even is, so treat it as a fresh match.
+  matchScore = [0, 0];
+  streak.current = 0;
+  saveStreak();
   newGame();
 }
 
 function updateScoreboard() {
   if (game === null) return;
+  const s = t();
   const labels = ["killfield AI", opponentLabel()];
   for (let i = 0; i < 2; i++) {
     if (nameLabels[i].textContent !== labels[i]) {
       nameLabels[i].textContent = labels[i];
     }
-    const score = String(game.scores[i]);
+    const score = String(matchScore[i]);
     if (scoreLabels[i].textContent !== score) scoreLabels[i].textContent = score;
   }
-  const text = game.frozen ? t().roundOver(game.roundNumber) : t().round(game.roundNumber);
+  let text = game.frozen ? s.roundOver(game.roundNumber) : s.round(game.roundNumber);
+  if (paused) text += ` · ${s.paused}`;
   if (roundline.textContent !== text) roundline.textContent = text;
+  const streakText = s.streakLine(streak.current, streak.longest);
+  if (streakline.textContent !== streakText) streakline.textContent = streakText;
 }
 
 let telemetryTick = 0;
@@ -171,10 +265,23 @@ function updateTelemetry() {
 }
 
 function tick() {
+  if (freezeFrames > 0) {
+    // A true freeze, not a slow-motion: the round doesn't advance at all
+    // during the breather, it just sits on the frame it opened with.
+    freezeFrames -= 1;
+    return;
+  }
   if (game.tanks[0].alive) agent.drive(game);
-  const human = MODES[mode].humanTank;
-  if (human !== null) keyboard.applyTo(game.tanks[human]);
-  game.step();
+  if (mode === "selfplay") {
+    if (game.tanks[1].alive) agentB.drive(mirrored);
+  } else {
+    const human = MODES[mode].humanTank;
+    if (human !== null) keyboard.applyTo(game.tanks[human]);
+  }
+  for (const event of game.step()) {
+    if (event[0] === "round_end") applyRoundEnd(event[1]);
+    else if (event[0] === "new_round" && mode === "play") freezeFrames = ROUND_START_DELAY_FRAMES;
+  }
 }
 
 let last = performance.now();
@@ -183,14 +290,31 @@ let accumulator = 0;
 function frame(now) {
   accumulator = Math.min(accumulator + (now - last), MAX_CATCHUP_MS);
   last = now;
-  while (accumulator >= STEP_MS) {
-    tick();
-    accumulator -= STEP_MS;
+  if (paused) {
+    // Don't let the gap pile up while paused, or unpausing would fast-forward.
+    accumulator = 0;
+  } else {
+    while (accumulator >= STEP_MS) {
+      tick();
+      accumulator -= STEP_MS;
+    }
   }
   renderer.draw(game, shakeRng);
   updateScoreboard();
   updateTelemetry();
   requestAnimationFrame(frame);
+}
+
+function togglePause() {
+  paused = !paused;
+  syncPauseButton();
+  updateScoreboard();
+}
+
+function syncPauseButton() {
+  const s = t();
+  pauseButton.textContent = paused ? "▶" : "⏸";
+  pauseButton.setAttribute("aria-label", paused ? s.pauseExit : s.pauseEnter);
 }
 
 function fullscreenElement() {
@@ -224,15 +348,25 @@ document.addEventListener("fullscreenchange", syncFullscreenButton);
 document.addEventListener("webkitfullscreenchange", syncFullscreenButton);
 
 keyboard.onReroll = newGame;
+keyboard.onPause = togglePause;
 rerollButton.addEventListener("click", () => {
   newGame();
   rerollButton.blur();
+});
+resetScoreButton.addEventListener("click", () => {
+  resetScore();
+  resetScoreButton.blur();
+});
+pauseButton.addEventListener("click", () => {
+  togglePause();
+  pauseButton.blur();
 });
 seedInput.addEventListener("change", newGame);
 raysSelect.addEventListener("change", newGame);
 oppModelSelect.addEventListener("change", newGame);
 watchButton.addEventListener("click", () => setMode("watch"));
 playButton.addEventListener("click", () => setMode("play"));
+selfplayButton.addEventListener("click", () => setMode("selfplay"));
 langToggle.addEventListener("click", toggleLanguage);
 window.addEventListener("resize", () => renderer.resize());
 
