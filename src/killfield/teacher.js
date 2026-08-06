@@ -43,6 +43,7 @@ export class KillFieldAgent {
     maxFlightFrames = DEFAULT_FLIGHT_FRAMES,
     horizon = MPC_HORIZON,
     hold = MPC_HOLD,
+    oppModel = "L2",
   } = {}) {
     this.rng = new Rng(seed);
     this.rayCount = rayCount;
@@ -50,6 +51,13 @@ export class KillFieldAgent {
     this.maxFlightFrames = maxFlightFrames;
     this.horizon = horizon;
     this.hold = hold;
+    // Which controller the lookahead sandbox assumes tank 1 is running.
+    // "L2" plays out the real Laika script — only sound when the opponent
+    // actually is Laika. "L1" just freezes their current buttons, which is
+    // the honest assumption against a human: we cannot script their play,
+    // so pretending we can (and imagining them dying on schedule) is how the
+    // agent ends up standing still against a live opponent who never died.
+    this.oppModel = oppModel;
     this.reset();
   }
 
@@ -212,6 +220,7 @@ export class KillFieldAgent {
         chainState: this.chain,
         horizon: this.horizon,
         hold: this.hold,
+        oppModel: this.oppModel,
       });
     }
     maskMovingFireScores(values);

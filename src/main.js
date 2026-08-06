@@ -35,6 +35,7 @@ const keyhelp = document.getElementById("keyhelp");
 const rerollButton = document.getElementById("reroll");
 const seedInput = document.getElementById("seed");
 const raysSelect = document.getElementById("rays");
+const oppModelSelect = document.getElementById("oppmodel");
 const watchButton = document.getElementById("mode-watch");
 const playButton = document.getElementById("mode-play");
 const stage = document.getElementById("stage");
@@ -70,7 +71,11 @@ function newGame() {
     seed,
     aiFactory: mode === "watch" ? (g, tank) => new LaikaAI(g, tank) : null,
   });
-  agent = new KillFieldAgent({ seed: 0, rayCount: Number(raysSelect.value) });
+  agent = new KillFieldAgent({
+    seed: 0,
+    rayCount: Number(raysSelect.value),
+    oppModel: oppModelSelect.value,
+  });
 }
 
 function setMode(next) {
@@ -169,6 +174,7 @@ rerollButton.addEventListener("click", () => {
 });
 seedInput.addEventListener("change", newGame);
 raysSelect.addEventListener("change", newGame);
+oppModelSelect.addEventListener("change", newGame);
 watchButton.addEventListener("click", () => setMode("watch"));
 playButton.addEventListener("click", () => setMode("play"));
 window.addEventListener("resize", () => renderer.resize());
