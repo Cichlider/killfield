@@ -184,6 +184,10 @@ let agent = null;
 let agentB = null; // self-play only: the second KillFieldAgent, driving tank 1
 let mirrored = null; // self-play only: mirrorView(game), tank 1's-eye view
 let paused = false;
+// A drawn round scores nothing for either side, which is already what
+// applyRoundEnd does when there is no winner.
+const SELFPLAY_TIMEOUT_FRAMES = 30 * C.FPS;
+let roundFrames = 0;
 let freezeFrames = 0; // >0 while a round hasn't started moving yet
 
 function newGame() {
@@ -236,6 +240,11 @@ function updateScoreboard() {
     if (scoreLabels[i].textContent !== score) scoreLabels[i].textContent = score;
   }
   let text = game.frozen ? s.roundOver(game.roundNumber) : s.round(game.roundNumber);
+  if (mode === "selfplay" && !game.frozen) {
+    // Show the clock, or a round ending with nobody dead looks like a bug.
+    const left = Math.max(0, SELFPLAY_TIMEOUT_FRAMES - roundFrames) / C.FPS;
+    text += ` · ${left.toFixed(0)}s`;
+  }
   if (paused) text += ` · ${s.paused}`;
   if (roundline.textContent !== text) roundline.textContent = text;
   const streakText = s.streakLine(streak.current, streak.longest);
@@ -278,9 +287,27 @@ function tick() {
     const human = MODES[mode].humanTank;
     if (human !== null) keyboard.applyTo(game.tanks[human]);
   }
+  roundFrames += 1;
   for (const event of game.step()) {
     if (event[0] === "round_end") applyRoundEnd(event[1]);
-    else if (event[0] === "new_round" && mode === "play") freezeFrames = ROUND_START_DELAY_FRAMES;
+    else if (event[0] === "new_round") {
+      roundFrames = 0;
+      if (mode === "play") freezeFrames = ROUND_START_DELAY_FRAMES;
+    }
+  }
+  // Two copies of the same policy can circle each other indefinitely: both
+  // dodge well enough that the trigger's hit check never passes, so neither
+  // ever fires. Left alone the round simply never ends. Calling time on it is
+  // the same teardown the engine runs at resetCount 0, so the next round comes
+  // up exactly as it normally would.
+  //
+  // Self-play only. Watch and play modes keep the original rules, where a
+  // round ends when someone dies and not before.
+  if (mode === "selfplay" && !game.frozen
+      && roundFrames >= SELFPLAY_TIMEOUT_FRAMES) {
+    game.cleanUpBattle();
+    game.setupBattle();
+    roundFrames = 0;
   }
 }
 
