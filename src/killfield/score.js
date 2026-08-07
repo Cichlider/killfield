@@ -41,6 +41,20 @@ const FAILED_FIRE_PENALTY = 260.0;
 const SUICIDE_FIRE_PENALTY = 2500.0;
 const RISK_WEIGHT = 320.0;
 export const NO_EFFECT_REPEAT_PENALTY = 600.0;
+
+// Every field term is quantised to whole cells, so a tank grinding against a
+// wall and a tank crossing half a cell of open floor score identically as long
+// as neither changes cell. Measured at a real deadlock: four candidates moved
+// 20–28 units in the sandbox, four moved nothing, and all eight scored exactly
+// 0.00 — argmax then took the lowest index, which happened to be immobile.
+//
+// This restores the resolution the quantisation throws away. It is not a
+// "prefer moving" tactic: the rollout already computes the displacement and
+// then discards it. Weighted so a full 36-frame run of open ground is worth
+// about 26 points — decisive against a tie, negligible against a real field
+// gradient (hundreds). Normalised by cell size because the engine re-derives
+// the grid pitch every round.
+const MOBILITY_WEIGHT = 60.0;
 const MOVING_FIRE_SCORE = -1.0e9;
 const SCORE_SCALE = 12000.0;
 const POST_KILL_FIRE_PENALTY = 3000.0;
@@ -140,6 +154,8 @@ export function densityRollout(game, action, field, rngSeed, {
     enemy.fire = fire === 1;
   }
 
+  const startX = me.x;
+  const startY = me.y;
   const startCell = cellOf(sandbox, me);
   const startValue = field.valueAt(startCell);
   const startRelative = field.relativeSuccessAt(startCell);
@@ -205,6 +221,11 @@ export function densityRollout(game, action, field, rngSeed, {
   const opportunityWeight = startRelative * Math.max(startValue, 1.0);
   const concentration = Math.max(startConcentration, endConcentration, 0.10);
   score += ALIGNMENT_WEIGHT * opportunityWeight * concentration * alignmentGain;
+
+  // Net displacement, not distance travelled: grinding back and forth against
+  // a wall must not pay the same as actually getting somewhere.
+  const travelled = Math.hypot(me.x - startX, me.y - startY);
+  score += MOBILITY_WEIGHT * (travelled / Math.max(sandbox.scale, 1e-6));
 
   if (fired) {
     if (shot !== null && shot.result === "HIT") score += GOOD_FIRE_BONUS;
