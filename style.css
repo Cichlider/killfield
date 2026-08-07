@@ -95,6 +95,18 @@ canvas {
   opacity: 0.7;
 }
 
+/* The pause glyph is an inline SVG, so the box has to centre it the way a
+   font would have. Fixed height keeps it the same size as the neighbouring
+   fullscreen button, whose mark is still a character. */
+.pause-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 28px;
+}
+
+.pause-toggle svg { display: block; }
+
 .fullscreen-toggle { right: 8px; }
 .pause-toggle { right: 40px; }
 

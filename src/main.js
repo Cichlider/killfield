@@ -311,9 +311,23 @@ function togglePause() {
   updateScoreboard();
 }
 
+// Drawn rather than typed. U+23F8 and U+25B6 both carry an emoji presentation,
+// and iOS picks it, so the glyph arrived as a colour Apple emoji on phones and
+// a flat monochrome mark on desktop. A variation selector is not reliably
+// honoured there; an inline path is the only way to get the same icon on both.
+const PAUSE_ICON =
+  '<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">' +
+  '<rect x="3" y="2.5" width="3.6" height="11" rx="0.7" fill="currentColor"/>' +
+  '<rect x="9.4" y="2.5" width="3.6" height="11" rx="0.7" fill="currentColor"/>' +
+  "</svg>";
+const PLAY_ICON =
+  '<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">' +
+  '<path d="M4 2.6 13.2 8 4 13.4Z" fill="currentColor"/>' +
+  "</svg>";
+
 function syncPauseButton() {
   const s = t();
-  pauseButton.textContent = paused ? "▶" : "⏸";
+  pauseButton.innerHTML = paused ? PLAY_ICON : PAUSE_ICON;
   pauseButton.setAttribute("aria-label", paused ? s.pauseExit : s.pauseEnter);
 }
 
