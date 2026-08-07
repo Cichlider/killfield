@@ -1,0 +1,38 @@
+MIT License
+
+Copyright (c) 2026 Cichlider
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+---
+
+Scope of this license
+
+The MIT terms above cover the source code in this repository, which was
+written from scratch for this project.
+
+They do not, and cannot, grant any rights in the game *Tank Trouble* itself.
+This repository is an unofficial, non-commercial reimplementation of that
+game's mechanics, created for research and coursework. It is not affiliated
+with or endorsed by Mads Purup, and it contains no original code, art, audio,
+or other assets from the original game. All rights in the original work remain
+with its owner.
+
+In short: the code here is yours to use under MIT; the game design and name
+are not mine to license.

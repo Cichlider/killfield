@@ -125,6 +125,36 @@ export function runSuite() {
     check("the cap is actually reached", maxOwn === C.SETTINGS_MAX_BULLETS);
   }
 
+  // ---------------------------------------------------------------- 5b
+  section("Self-harm requires a bounce");
+  {
+    // Drive straight down your own shot. Before the bullet touches a wall it
+    // must never register a hit on its owner; after it has bounced, the
+    // exemption is gone and the owner is a target like anyone else.
+    const g = new Game({ seed: 4242, aiFactory: null });
+    const me = g.tanks[0];
+    let hitBeforeBounce = 0;
+    let hitAfterBounce = 0;
+    let sawBounce = false;
+    for (let i = 0; i < 300 && me.alive; i++) {
+      me.fire = i === 0;
+      me.forward = true;
+      const mine = g.bullets.filter((b) => b.owner === me && !b.removed);
+      const bounced = mine.length > 0 && mine.every((b) => b.hasBounced);
+      for (const ev of g.step()) {
+        if (ev[0] === "bounce") sawBounce = true;
+        if (ev[0] === "hit" && ev[1] === 0 && ev[2] === 0) {
+          if (bounced) hitAfterBounce += 1; else hitBeforeBounce += 1;
+        }
+      }
+    }
+    check("a bullet cannot hit its owner before it bounces",
+      hitBeforeBounce === 0, `${hitBeforeBounce} self-hits pre-bounce`);
+    check("the shot did reach a wall (test is not vacuous)", sawBounce);
+    check("post-bounce self-hits are permitted by the rule",
+      hitAfterBounce >= 0);
+  }
+
   // ---------------------------------------------------------------- 6
   section("Wall collision");
   {

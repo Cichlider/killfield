@@ -270,14 +270,17 @@ export class Bullet {
     this.deadly = C.BULLETDEADLY;
     this.removed = false;
     this.justCreated = false;
-    // The muzzle spawn point sits inside the owner's own barrel hit-shape, so
-    // a tank driving the same direction it just fired keeps pace with the
-    // bullet instead of separating from it, and would otherwise shoot itself
-    // on the very next hit test. Exempt the owner until the bullet has once
-    // been seen outside their shape; a ricochet almost always travels well
-    // past that boundary before it can bounce back, so this only changes the
-    // straight-line self-chase case.
-    this.hasExitedOwner = false;
+    // A bullet is harmless to whoever fired it until it has bounced at least
+    // once. That is the actual rule, not a workaround for the muzzle overlap:
+    // you cannot shoot yourself in the back by driving after your own straight
+    // shot, but the moment it comes off a wall it is live to everyone.
+    //
+    // An earlier version exempted the owner until the bullet was first seen
+    // outside their hit-shape. That is a geometric proxy, and it fails in both
+    // directions: a tank driving alongside its own bullet never separates from
+    // it, so the exemption never lifts, while a shot fired flush against a wall
+    // can bounce back and kill before it has cleared the muzzle.
+    this.hasBounced = false;
   }
 
   update() {
@@ -291,6 +294,7 @@ export class Bullet {
       this.y += this.ySpeed;
       if (g.wallHit(this.x, this.y)) {
         g.events.push(["bounce", this.name]);
+        this.hasBounced = true;
         // These two probes look asymmetric because they are. Reproduced as
         // written; "fixing" them changes every ricochet angle in the game.
         const hitOnXInvert = g.wallHit(prevX - this.xSpeed, prevY + this.ySpeed);
@@ -308,16 +312,13 @@ export class Bullet {
       }
     }
 
-    // One hit test per frame, after all substeps. The tank that fired is only
-    // exempt until the bullet has cleared its own hit-shape once; after that
-    // there is no exemption, so a ricochet kills its owner same as anyone.
+    // One hit test per frame, after all substeps. The tank that fired is exempt
+    // only while the bullet has not bounced; once it has, it kills its owner
+    // same as anyone.
     if (this.deadly === 0) {
-      if (!this.hasExitedOwner && !this.owner.pointInShape(this.x, this.y)) {
-        this.hasExitedOwner = true;
-      }
       for (let i = 0; i < g.tanksCount; i++) {
         const tank = g.tanks[i];
-        if (tank === this.owner && !this.hasExitedOwner) continue;
+        if (tank === this.owner && !this.hasBounced) continue;
         if (tank.alive && tank.pointInShape(this.x, this.y)) {
           g.registerHit(this.owner, tank);
           this.owner.bulletsFired -= 1;
