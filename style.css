@@ -337,6 +337,20 @@ select {
   font-size: 13px;
 }
 
+.colophon {
+  margin-top: 28px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 12px;
+  max-width: 62ch;
+}
+
+.colophon p { margin: 0 0 4px; }
+.colophon p:last-child { margin-bottom: 0; }
+.colophon a { color: var(--muted); }
+.colophon a:hover { color: var(--accent); }
+
 .hint {
   margin: 6px 0 0;
   max-width: 62ch;
