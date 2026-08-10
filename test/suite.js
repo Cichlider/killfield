@@ -102,6 +102,19 @@ export function runSuite() {
     g.step();
     check("it moves on the following frame", Math.hypot(b.x - x0, b.y - y0) > 0);
 
+    const expiryGame = new Game({ seed: 1, aiFactory: null });
+    expiryGame.tanks[0].fire = true;
+    expiryGame.step();
+    const expiring = expiryGame.bullets[0];
+    expiring.justCreated = false;
+    expiring.x = expiryGame.tanks[0].x;
+    expiring.y = expiryGame.tanks[0].y;
+    expiring.xSpeed = 0;
+    expiring.ySpeed = 0;
+    expiring.lifetime = 1;
+    check("a bullet announces when its lifetime expires",
+      expiryGame.step().some((event) => event[0] === "expire"));
+
     let frames = 0;
     while (g.bullets.length && frames < 300) { g.step(); frames++; }
     check("it expires within its 250-frame lifetime and returns the slot",

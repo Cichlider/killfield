@@ -332,6 +332,7 @@ export class Bullet {
     if (this.lifetime <= 0 && !this.removed) {
       this.owner.bulletsFired -= 1;
       this.removed = true;
+      g.events.push(["expire", this.name]);
     }
   }
 }
