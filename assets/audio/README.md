@@ -1,11 +1,10 @@
 # Audio assets
 
-These seven sound effects come from the Flash version of *Tank Trouble* and are
+These five sound effects come from the Flash version of *Tank Trouble* and are
 used by this unofficial, non-commercial reimplementation. They are not covered
 by the repository's MIT license.
 
 - `fire.wav` — standard cannon shot
-- `bounce-1.wav`, `bounce-2.wav` — ricochet variants
 - `destroy.wav`, `destroy-2.wav`, `destroy-3.wav` — the three layers played
   together when a tank is destroyed
 - `expire.wav` — bullet disappearance

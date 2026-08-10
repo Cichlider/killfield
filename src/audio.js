@@ -8,10 +8,6 @@
 
 const FILES = {
   fire: [new URL("../assets/audio/fire.wav", import.meta.url)],
-  bounce: [
-    new URL("../assets/audio/bounce-1.wav", import.meta.url),
-    new URL("../assets/audio/bounce-2.wav", import.meta.url),
-  ],
   destroy: [
     new URL("../assets/audio/destroy.wav", import.meta.url),
     new URL("../assets/audio/destroy-2.wav", import.meta.url),
@@ -22,16 +18,11 @@ const FILES = {
 
 const GAINS = {
   fire: 0.48,
-  bounce: 0.16,
   // The three destruction samples are deliberately layered. Keep each layer
   // below the single-effect gain so their sum retains headroom.
   destroy: 0.34,
   expire: 0.35,
 };
-
-// A ricochet can touch more than one wall probe in a single logic step. Treat
-// that as one audible impact instead of stacking several sharp transients.
-const BOUNCE_COOLDOWN_MS = 45;
 
 export class SoundEffects {
   constructor({
@@ -44,8 +35,6 @@ export class SoundEffects {
     this.buffers = new Map();
     this.loadPromise = null;
     this.enabled = true;
-    this.nextVariant = new Map();
-    this.lastBounceAt = -Infinity;
   }
 
   /** Start the audio context from a user gesture and begin decoding assets. */
@@ -77,13 +66,9 @@ export class SoundEffects {
     this.enabled = !!enabled;
   }
 
-  playEvent(event, now = performance.now()) {
+  playEvent(event) {
     const kind = event[0];
-    if (kind !== "fire" && kind !== "bounce" && kind !== "destroy" && kind !== "expire") return;
-    if (kind === "bounce") {
-      if (now - this.lastBounceAt < BOUNCE_COOLDOWN_MS) return;
-      this.lastBounceAt = now;
-    }
+    if (kind !== "fire" && kind !== "destroy" && kind !== "expire") return;
     this.play(kind);
   }
 
@@ -100,9 +85,7 @@ export class SoundEffects {
       }
       return;
     }
-    const index = this.nextVariant.get(kind) || 0;
-    this.nextVariant.set(kind, (index + 1) % variants.length);
-    this.playBuffer(kind, index);
+    this.playBuffer(kind, 0);
   }
 
   playBuffer(kind, index, when = 0) {
