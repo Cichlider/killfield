@@ -86,7 +86,8 @@ canvas {
 }
 
 .fullscreen-toggle,
-.pause-toggle {
+.pause-toggle,
+.sound-toggle {
   position: absolute;
   top: 8px;
   padding: 2px 8px;
@@ -98,20 +99,24 @@ canvas {
 /* The pause glyph is an inline SVG, so the box has to centre it the way a
    font would have. Fixed height keeps it the same size as the neighbouring
    fullscreen button, whose mark is still a character. */
-.pause-toggle {
+.pause-toggle,
+.sound-toggle {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   height: 28px;
 }
 
-.pause-toggle svg { display: block; }
+.pause-toggle svg,
+.sound-toggle svg { display: block; }
 
 .fullscreen-toggle { right: 8px; }
 .pause-toggle { right: 40px; }
+.sound-toggle { right: 72px; }
 
 .fullscreen-toggle:hover,
-.pause-toggle:hover { opacity: 1; }
+.pause-toggle:hover,
+.sound-toggle:hover { opacity: 1; }
 
 .stage:fullscreen,
 .stage:-webkit-full-screen {
@@ -148,7 +153,9 @@ canvas {
 .stage:fullscreen .fullscreen-toggle,
 .stage:-webkit-full-screen .fullscreen-toggle,
 .stage:fullscreen .pause-toggle,
-.stage:-webkit-full-screen .pause-toggle {
+.stage:-webkit-full-screen .pause-toggle,
+.stage:fullscreen .sound-toggle,
+.stage:-webkit-full-screen .sound-toggle {
   top: 16px;
 }
 
@@ -157,6 +164,9 @@ canvas {
 
 .stage:fullscreen .pause-toggle,
 .stage:-webkit-full-screen .pause-toggle { right: 52px; }
+
+.stage:fullscreen .sound-toggle,
+.stage:-webkit-full-screen .sound-toggle { right: 88px; }
 
 /* In fullscreen the overlay floats over the top-left corner of the canvas
    instead of sitting above it, so the canvas keeps the full screen. It needs

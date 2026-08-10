@@ -21,6 +21,7 @@ import { Renderer, THEME } from "./render.js";
 import { Keyboard } from "./input.js";
 import { Rng } from "./rng.js";
 import { STRINGS, loadLang, saveLang } from "./i18n.js";
+import { SoundEffects } from "./audio.js";
 
 const STEP_MS = 1000 / C.FPS; // 40 ms
 // After a tab switch the clock can jump by minutes. Cap the catch-up rather
@@ -51,6 +52,7 @@ const playButton = document.getElementById("mode-play");
 const selfplayButton = document.getElementById("mode-selfplay");
 const stage = document.getElementById("stage");
 const pauseButton = document.getElementById("pause");
+const soundButton = document.getElementById("sound");
 const fullscreenButton = document.getElementById("fullscreen");
 const langToggle = document.getElementById("lang-toggle");
 const tagline = document.getElementById("tagline");
@@ -67,6 +69,7 @@ const note = document.getElementById("note");
 const renderer = new Renderer(canvas);
 const keyboard = new Keyboard();
 const shakeRng = new Rng(1);
+const sounds = new SoundEffects();
 
 // The agent always drives tank 0. In watch mode the scripted AI drives tank 1;
 // in play mode you do; in self-play a second KillFieldAgent does. Only tank
@@ -168,6 +171,7 @@ function applyLanguage() {
   note.textContent = s.note;
   syncFullscreenButton();
   syncPauseButton();
+  syncSoundButton();
   updateScoreboard();
 }
 
@@ -289,6 +293,7 @@ function tick() {
   }
   roundFrames += 1;
   for (const event of game.step()) {
+    sounds.playEvent(event);
     if (event[0] === "round_end") applyRoundEnd(event[1]);
     else if (event[0] === "new_round") {
       roundFrames = 0;
@@ -351,11 +356,31 @@ const PLAY_ICON =
   '<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">' +
   '<path d="M4 2.6 13.2 8 4 13.4Z" fill="currentColor"/>' +
   "</svg>";
+const SOUND_ON_ICON =
+  '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">' +
+  '<path d="M2 6h3l3-3v10l-3-3H2Z" fill="currentColor"/>' +
+  '<path d="M10 5.2c1.6 1.4 1.6 4.2 0 5.6M12 3.5c3 2.5 3 6.5 0 9" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>' +
+  "</svg>";
+const SOUND_OFF_ICON =
+  '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">' +
+  '<path d="M2 6h3l3-3v10l-3-3H2Z" fill="currentColor"/>' +
+  '<path d="m10 6 4 4m0-4-4 4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>' +
+  "</svg>";
 
 function syncPauseButton() {
   const s = t();
   pauseButton.innerHTML = paused ? PLAY_ICON : PAUSE_ICON;
   pauseButton.setAttribute("aria-label", paused ? s.pauseExit : s.pauseEnter);
+}
+
+function syncSoundButton() {
+  soundButton.innerHTML = sounds.enabled ? SOUND_ON_ICON : SOUND_OFF_ICON;
+  soundButton.setAttribute("aria-label", sounds.enabled ? t().soundMute : t().soundUnmute);
+}
+
+function toggleSound() {
+  sounds.setEnabled(!sounds.enabled);
+  syncSoundButton();
 }
 
 function fullscreenElement() {
@@ -402,6 +427,10 @@ pauseButton.addEventListener("click", () => {
   togglePause();
   pauseButton.blur();
 });
+soundButton.addEventListener("click", () => {
+  toggleSound();
+  soundButton.blur();
+});
 seedInput.addEventListener("change", newGame);
 raysSelect.addEventListener("change", newGame);
 oppModelSelect.addEventListener("change", newGame);
@@ -410,6 +439,11 @@ playButton.addEventListener("click", () => setMode("play"));
 selfplayButton.addEventListener("click", () => setMode("selfplay"));
 langToggle.addEventListener("click", toggleLanguage);
 window.addEventListener("resize", () => renderer.resize());
+
+// Web Audio must be resumed from a user gesture. Capturing both pointer and
+// keyboard makes watch mode and keyboard-only play behave the same way.
+window.addEventListener("pointerdown", () => sounds.unlock(), { once: true, capture: true });
+window.addEventListener("keydown", () => sounds.unlock(), { once: true, capture: true });
 
 setMode("watch");
 applyLanguage();
