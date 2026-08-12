@@ -128,7 +128,7 @@ export function loadLang() {
   } catch {
     // localStorage can throw in locked-down contexts; default below.
   }
-  return "zh";
+  return "en";
 }
 
 export function saveLang(lang) {

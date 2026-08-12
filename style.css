@@ -25,40 +25,20 @@ header { margin-bottom: 20px; }
 
 .header-row {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   justify-content: space-between;
   gap: 12px;
 }
 
-.brand {
-  display: flex;
-  align-items: center;
-  gap: 11px;
-  min-width: 0;
-}
-
-.brand-icon {
-  flex: none;
-  width: 42px;
-  height: 42px;
-}
-
 h1 {
-  margin: 0;
+  margin: 0 0 4px;
   font-size: 22px;
   font-weight: 650;
   letter-spacing: -0.01em;
 }
 
-.brand-kicker {
-  margin: 1px 0 0;
-  color: var(--muted);
-  font-size: 11px;
-  letter-spacing: 0.055em;
-}
-
 .tagline {
-  margin: 9px 0 0;
+  margin: 0;
   color: var(--muted);
   font-size: 14px;
 }
