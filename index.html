@@ -1,27 +1,51 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-Hans">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>killfield — Maze Tank Duel AI</title>
-<meta name="description" content="Play a browser-based maze tank duel against killfield, a search-driven AI that specializes in ricochet shots.">
+<title>killfield：在线迷宫坦克对战 AI</title>
+<meta name="description" content="在浏览器中挑战擅长预判与反弹射击的搜索型坦克 AI。无需下载，支持观战、亲自对战与 AI 对战，看看你能守住几连胜。">
 <meta name="robots" content="index, follow">
 <link rel="canonical" href="https://cichlider.github.io/killfield/">
+<link rel="icon" type="image/png" sizes="48x48" href="assets/brand/favicon-48.png">
+<link rel="icon" type="image/png" sizes="192x192" href="assets/brand/icon-192.png">
+<link rel="apple-touch-icon" sizes="180x180" href="assets/brand/apple-touch-icon.png">
 <meta property="og:type" content="website">
-<meta property="og:title" content="killfield — Maze Tank Duel AI">
-<meta property="og:description" content="Play a browser-based maze tank duel against a search-driven AI that specializes in ricochet shots.">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:site_name" content="killfield 坦克 AI">
+<meta property="og:title" content="killfield：在线迷宫坦克对战 AI">
+<meta property="og:description" content="挑战擅长预判与反弹射击的搜索型坦克 AI。无需下载，立即在浏览器中开战。">
 <meta property="og:url" content="https://cichlider.github.io/killfield/">
+<meta property="og:image" content="https://cichlider.github.io/killfield/assets/brand/icon-512.png">
+<meta property="og:image:width" content="512">
+<meta property="og:image:height" content="512">
 <meta name="twitter:card" content="summary">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebSite",
+  "name": "killfield 坦克 AI",
+  "alternateName": "killfield",
+  "url": "https://cichlider.github.io/killfield/",
+  "inLanguage": ["zh-Hans", "en"]
+}
+</script>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 <main>
   <header>
     <div class="header-row">
-      <h1>killfield</h1>
-      <button id="lang-toggle" type="button" class="lang-toggle" aria-label="Switch to Chinese">中文</button>
+      <div class="brand">
+        <img class="brand-icon" src="assets/brand/icon-192.png" alt="" width="42" height="42">
+        <div>
+          <h1>killfield</h1>
+          <p class="brand-kicker">迷宫坦克 · 反弹射击 · 搜索型 AI</p>
+        </div>
+      </div>
+      <button id="lang-toggle" type="button" class="lang-toggle" aria-label="切换到英文">EN</button>
     </div>
-    <p class="tagline" id="tagline">A search-based agent for a maze tank duel. Most of its kills are bank shots.</p>
+    <p class="tagline" id="tagline">在浏览器中挑战一名会预判、会设伏、更擅长用墙壁完成击杀的坦克 AI。</p>
   </header>
 
   <div class="stage" id="stage">
@@ -105,13 +129,12 @@
   <footer class="colophon">
     <p>
       &copy; 2026 <a href="https://github.com/Cichlider">Cichlider</a> &middot;
-      code under <a href="https://github.com/Cichlider/killfield/blob/main/LICENSE">MIT</a> &middot;
-      <a href="https://github.com/Cichlider/killfield">source</a>
+      代码采用 <a href="https://github.com/Cichlider/killfield/blob/main/LICENSE">MIT</a> 许可 &middot;
+      <a href="https://github.com/Cichlider/killfield">查看源代码</a>
     </p>
     <p>
-      Unofficial, non-commercial reimplementation of the mechanics of
-      <i>Tank Trouble</i> by Mads Purup. Not affiliated with or endorsed by the
-      original author; contains none of its code.
+      本项目是对 Mads Purup 的 <i>Tank Trouble</i> 游戏机制所作的非官方、非商业实现，
+      与原作者无关联，亦未获得其认可；项目不包含原作代码。
     </p>
   </footer>
 </main>
