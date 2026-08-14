@@ -13,6 +13,7 @@ import { Game, Tank, normRot } from "../src/game.js";
 import { LaikaAI } from "../src/laika.js";
 import { Keyboard } from "../src/input.js";
 import { Rng } from "../src/rng.js";
+import { THEME, tankColorsForMode } from "../src/render.js";
 import {
   NO_FIRE_ACTIONS, ROLLOUT_PLANS, STATIONARY_FIRE_ACTION, actionIndex,
   ammoReserveScore, applyRolloutPlanFrame, densityRollout, predictedHitBonus,
@@ -78,6 +79,18 @@ export function runSuite() {
       g.wallHalfT === Math.floor(g.scale / 16));
     check("every reachable cell got its own distance map",
       g.reachable.every((c) => g.distMap(c.x, c.y) !== null));
+  }
+
+  // ------------------------------------------------------- presentation
+  section("Mode-aware tank colours");
+  {
+    const watch = tankColorsForMode("watch");
+    check("watch mode makes KillField red and Laika black",
+      watch[0] === THEME.tanks[1] && watch[1] === THEME.tanks[0]);
+    check("play mode keeps KillField black and the player red",
+      tankColorsForMode("play") === THEME.tanks);
+    check("self-play keeps the existing black/red order",
+      tankColorsForMode("selfplay") === THEME.tanks);
   }
 
   // ---------------------------------------------------------------- 3

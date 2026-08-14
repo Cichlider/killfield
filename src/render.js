@@ -22,6 +22,17 @@ export const THEME = {
   ],
 };
 
+const WATCH_TANK_COLORS = [THEME.tanks[1], THEME.tanks[0]];
+
+// Tank 0 is always KillField. Only watch mode puts classic-black Laika in
+// tank 1, so that presentation swaps the two colours without changing either
+// tank's engine identity. Play and self-play keep the default number palette.
+export function tankColorsForMode(mode) {
+  return mode === "watch"
+    ? WATCH_TANK_COLORS
+    : THEME.tanks;
+}
+
 export class Renderer {
   constructor(canvas) {
     this.canvas = canvas;
@@ -80,7 +91,7 @@ export class Renderer {
     }
   }
 
-  draw(game, rng) {
+  draw(game, rng, tankColors = THEME.tanks) {
     this.syncSize();
     const ctx = this.ctx;
     const g = game;
@@ -128,7 +139,7 @@ export class Renderer {
 
     for (const t of g.tanks) {
       if (!t.alive) continue;
-      const colors = THEME.tanks[t.number % THEME.tanks.length];
+      const colors = tankColors[t.number % tankColors.length];
       this.drawTank(t, ox, oy, colors);
     }
   }

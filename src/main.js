@@ -20,7 +20,7 @@ import { mirrorView } from "./killfield/mirror.js";
 import {
   TUNING_SCHEMA, applyTuning, resetTuning, setTuning, tuning, tuningSnapshot,
 } from "./killfield/tuning.js";
-import { Renderer, THEME } from "./render.js";
+import { Renderer, tankColorsForMode } from "./render.js";
 import { Keyboard } from "./input.js";
 import { Rng } from "./rng.js";
 import { STRINGS, loadLang, saveLang } from "./i18n.js";
@@ -273,13 +273,6 @@ function applyLanguage() {
   updateScoreboard();
 }
 
-// Take the swatch colours from the renderer rather than restating them in CSS,
-// so the legend cannot drift from what is actually drawn on the canvas.
-swatches.forEach((swatch, i) => {
-  swatch.style.background = THEME.tanks[i].turret;
-  swatch.style.borderColor = THEME.tanks[i].base;
-});
-
 let mode = "watch";
 let game = null;
 let agent = null;
@@ -291,6 +284,20 @@ let paused = false;
 const SELFPLAY_TIMEOUT_FRAMES = 30 * C.FPS;
 let roundFrames = 0;
 let freezeFrames = 0; // >0 while a round hasn't started moving yet
+
+function activeTankColors() {
+  return tankColorsForMode(mode);
+}
+
+// Read the same mode-aware palette as the canvas so the scoreboard never
+// claims the opposite colour from the tank it labels.
+function syncTeamColors() {
+  const colors = activeTankColors();
+  swatches.forEach((swatch, i) => {
+    swatch.style.background = colors[i].turret;
+    swatch.style.borderColor = colors[i].base;
+  });
+}
 
 function newGame() {
   const raw = seedInput.value.trim();
@@ -319,6 +326,7 @@ function newGame() {
 
 function setMode(next) {
   mode = next;
+  syncTeamColors();
   keyboard.clear();
   watchButton.classList.toggle("active", next === "watch");
   playButton.classList.toggle("active", next === "play");
@@ -430,7 +438,7 @@ function frame(now) {
       accumulator -= STEP_MS;
     }
   }
-  renderer.draw(game, shakeRng);
+  renderer.draw(game, shakeRng, activeTankColors());
   updateScoreboard();
   updateTelemetry();
   requestAnimationFrame(frame);
