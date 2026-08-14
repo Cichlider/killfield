@@ -126,39 +126,67 @@ export class Tank {
       || this.hitCheck(this.hitPointsRight);
   }
 
+  /** Gently turn the hull toward the closest direction parallel to the wall. */
+  alignToWallTangent(tangentAxis) {
+    const tangentHeading = tangentAxis === 1 ? 90.0 : 0.0;
+    const oppositeHeading = normRot(tangentHeading + 180.0);
+    const firstDelta = normRot(tangentHeading - this.rotation);
+    const secondDelta = normRot(oppositeHeading - this.rotation);
+    const delta = Math.abs(firstDelta) <= Math.abs(secondDelta) ? firstDelta : secondDelta;
+    const maxTurn = C.TANK_WALL_ALIGN_SPEED;
+    const turn = Math.max(-maxTurn, Math.min(maxTurn, delta));
+    if (Math.abs(turn) < 1e-9) return;
+
+    const oldRotation = this.rotation;
+    this.rotation = normRot(this.rotation + turn);
+    if (this.anySideHit()) this.rotation = oldRotation;
+  }
+
   /**
-   * Preserve the tangent of a blocked diagonal move against axis-aligned maze
-   * walls. Each axis is tested independently from the pre-step pose; the safe
-   * component is retained with a little contact friction. At a corner where
-   * both axes are individually clear but their combination is not, keep only
-   * the larger component so the tank cannot cut through the corner.
+   * Resolve a blocked movement substep by removing the inward normal and
+   * retaining the wall tangent with angle-dependent friction. The five
+   * movement substeps make the maximum contact-position error about 0.8 px at
+   * reference scale, while avoiding expensive sweeps inside every MPC rollout.
+   * Returns 1 for a horizontal tangent, 2 for a vertical tangent, and 0 when
+   * the contact is a stop.
    */
-  slideAlongWall(dx, dy) {
+  resolveWallContact(dx, dy) {
     const startX = this.x;
     const startY = this.y;
     const epsilon = Math.max(1e-9, this.game.scale * 1e-9);
 
     this.x = startX + dx;
-    const xClear = Math.abs(dx) > epsilon && !this.anySideHit();
+    const xBlocked = Math.abs(dx) > epsilon && this.anySideHit();
     this.x = startX;
 
     this.y = startY + dy;
-    const yClear = Math.abs(dy) > epsilon && !this.anySideHit();
+    const yBlocked = Math.abs(dy) > epsilon && this.anySideHit();
     this.y = startY;
 
-    let slideX = 0.0;
-    let slideY = 0.0;
-    if (xClear && !yClear) slideX = dx;
-    else if (yClear && !xClear) slideY = dy;
-    else if (xClear && yClear) {
-      if (Math.abs(dx) >= Math.abs(dy)) slideX = dx;
-      else slideY = dy;
+    // Both blocked is a real corner. Neither blocked means only their combined
+    // diagonal hit an oriented corner. Both cases stop: choosing an arbitrary
+    // axis is the sideways pop this resolver deliberately avoids.
+    if (xBlocked === yBlocked) return 0;
+
+    let tangentX = xBlocked ? 0.0 : dx;
+    let tangentY = yBlocked ? 0.0 : dy;
+    const normalMagnitude = Math.abs(xBlocked ? dx : dy);
+    const remainingMagnitude = Math.hypot(dx, dy);
+    if (Math.hypot(tangentX, tangentY) <= epsilon || remainingMagnitude <= epsilon) {
+      return 0;
     }
 
-    const friction = C.TANK_WALL_SLIDE_FRICTION;
-    this.x = startX + slideX * friction;
-    this.y = startY + slideY * friction;
-    return Math.abs(slideX) > epsilon || Math.abs(slideY) > epsilon;
+    const incidence = normalMagnitude / remainingMagnitude;
+    const rawRetention = 1.0 - C.TANK_WALL_SLIDE_INCIDENCE_DRAG * incidence;
+    const retention = Math.max(C.TANK_WALL_SLIDE_MIN_RETENTION,
+      Math.min(C.TANK_WALL_SLIDE_MAX_RETENTION, rawRetention));
+    tangentX *= retention;
+    tangentY *= retention;
+
+    this.x += tangentX;
+    this.y += tangentY;
+    const slid = Math.hypot(tangentX, tangentY) > epsilon;
+    return slid ? (xBlocked ? 2 : 1) : 0;
   }
 
   /**
@@ -227,6 +255,7 @@ export class Tank {
 
     this.hitSomething = false;
     this.wallSliding = false;
+    let wallTangentAxis = 0;
 
     // Optimistic pass: walk all five substeps ignoring walls.
     for (let i = 0; i < STEPS; i++) {
@@ -263,13 +292,18 @@ export class Tank {
         if (leadingPoints !== null && this.hitCheck(leadingPoints)) {
           this.x = stepOldX;
           this.y = stepOldY;
-          if (this.slideAlongWall(dx, dy)) {
+          const tangentAxis = this.resolveWallContact(dx, dy);
+          if (tangentAxis !== 0) {
             this.wallSliding = true;
+            wallTangentAxis = tangentAxis;
           } else {
             this.hitSomething = true;
           }
         }
       }
+      // Contact torque is a per-frame effect. Applying it once here avoids
+      // both substep-count-dependent turning and repeated collision probes.
+      if (wallTangentAxis !== 0) this.alignToWallTangent(wallTangentAxis);
     }
 
     // Snap the heading back onto a multiple of the turn rate, so a tank that

@@ -243,6 +243,7 @@ export function runSuite() {
     };
     const slider = new Tank(wallOnlyGame, 0, { x: 0, y: 4 }, 50, new Rng(1));
     slider.rotation = -45;
+    const approachHeading = slider.rotation;
     slider.forward = true;
     let sawSlide = false;
     let slideMadeProgress = false;
@@ -258,8 +259,14 @@ export function runSuite() {
     check("a shallow approach to a wall enters frictional sliding", sawSlide);
     check("wall contact preserves tangential progress instead of fully stopping",
       slideMadeProgress && !slider.anySideHit());
-    check("wall-slide friction is a tunable fraction", C.TANK_WALL_SLIDE_FRICTION > 0
-      && C.TANK_WALL_SLIDE_FRICTION < 1);
+    check("contact torque gradually aligns the hull with the wall tangent",
+      slider.rotation > approachHeading && Math.abs(slider.rotation) < 15);
+    check("angle-dependent wall retention has a valid tunable range",
+      C.TANK_WALL_SLIDE_MIN_RETENTION > 0
+      && C.TANK_WALL_SLIDE_MIN_RETENTION <= C.TANK_WALL_SLIDE_MAX_RETENTION
+      && C.TANK_WALL_SLIDE_MAX_RETENTION < 1
+      && C.TANK_WALL_SLIDE_INCIDENCE_DRAG > 0
+      && C.TANK_WALL_ALIGN_SPEED > 0);
 
     const blocker = new Tank(wallOnlyGame, 0, { x: 0, y: 4 }, 50, new Rng(2));
     blocker.rotation = -90;
@@ -270,6 +277,20 @@ export function runSuite() {
     check("a head-on approach still stops instead of tunnelling through the wall",
       blocker.hitSomething && !blocker.wallSliding && Math.abs(blocker.x - contactX) < 1e-9
       && !blocker.anySideHit());
+
+    const cornerGame = {
+      ...wallOnlyGame,
+      wallHit: (px, py) => px <= 0 || py <= 0,
+    };
+    const cornerTank = new Tank(cornerGame, 0, { x: 0, y: 0 }, 50, new Rng(3));
+    cornerTank.x = 45;
+    cornerTank.y = 45;
+    cornerTank.rotation = -45;
+    cornerTank.forward = true;
+    for (let frame = 0; frame < 30; frame++) cornerTank.update();
+    check("a diagonal approach stops at an inside corner without axis popping",
+      cornerTank.hitSomething && !cornerTank.wallSliding && !cornerTank.anySideHit()
+      && Math.abs(cornerTank.x - cornerTank.y) < 1e-9);
   }
 
   // ---------------------------------------------------------------- 7
