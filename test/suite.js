@@ -190,12 +190,12 @@ export function runSuite() {
       scores[actionIndex(STATIONARY_FIRE_ACTION)] === -1e9);
 
     check("predicted-hit reward prefers shorter bullet flight time",
-      predictedHitBonus(8) === 1704
-      && predictedHitBonus(25) === 1500
-      && predictedHitBonus(60) === 1080);
+      predictedHitBonus(8) === 1560
+      && predictedHitBonus(25) === 1050
+      && predictedHitBonus(60) === 0);
     check("low remaining ammo tightens the predicted-hit time penalty",
       predictedHitBonus(8, 1, 5) < predictedHitBonus(8, 5, 5)
-      && Math.abs(predictedHitBonus(60, 1, 5) - 216) < 1e-9);
+      && Math.abs(predictedHitBonus(60, 1, 5) + 2160) < 1e-9);
     check("ammo reserve value is monotone and the last slot is most valuable", (() => {
       const values = Array.from({ length: 6 }, (_, remaining) => (
         ammoReserveScore(remaining, 5)));
@@ -272,12 +272,13 @@ export function runSuite() {
     check("the tuning panel exposes unique bounded parameters",
       TUNING_SCHEMA.length === 16
       && new Set(TUNING_SCHEMA.map((spec) => spec.key)).size === TUNING_SCHEMA.length
-      && TUNING_SCHEMA.every((spec) => spec.min <= spec.default && spec.default <= spec.max));
+      && TUNING_SCHEMA.every((spec) => spec.min <= spec.default && spec.default <= spec.max)
+      && tuning.shotFlightTimeWeight === 30);
 
     const defaultReserve = ammoReserveScore(1, 5);
     const defaultSlowShot = predictedHitBonus(60, 1, 5);
     setTuning("ammoReserveWeight", 9999);
-    setTuning("shotFlightTimeWeight", 20);
+    setTuning("shotFlightTimeWeight", 40);
     setTuning("ammoFlightPressure", 1.26);
     check("live values clamp and snap to their control schema",
       tuning.ammoReserveWeight === 1200 && tuning.ammoFlightPressure === 1.3);

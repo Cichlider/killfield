@@ -17,7 +17,7 @@ export const TUNING_SCHEMA = Object.freeze([
   { key: "mobilityWeight", group: "navigation", default: 60, min: 0, max: 200, step: 5 },
 
   { key: "goodFireBonus", group: "fire", default: 1800, min: 0, max: 3500, step: 50 },
-  { key: "shotFlightTimeWeight", group: "fire", default: 12, min: 0, max: 40, step: 1 },
+  { key: "shotFlightTimeWeight", group: "fire", default: 30, min: 0, max: 40, step: 1 },
   { key: "ammoReserveWeight", group: "fire", default: 450, min: 0, max: 1200, step: 25 },
   { key: "ammoFlightPressure", group: "fire", default: 1.5, min: 0, max: 4, step: 0.1 },
   { key: "failedFirePenalty", group: "fire", default: 260, min: 0, max: 1000, step: 20 },
