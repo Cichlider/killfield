@@ -52,6 +52,12 @@ export class Tank {
     this.turnLeft = false;
     this.turnRight = false;
     this.fire = false;
+    // null means a discrete controller (AI) requested the full action. Human
+    // keyboard input writes continuous 0..1 strengths each simulation tick.
+    this.forwardAmount = null;
+    this.backupAmount = null;
+    this.turnLeftAmount = null;
+    this.turnRightAmount = null;
 
     this.ai = null;
 
@@ -268,6 +274,10 @@ export class Tank {
 
     // The AI writes this tank's input vector before any motion happens.
     if (this.ai !== null) {
+      this.forwardAmount = null;
+      this.backupAmount = null;
+      this.turnLeftAmount = null;
+      this.turnRightAmount = null;
       if (this.ai.makeDecisionsAndUpdateGoal()) {
         this.ai.decideActionsToAchieveGoal();
       }
@@ -287,12 +297,20 @@ export class Tank {
     const oldRot = this.rotation;
 
     const STEPS = C.TANK_MOVE_STEPS;
-    let moveSize = 0.0;
-    let turnSize = 0.0;
-    if (this.forward) moveSize = this.forwardSpeed / STEPS;
-    if (this.backup) moveSize -= this.backupSpeed / STEPS;
-    if (this.turnLeft) turnSize = -this.turnSpeed / STEPS;
-    if (this.turnRight) turnSize += this.turnSpeed / STEPS;
+    const inputStrength = (active, amount) => {
+      if (!active) return 0.0;
+      if (!Number.isFinite(amount)) return 1.0;
+      return Math.max(0.0, Math.min(1.0, amount));
+    };
+    const forwardStrength = inputStrength(this.forward, this.forwardAmount);
+    const backupStrength = inputStrength(this.backup, this.backupAmount);
+    const leftStrength = inputStrength(this.turnLeft, this.turnLeftAmount);
+    const rightStrength = inputStrength(this.turnRight, this.turnRightAmount);
+    const moveSize = (this.forwardSpeed * forwardStrength
+      - this.backupSpeed * backupStrength) / STEPS;
+    const turnSize = this.turnSpeed * (rightStrength - leftStrength) / STEPS;
+    const continuousTurn = (this.turnLeft && Number.isFinite(this.turnLeftAmount))
+      || (this.turnRight && Number.isFinite(this.turnRightAmount));
 
     this.hitSomething = false;
     this.wallSliding = false;
@@ -355,10 +373,11 @@ export class Tank {
       if (wallTangentAxis !== 0) this.alignToWallTangent(wallTangentAxis);
     }
 
-    // Snap the heading back onto a multiple of the turn rate, so a tank that
-    // stops turning ends up on a clean angle.
+    // Discrete controllers retain the clean ten-degree lattice used by the
+    // planner. Human input carries a fractional strength and deliberately
+    // skips this snap, otherwise a 5 ms tap would still round up to 10°.
     const offset = (360 + this.rotation) % this.turnSpeed;
-    if (!this.hitSomething && turnSize !== 0 && offset !== 0) {
+    if (!continuousTurn && !this.hitSomething && turnSize !== 0 && offset !== 0) {
       if (offset < this.turnSpeed / 2) {
         this.rotation = normRot(this.rotation - offset);
       } else {

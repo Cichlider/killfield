@@ -93,4 +93,8 @@ export function applyAction(sandbox, action) {
   me.turnLeft = turn === 0;
   me.turnRight = turn === 2;
   me.fire = fire === 1;
+  me.forwardAmount = null;
+  me.backupAmount = null;
+  me.turnLeftAmount = null;
+  me.turnRightAmount = null;
 }

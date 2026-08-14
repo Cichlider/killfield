@@ -323,49 +323,81 @@ export function runSuite() {
     class FakeTarget {
       constructor() { this.listeners = new Map(); }
       addEventListener(type, callback) { this.listeners.set(type, callback); }
-      emit(type, key = "") {
+      emit(type, key = "", timeStamp = 0) {
         this.listeners.get(type)?.({
           key, target: null, metaKey: false, ctrlKey: false, altKey: false,
-          preventDefault() {},
+          timeStamp, preventDefault() {},
         });
       }
     }
+    let clock = 0;
     const target = new FakeTarget();
-    const keyboard = new Keyboard(target);
+    const keyboard = new Keyboard(target, () => clock);
     const tank = {};
 
-    target.emit("keydown", "ArrowUp");
-    target.emit("keyup", "ArrowUp");
+    target.emit("keydown", "ArrowUp", 0);
+    target.emit("keyup", "ArrowUp", 10);
+    clock = 40;
     keyboard.applyTo(tank);
-    check("a tap completed between ticks is latched for one simulation frame",
-      tank.forward === true);
+    check("a tap completed between ticks keeps its fractional duration",
+      tank.forward === true && Math.abs(tank.forwardAmount - 0.25) < 1e-9);
+    clock = 80;
     keyboard.applyTo(tank);
     check("a consumed tap does not turn into a stuck key", tank.forward === false);
 
+    let integrationClock = 0;
     const integrationTarget = new FakeTarget();
-    const integrationKeyboard = new Keyboard(integrationTarget);
+    const integrationKeyboard = new Keyboard(integrationTarget, () => integrationClock);
     const inputGame = new Game({ seed: 77, aiFactory: null });
     const humanTank = inputGame.tanks[0];
     const inputStart = [humanTank.x, humanTank.y];
-    integrationTarget.emit("keydown", "ArrowUp");
-    integrationTarget.emit("keyup", "ArrowUp");
+    integrationTarget.emit("keydown", "ArrowUp", 0);
+    integrationTarget.emit("keyup", "ArrowUp", 10);
+    integrationClock = 40;
     integrationKeyboard.applyTo(humanTank);
     inputGame.step();
-    check("a latched tap produces real tank motion",
-      Math.hypot(humanTank.x - inputStart[0], humanTank.y - inputStart[1]) > 0);
+    check("a fractional tap produces proportional real tank motion",
+      Math.abs(Math.hypot(humanTank.x - inputStart[0], humanTank.y - inputStart[1])
+        - humanTank.forwardSpeed * 0.25) < 1e-6);
 
-    target.emit("keydown", "f");
+    let turnClock = 0;
+    const turnTarget = new FakeTarget();
+    const turnKeyboard = new Keyboard(turnTarget, () => turnClock);
+    const turnGame = new Game({ seed: 78, aiFactory: null });
+    const turningTank = turnGame.tanks[0];
+    const turnStart = turningTank.rotation;
+    turnTarget.emit("keydown", "ArrowRight", 0);
+    turnTarget.emit("keyup", "ArrowRight", 10);
+    turnClock = 40;
+    turnKeyboard.applyTo(turningTank);
+    turnGame.step();
+    check("human steering is not quantised to ten-degree increments",
+      Math.abs(normRot(turningTank.rotation - turnStart) - 2.5) < 1e-6);
+
+    const discreteGame = new Game({ seed: 79, aiFactory: null });
+    const discreteTank = discreteGame.tanks[0];
+    const discreteStart = discreteTank.rotation;
+    discreteTank.turnRight = true;
+    discreteGame.step();
+    check("discrete controller actions retain the planner's full turn step",
+      Math.abs(normRot(discreteTank.rotation - discreteStart) - C.TANK_TURN_SPEED) < 1e-6);
+
+    clock = 100;
+    target.emit("keydown", "f", clock);
+    clock = 140;
     keyboard.applyTo(tank);
-    const heldFirst = tank.turnRight;
+    const heldFirst = tank.turnRight && tank.turnRightAmount === 1;
+    clock = 180;
     keyboard.applyTo(tank);
-    const heldSecond = tank.turnRight;
-    target.emit("keyup", "f");
+    const heldSecond = tank.turnRight && tank.turnRightAmount === 1;
+    target.emit("keyup", "f", clock);
+    clock = 220;
     keyboard.applyTo(tank);
     check("a held key remains active across samples and stops on keyup",
       heldFirst && heldSecond && !tank.turnRight);
 
-    target.emit("keydown", "q");
-    target.emit("keyup", "q");
+    target.emit("keydown", "q", 220);
+    target.emit("keyup", "q", 225);
     target.emit("blur");
     keyboard.applyTo(tank);
     check("losing focus clears both held and latched input", tank.fire === false);
