@@ -6,9 +6,9 @@
  *
  *   - Commitment. A chosen move is held for a few frames, so the tank drives
  *     in a line instead of dithering between near-tied candidates.
- *   - Forced fire. If the engine's own ballistics says the current heading
- *     connects, take the shot immediately and override everything else. There
- *     is no confidence threshold — a verified hit is a hit.
+ *   - Fire continuations. Firing competes with movement in the same score: the
+ *     trigger is pressed for one simulated frame, then each of the nine safe
+ *     no-fire controls is tried as its continuation.
  *   - Own-bullet guard. Plans can predate a bullet we just fired, so any
  *     movement that would drive into our own shot is replaced.
  *   - Stuck detection. If a commanded move produced no motion at all, the
@@ -24,7 +24,7 @@ import {
   InverseDensityFieldBuilder, DEFAULT_RAYS, DEFAULT_BOUNCES, DEFAULT_FLIGHT_FRAMES,
 } from "./field.js";
 import {
-  CANDIDATES, LIVE_ACTION_INDICES, MPC_HORIZON, MPC_HOLD,
+  CANDIDATES, ROLLOUT_PLANS, STATIONARY_FIRE_ACTION, MPC_HORIZON, MPC_HOLD,
   COMMIT_MOVE_FRAMES, COMMIT_TURN_FRAMES, OWN_BULLET_GUARD_HORIZON,
   NO_EFFECT_REPEAT_PENALTY, densityRollout, postKillSurvivalScores,
   actionSelfHits, maskMovingFireScores, actionIndex, argmax,
@@ -74,6 +74,7 @@ export class KillFieldAgent {
     this.lastMotionAction = [1, 1, 0];
     this.lastAction = [1, 1, 0];
     this.lastDecisionKind = "none";
+    this.bestFireContinuation = null;
 
     this.chain = new HuntChainState();
     this.chainTotal = 0.0;
@@ -199,8 +200,8 @@ export class KillFieldAgent {
     this.chainCell = currentCell;
   }
 
-  /** The engine's own ballistics simulator is the sole firing authority. */
-  static verifiedHit(game) {
+  /** A narrow firing window should trigger replanning, not force the shot. */
+  static hasFireOpportunity(game) {
     const me = game.tanks[0];
     if (!(me.alive && game.tanks[1].alive && me.triggerReleased
         && game.weaponReady(me))) return false;
@@ -210,28 +211,43 @@ export class KillFieldAgent {
   scores(game) {
     const field = this.ensureField(game);
     const seed = this.rng.randrange(1 << 30);
-    const values = new Float64Array(CANDIDATES.length);
-    // Only the ten selectable candidates are rolled out. The eight
-    // move-and-shoot columns get masked unconditionally, so simulating them
-    // would be 44% of the work for a value that is overwritten anyway.
-    for (const index of LIVE_ACTION_INDICES) {
-      values[index] = densityRollout(game, CANDIDATES[index], field, seed, {
+    const values = new Float64Array(CANDIDATES.length).fill(-1e9);
+    this.bestFireContinuation = null;
+    const me = game.tanks[0];
+    const canFire = me.triggerReleased && game.weaponReady(me);
+
+    // Nine persistent no-fire controls plus nine stationary-fire plans with a
+    // different next-frame continuation. The latter collapse to the one real
+    // fire action after their best continuation has been found.
+    for (const plan of ROLLOUT_PLANS) {
+      if (plan.kind === "fire_then_move" && !canFire) continue;
+      let value = densityRollout(game, plan.firstAction, field, seed, {
         boxes: this.boxes,
         chainState: this.chain,
         horizon: this.horizon,
         hold: this.hold,
         oppModel: this.oppModel,
+        continuationAction: plan.continuationAction,
       });
-    }
-    maskMovingFireScores(values);
-    if (this.actionNoEffect && this.observedPreviousAction !== null) {
-      const failed = this.observedPreviousAction;
-      for (let i = 0; i < CANDIDATES.length; i++) {
-        if (CANDIDATES[i][0] === failed[0] && CANDIDATES[i][1] === failed[1]) {
-          values[i] -= NO_EFFECT_REPEAT_PENALTY;
+
+      // A fire plan's useful movement begins on its continuation frame, so a
+      // recently failed wall-grinding control penalises that continuation.
+      const effectAction = plan.continuationAction ?? plan.firstAction;
+      if (this.actionNoEffect && this.observedPreviousAction !== null
+          && effectAction[0] === this.observedPreviousAction[0]
+          && effectAction[1] === this.observedPreviousAction[1]) {
+        value -= NO_EFFECT_REPEAT_PENALTY;
+      }
+
+      const index = actionIndex(plan.firstAction);
+      if (value > values[index]) {
+        values[index] = value;
+        if (plan.firstAction === STATIONARY_FIRE_ACTION) {
+          this.bestFireContinuation = plan.continuationAction;
         }
       }
     }
+    maskMovingFireScores(values);
     return values;
   }
 
@@ -270,10 +286,8 @@ export class KillFieldAgent {
       const field = this.ensureField(game);
       this.updateLiveChain(game, field);
       if (this.actionNoEffect) this.commitRemaining = 0;
-
-      if (KillFieldAgent.verifiedHit(game)) {
+      if (this.commitRemaining > 0 && KillFieldAgent.hasFireOpportunity(game)) {
         this.commitRemaining = 0;
-        return this.emitAction(game, [1, 1, 1], "forced_fire");
       }
 
       if (this.commitRemaining > 0 && !game.tanks[0].hitSomething) {
@@ -288,7 +302,8 @@ export class KillFieldAgent {
         this.commitRemaining = action[0] !== 1 ? COMMIT_MOVE_FRAMES
           : action[1] !== 1 ? COMMIT_TURN_FRAMES : 0;
       }
-      return this.emitAction(game, action, "plan");
+      const kind = action === STATIONARY_FIRE_ACTION ? "plan:fire_then_move" : "plan";
+      return this.emitAction(game, action, kind);
     } finally {
       this.planMs.push(performance.now() - started);
       if (this.planMs.length > 600) this.planMs.shift();
@@ -313,6 +328,7 @@ export class KillFieldAgent {
     return {
       decision: this.lastDecisionKind,
       action: this.lastAction,
+      fireContinuation: this.bestFireContinuation,
       fieldBuilds: this.fieldBuilds,
       meanFieldBuildMs: this.fieldBuildMs / Math.max(this.fieldBuilds, 1),
       cachedTargetCells: this.fieldCache.size,

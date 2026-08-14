@@ -22,6 +22,34 @@ for (let throttle = 0; throttle <= 2; throttle++) {
   }
 }
 
+/** The nine persistent no-fire controls, including fully neutral. */
+export const NO_FIRE_ACTIONS = CANDIDATES.filter((action) => action[2] === 0);
+export const STATIONARY_FIRE_ACTION = CANDIDATES.find(
+  (action) => action[0] === 1 && action[1] === 1 && action[2] === 1,
+);
+
+/**
+ * Plans evaluated by the live MPC.
+ *
+ * A no-fire plan holds one control for the full horizon. A fire plan presses
+ * the trigger while stationary for exactly the first simulated frame, then
+ * follows one of the same nine no-fire controls. All fire plans therefore map
+ * to the same real first action; their continuations answer whether firing now
+ * leaves at least one good move on the following frame.
+ */
+export const ROLLOUT_PLANS = [
+  ...NO_FIRE_ACTIONS.map((action) => ({
+    firstAction: action,
+    continuationAction: null,
+    kind: "move",
+  })),
+  ...NO_FIRE_ACTIONS.map((continuationAction) => ({
+    firstAction: STATIONARY_FIRE_ACTION,
+    continuationAction,
+    kind: "fire_then_move",
+  })),
+];
+
 export const MPC_HORIZON = 36;
 export const MPC_HOLD = 8;
 export const COMMIT_MOVE_FRAMES = 4;
@@ -92,6 +120,19 @@ export const LIVE_ACTION_INDICES = CANDIDATES
     return !(a[2] && !(a[0] === 1 && a[1] === 1));
   });
 
+/** Apply the control belonging to this simulated frame of a rollout plan. */
+export function applyRolloutPlanFrame(sandbox, plan, frame, hold = MPC_HOLD) {
+  if (frame === 0) {
+    applyAction(sandbox, plan.firstAction);
+  } else if (frame === 1 && plan.continuationAction !== null) {
+    applyAction(sandbox, plan.continuationAction);
+  } else if (frame === hold && plan.continuationAction === null) {
+    // Legacy direct-fire rollouts release the edge-triggered fire button. Live
+    // fire plans already release it on frame one through their continuation.
+    sandbox.tanks[0].fire = false;
+  }
+}
+
 function ownBulletNames(game) {
   const me = game.tanks[0];
   return game.bullets
@@ -140,7 +181,7 @@ function alignmentOf(field, game, tank) {
  */
 export function densityRollout(game, action, field, rngSeed, {
   boxes, chainState = null, horizon = MPC_HORIZON, hold = MPC_HOLD,
-  oppModel = "L2", opponentAction = null,
+  oppModel = "L2", opponentAction = null, continuationAction = null,
 } = {}) {
   const sandbox = makeSandbox(game, oppModel, rngSeed);
   const me = sandbox.tanks[0];
@@ -177,10 +218,10 @@ export function densityRollout(game, action, field, rngSeed, {
   const chain = chainState === null ? new HuntChainState() : chainState.clone();
   let fired = false;
   let activeHit = false;
+  const plan = { firstAction: action, continuationAction };
 
   for (let frame = 0; frame < horizon; frame++) {
-    if (frame === 0) applyAction(sandbox, action);
-    else if (frame === hold) me.fire = false;
+    applyRolloutPlanFrame(sandbox, plan, frame, hold);
     const events = sandbox.step();
     for (const e of events) {
       if (e[0] === "fire" && e[1] === 0) fired = true;

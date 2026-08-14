@@ -13,6 +13,11 @@ import { Game, normRot } from "../src/game.js";
 import { LaikaAI } from "../src/laika.js";
 import { Rng } from "../src/rng.js";
 import {
+  NO_FIRE_ACTIONS, ROLLOUT_PLANS, STATIONARY_FIRE_ACTION, actionIndex,
+  applyRolloutPlanFrame,
+} from "../src/killfield/score.js";
+import { KillFieldAgent } from "../src/killfield/teacher.js";
+import {
   createMaze, calcReachable, calcDistances, pointHitsWalls,
 } from "../src/maze.js";
 
@@ -136,6 +141,48 @@ export function runSuite() {
     check("never more than five bullets in flight per tank",
       maxOwn <= C.SETTINGS_MAX_BULLETS, `peak ${maxOwn}`);
     check("the cap is actually reached", maxOwn === C.SETTINGS_MAX_BULLETS);
+  }
+
+  // ---------------------------------------------------------------- 5a
+  section("KillField rollout plans");
+  {
+    const movePlans = ROLLOUT_PLANS.filter((plan) => plan.kind === "move");
+    const firePlans = ROLLOUT_PLANS.filter((plan) => plan.kind === "fire_then_move");
+    check("the planner evaluates nine moves and nine fire continuations",
+      ROLLOUT_PLANS.length === 18 && movePlans.length === 9 && firePlans.length === 9);
+    check("every fire plan starts with the same stationary fire action",
+      firePlans.every((plan) => plan.firstAction === STATIONARY_FIRE_ACTION));
+    check("fire continuations cover every no-fire control exactly once",
+      new Set(firePlans.map((plan) => plan.continuationAction.join(","))).size === 9
+      && NO_FIRE_ACTIONS.every((action) => firePlans.some(
+        (plan) => plan.continuationAction === action,
+      )));
+
+    const g = new Game({ seed: 4242, aiFactory: null });
+    const me = g.tanks[0];
+    const plan = firePlans.find((candidate) => candidate.continuationAction[0] === 2
+      && candidate.continuationAction[1] === 1);
+    const startX = me.x;
+    const startY = me.y;
+    applyRolloutPlanFrame(g, plan, 0);
+    const firstEvents = g.step();
+    const afterFireX = me.x;
+    const afterFireY = me.y;
+    applyRolloutPlanFrame(g, plan, 1);
+    const secondEvents = g.step();
+    check("a fire plan fires once while stationary on its first frame",
+      firstEvents.some((event) => event[0] === "fire" && event[1] === 0)
+      && Math.hypot(afterFireX - startX, afterFireY - startY) < 1e-9);
+    check("the continuation releases fire and moves on the following frame",
+      !secondEvents.some((event) => event[0] === "fire" && event[1] === 0)
+      && !me.fire && Math.hypot(me.x - afterFireX, me.y - afterFireY) > 0);
+
+    const capped = new Game({ seed: 4242, aiFactory: null });
+    capped.tanks[0].bulletsFired = capped.settingsMaxBullets;
+    const agent = new KillFieldAgent({ seed: 1, rayCount: 32, horizon: 2, oppModel: "L1" });
+    const scores = agent.scores(capped);
+    check("fire plans are unavailable while all bullet slots are occupied",
+      scores[actionIndex(STATIONARY_FIRE_ACTION)] === -1e9);
   }
 
   // ---------------------------------------------------------------- 5b
