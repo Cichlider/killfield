@@ -58,6 +58,9 @@ export const TANK_FORWARD_SPEED_BASE = 4.0; // × (scale/50) px/frame
 export const TANK_BACKUP_SPEED_BASE = 2.5; // × (scale/50) px/frame
 export const TANK_TURN_SPEED = 10; // deg/frame
 export const TANK_MOVE_STEPS = 5; // substeps per frame
+// Fraction of the unobstructed axis retained when a diagonal move scrapes a
+// wall. 1 is frictionless sliding; 0 restores the old full-stop behaviour.
+export const TANK_WALL_SLIDE_FRICTION = 0.82;
 
 // ---- tank geometry, in local sprite units ----
 // Rotation 0 points UP (−y). The barrel fires along (rotation − 90)°.

@@ -44,6 +44,7 @@ export class Tank {
     this.alive = true;
     this.currentWeapon = C.STARTWEAPON;
     this.hitSomething = false;
+    this.wallSliding = false;
 
     // Input vector, written either by the keyboard or by a controller.
     this.forward = false;
@@ -126,6 +127,41 @@ export class Tank {
   }
 
   /**
+   * Preserve the tangent of a blocked diagonal move against axis-aligned maze
+   * walls. Each axis is tested independently from the pre-step pose; the safe
+   * component is retained with a little contact friction. At a corner where
+   * both axes are individually clear but their combination is not, keep only
+   * the larger component so the tank cannot cut through the corner.
+   */
+  slideAlongWall(dx, dy) {
+    const startX = this.x;
+    const startY = this.y;
+    const epsilon = Math.max(1e-9, this.game.scale * 1e-9);
+
+    this.x = startX + dx;
+    const xClear = Math.abs(dx) > epsilon && !this.anySideHit();
+    this.x = startX;
+
+    this.y = startY + dy;
+    const yClear = Math.abs(dy) > epsilon && !this.anySideHit();
+    this.y = startY;
+
+    let slideX = 0.0;
+    let slideY = 0.0;
+    if (xClear && !yClear) slideX = dx;
+    else if (yClear && !xClear) slideY = dy;
+    else if (xClear && yClear) {
+      if (Math.abs(dx) >= Math.abs(dy)) slideX = dx;
+      else slideY = dy;
+    }
+
+    const friction = C.TANK_WALL_SLIDE_FRICTION;
+    this.x = startX + slideX * friction;
+    this.y = startY + slideY * friction;
+    return Math.abs(slideX) > epsilon || Math.abs(slideY) > epsilon;
+  }
+
+  /**
    * Is this point inside the tank? Bullets are dimensionless, so this is the
    * whole hit model: the hull rectangle union the barrel rectangle. The turret
    * dome sits entirely inside the hull and contributes nothing.
@@ -190,6 +226,7 @@ export class Tank {
     if (this.turnRight) turnSize += this.turnSpeed / STEPS;
 
     this.hitSomething = false;
+    this.wallSliding = false;
 
     // Optimistic pass: walk all five substeps ignoring walls.
     for (let i = 0; i < STEPS; i++) {
@@ -200,8 +237,9 @@ export class Tank {
     }
 
     // Only if that landed in a wall do we redo it carefully. Forward motion
-    // tests just the front probes and reverse just the rear ones, which is
-    // what lets a tank slide along a wall it is grazing.
+    // tests just the front probes and reverse just the rear ones. A blocked
+    // diagonal substep keeps its unobstructed axis with contact friction,
+    // turning a shallow scrape into a slide instead of a full stop.
     if (this.anySideHit()) {
       this.x = oldX;
       this.y = oldY;
@@ -216,16 +254,20 @@ export class Tank {
         const stepOldX = this.x;
         const stepOldY = this.y;
         const rad = (this.rotation - 90) * DEG;
-        this.x += Math.cos(rad) * moveSize;
-        this.y += Math.sin(rad) * moveSize;
-        if (moveSize > 0 && this.hitCheck(this.hitPointsFront)) {
+        const dx = Math.cos(rad) * moveSize;
+        const dy = Math.sin(rad) * moveSize;
+        this.x += dx;
+        this.y += dy;
+        const leadingPoints = moveSize > 0 ? this.hitPointsFront
+          : moveSize < 0 ? this.hitPointsRear : null;
+        if (leadingPoints !== null && this.hitCheck(leadingPoints)) {
           this.x = stepOldX;
           this.y = stepOldY;
-          this.hitSomething = true;
-        } else if (moveSize < 0 && this.hitCheck(this.hitPointsRear)) {
-          this.x = stepOldX;
-          this.y = stepOldY;
-          this.hitSomething = true;
+          if (this.slideAlongWall(dx, dy)) {
+            this.wallSliding = true;
+          } else {
+            this.hitSomething = true;
+          }
         }
       }
     }

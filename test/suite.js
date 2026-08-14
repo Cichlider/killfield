@@ -9,7 +9,7 @@
  */
 
 import * as C from "../src/constants.js";
-import { Game, normRot } from "../src/game.js";
+import { Game, Tank, normRot } from "../src/game.js";
 import { LaikaAI } from "../src/laika.js";
 import { Rng } from "../src/rng.js";
 import {
@@ -234,6 +234,42 @@ export function runSuite() {
       }
       return true;
     })());
+
+    const wallOnlyGame = {
+      scale: 50,
+      frozen: false,
+      wallHit: (px) => px <= 0,
+      weaponReady: () => false,
+    };
+    const slider = new Tank(wallOnlyGame, 0, { x: 0, y: 4 }, 50, new Rng(1));
+    slider.rotation = -45;
+    slider.forward = true;
+    let sawSlide = false;
+    let slideMadeProgress = false;
+    for (let frame = 0; frame < 20; frame++) {
+      const beforeX = slider.x;
+      const beforeY = slider.y;
+      slider.update();
+      if (slider.wallSliding) {
+        sawSlide = true;
+        slideMadeProgress ||= Math.hypot(slider.x - beforeX, slider.y - beforeY) > 1e-6;
+      }
+    }
+    check("a shallow approach to a wall enters frictional sliding", sawSlide);
+    check("wall contact preserves tangential progress instead of fully stopping",
+      slideMadeProgress && !slider.anySideHit());
+    check("wall-slide friction is a tunable fraction", C.TANK_WALL_SLIDE_FRICTION > 0
+      && C.TANK_WALL_SLIDE_FRICTION < 1);
+
+    const blocker = new Tank(wallOnlyGame, 0, { x: 0, y: 4 }, 50, new Rng(2));
+    blocker.rotation = -90;
+    blocker.forward = true;
+    for (let frame = 0; frame < 20 && !blocker.hitSomething; frame++) blocker.update();
+    const contactX = blocker.x;
+    blocker.update();
+    check("a head-on approach still stops instead of tunnelling through the wall",
+      blocker.hitSomething && !blocker.wallSliding && Math.abs(blocker.x - contactX) < 1e-9
+      && !blocker.anySideHit());
   }
 
   // ---------------------------------------------------------------- 7
