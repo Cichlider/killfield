@@ -17,6 +17,9 @@ import {
   ammoReserveScore, applyRolloutPlanFrame, densityRollout, predictedHitBonus,
 } from "../src/killfield/score.js";
 import { HuntChainState, huntChainTimeMultiplier } from "../src/killfield/chain.js";
+import {
+  TUNING_SCHEMA, resetTuning, setTuning, tuning,
+} from "../src/killfield/tuning.js";
 import { KillFieldAgent } from "../src/killfield/teacher.js";
 import {
   createMaze, calcReachable, calcDistances, pointHitsWalls,
@@ -263,6 +266,27 @@ export function runSuite() {
   }
 
   // ---------------------------------------------------------------- 5c
+  section("Live AI tuning");
+  {
+    check("the tuning panel exposes unique bounded parameters",
+      TUNING_SCHEMA.length === 16
+      && new Set(TUNING_SCHEMA.map((spec) => spec.key)).size === TUNING_SCHEMA.length
+      && TUNING_SCHEMA.every((spec) => spec.min <= spec.default && spec.default <= spec.max));
+
+    const defaultReserve = ammoReserveScore(1, 5);
+    const defaultSlowShot = predictedHitBonus(60, 1, 5);
+    setTuning("ammoReserveWeight", 9999);
+    setTuning("shotFlightTimeWeight", 20);
+    setTuning("ammoFlightPressure", 1.26);
+    check("live values clamp and snap to their control schema",
+      tuning.ammoReserveWeight === 1200 && tuning.ammoFlightPressure === 1.3);
+    check("score helpers consume live values immediately",
+      ammoReserveScore(1, 5) < defaultReserve
+      && predictedHitBonus(60, 1, 5) < defaultSlowShot);
+    resetTuning();
+  }
+
+  // ---------------------------------------------------------------- 5d
   section("Self-harm requires a bounce");
   {
     // Drive straight down your own shot. Before the bullet touches a wall it

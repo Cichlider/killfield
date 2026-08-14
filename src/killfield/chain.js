@@ -11,10 +11,13 @@
  * pays exactly once until the ten-second rebuild timer reopens the map.
  */
 
+import * as C from "../constants.js";
+import { TUNING_DEFAULTS, tuning } from "./tuning.js";
+
 export const HUNT_CHAIN_WINDOW_FRAMES = 75; // three seconds at 25 FPS
 export const HUNT_CHAIN_MAX_EXPONENT = 6;
-export const HUNT_CHAIN_TIME_SCALE_FRAMES = 250; // ten-second aggression ramp
-export const HUNT_CHAIN_TIME_MAX_MULTIPLIER = 8.0;
+export const HUNT_CHAIN_TIME_SCALE_FRAMES = TUNING_DEFAULTS.huntTimeScaleSeconds * C.FPS;
+export const HUNT_CHAIN_TIME_MAX_MULTIPLIER = TUNING_DEFAULTS.huntTimeMaxMultiplier;
 
 /**
  * Bounded urgency multiplier for a round that is taking too long.
@@ -22,8 +25,9 @@ export const HUNT_CHAIN_TIME_MAX_MULTIPLIER = 8.0;
  */
 export function huntChainTimeMultiplier(elapsedFrames) {
   const t = Number.isFinite(elapsedFrames) ? Math.max(0.0, elapsedFrames) : 0.0;
-  return 1.0 + (HUNT_CHAIN_TIME_MAX_MULTIPLIER - 1.0)
-    * (1.0 - Math.exp(-t / HUNT_CHAIN_TIME_SCALE_FRAMES));
+  const maximum = tuning.huntTimeMaxMultiplier;
+  const scaleFrames = Math.max(1.0, tuning.huntTimeScaleSeconds * C.FPS);
+  return 1.0 + (maximum - 1.0) * (1.0 - Math.exp(-t / scaleFrames));
 }
 
 // The collected set only reopened when the enemy changed cell. Two agents

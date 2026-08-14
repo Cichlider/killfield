@@ -42,6 +42,8 @@
     <p class="tagline" id="tagline">A search-based agent for a maze tank duel. Most of its kills are bank shots.</p>
   </header>
 
+  <div class="play-layout">
+  <div class="game-column">
   <div class="stage" id="stage">
     <div class="stage-overlay" id="stage-overlay">
       <div class="scoreboard" id="scoreboard">
@@ -118,6 +120,23 @@
       A round is not decided the instant someone dies: the world keeps running for three more
       seconds, so a shot already in the air can still take the apparent winner with it.
     </p>
+  </div>
+  </div>
+
+  <aside class="tuning-panel" id="tuning-panel" aria-labelledby="tuning-title">
+    <div class="tuning-heading">
+      <p class="tuning-eyebrow" id="tuning-eyebrow">AI lab</p>
+      <h2 id="tuning-title">Live parameters</h2>
+    </div>
+    <p class="tuning-description" id="tuning-description">
+      Changes apply to the next MPC plan and are saved in this browser.
+    </p>
+    <div id="tuning-controls"></div>
+    <div class="tuning-footer">
+      <button id="tuning-reset" type="button">Reset defaults</button>
+      <span id="tuning-status">live · saved locally</span>
+    </div>
+  </aside>
   </div>
 
   <footer class="colophon">

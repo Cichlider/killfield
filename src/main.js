@@ -17,6 +17,9 @@ import { Game } from "./game.js";
 import { LaikaAI } from "./laika.js";
 import { KillFieldAgent } from "./killfield/teacher.js";
 import { mirrorView } from "./killfield/mirror.js";
+import {
+  TUNING_SCHEMA, applyTuning, resetTuning, setTuning, tuning, tuningSnapshot,
+} from "./killfield/tuning.js";
 import { Renderer, THEME } from "./render.js";
 import { Keyboard } from "./input.js";
 import { Rng } from "./rng.js";
@@ -32,6 +35,7 @@ const MAX_CATCHUP_MS = 250;
 // human waiting to catch a breath.
 const ROUND_START_DELAY_FRAMES = Math.round(0.5 * C.FPS);
 const STREAK_STORAGE_KEY = "killfield-streak";
+const TUNING_STORAGE_KEY = "killfield-ai-tuning";
 
 const canvas = document.getElementById("screen");
 const roundline = document.getElementById("roundline");
@@ -65,6 +69,12 @@ const oppModelLabel = document.getElementById("oppmodel-label");
 const oppModelLaikaOption = document.getElementById("oppmodel-laika");
 const oppModelHumanOption = document.getElementById("oppmodel-human");
 const note = document.getElementById("note");
+const tuningEyebrow = document.getElementById("tuning-eyebrow");
+const tuningTitle = document.getElementById("tuning-title");
+const tuningDescription = document.getElementById("tuning-description");
+const tuningControls = document.getElementById("tuning-controls");
+const tuningResetButton = document.getElementById("tuning-reset");
+const tuningStatus = document.getElementById("tuning-status");
 
 const renderer = new Renderer(canvas);
 const keyboard = new Keyboard();
@@ -113,6 +123,93 @@ function saveStreak() {
     localStorage.setItem(STREAK_STORAGE_KEY, JSON.stringify(streak));
   } catch {
     // Non-fatal: the streak just won't survive a reload.
+  }
+}
+
+function loadTuningPreferences() {
+  try {
+    const raw = localStorage.getItem(TUNING_STORAGE_KEY);
+    if (raw) applyTuning(JSON.parse(raw));
+  } catch {
+    // Invalid or unavailable local storage falls back to committed defaults.
+  }
+}
+
+function saveTuningPreferences() {
+  try {
+    localStorage.setItem(TUNING_STORAGE_KEY, JSON.stringify(tuningSnapshot()));
+  } catch {
+    // Live tuning still works for this session when persistence is unavailable.
+  }
+}
+
+function tuningDecimals(step) {
+  const text = String(step);
+  return text.includes(".") ? text.length - text.indexOf(".") - 1 : 0;
+}
+
+function formatTuningValue(spec, value) {
+  return Number(value).toFixed(tuningDecimals(spec.step));
+}
+
+function renderTuningPanel() {
+  const copy = t().tuning;
+  tuningEyebrow.textContent = copy.eyebrow;
+  tuningTitle.textContent = copy.title;
+  tuningDescription.textContent = copy.description;
+  tuningResetButton.textContent = copy.reset;
+  tuningStatus.textContent = copy.status;
+  tuningControls.innerHTML = "";
+
+  for (const groupName of ["navigation", "fire", "safety"]) {
+    const fieldset = document.createElement("fieldset");
+    fieldset.className = "tuning-group";
+    const legend = document.createElement("legend");
+    legend.textContent = copy.groups[groupName];
+    fieldset.appendChild(legend);
+
+    for (const spec of TUNING_SCHEMA.filter((item) => item.group === groupName)) {
+      const control = document.createElement("div");
+      control.className = "tuning-control";
+      const label = document.createElement("label");
+      label.className = "tuning-label";
+      label.htmlFor = `tuning-range-${spec.key}`;
+      label.textContent = copy.labels[spec.key];
+
+      const inputs = document.createElement("div");
+      inputs.className = "tuning-inputs";
+      const range = document.createElement("input");
+      range.id = `tuning-range-${spec.key}`;
+      range.type = "range";
+      range.min = String(spec.min);
+      range.max = String(spec.max);
+      range.step = String(spec.step);
+      range.value = String(tuning[spec.key]);
+      range.setAttribute("aria-label", copy.labels[spec.key]);
+
+      const number = document.createElement("input");
+      number.type = "number";
+      number.min = String(spec.min);
+      number.max = String(spec.max);
+      number.step = String(spec.step);
+      number.value = formatTuningValue(spec, tuning[spec.key]);
+      number.setAttribute("aria-label", copy.labels[spec.key]);
+
+      const update = (raw, persist) => {
+        const value = setTuning(spec.key, raw);
+        range.value = String(value);
+        number.value = formatTuningValue(spec, value);
+        if (persist) saveTuningPreferences();
+      };
+      range.addEventListener("input", () => update(range.value, false));
+      range.addEventListener("change", () => update(range.value, true));
+      number.addEventListener("change", () => update(number.value, true));
+
+      inputs.append(range, number);
+      control.append(label, inputs);
+      fieldset.appendChild(control);
+    }
+    tuningControls.appendChild(fieldset);
   }
 }
 
@@ -169,6 +266,7 @@ function applyLanguage() {
   oppModelHint.textContent = s.oppModelHint;
   keyhelp.innerHTML = s.keyhelpHtml;
   note.textContent = s.note;
+  renderTuningPanel();
   syncFullscreenButton();
   syncPauseButton();
   syncSoundButton();
@@ -434,6 +532,16 @@ soundButton.addEventListener("click", () => {
 seedInput.addEventListener("change", newGame);
 raysSelect.addEventListener("change", newGame);
 oppModelSelect.addEventListener("change", newGame);
+tuningResetButton.addEventListener("click", () => {
+  resetTuning();
+  try {
+    localStorage.removeItem(TUNING_STORAGE_KEY);
+  } catch {
+    // Defaults still apply immediately when storage is unavailable.
+  }
+  renderTuningPanel();
+  tuningResetButton.blur();
+});
 watchButton.addEventListener("click", () => setMode("watch"));
 playButton.addEventListener("click", () => setMode("play"));
 selfplayButton.addEventListener("click", () => setMode("selfplay"));
@@ -445,6 +553,7 @@ window.addEventListener("resize", () => renderer.resize());
 window.addEventListener("pointerdown", () => sounds.unlock(), { once: true, capture: true });
 window.addEventListener("keydown", () => sounds.unlock(), { once: true, capture: true });
 
+loadTuningPreferences();
 setMode("watch");
 applyLanguage();
 requestAnimationFrame(frame);

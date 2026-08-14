@@ -27,6 +27,11 @@ export class Keyboard {
 
     this._down = (e) => {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const target = e.target;
+      if (typeof HTMLElement !== "undefined" && target instanceof HTMLElement
+          && (target.matches("input, select, textarea, button") || target.isContentEditable)) {
+        return;
+      }
       const k = e.key.toLowerCase();
       if (SWALLOW.has(k)) e.preventDefault();
       if (k === "r") {

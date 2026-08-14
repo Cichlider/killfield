@@ -13,6 +13,7 @@ import { LaikaAI } from "../laika.js";
 import { makeSandbox, applyAction } from "./sandbox.js";
 import { HuntChainState } from "./chain.js";
 import { incomingRisk } from "./risk.js";
+import { TUNING_DEFAULTS, tuning } from "./tuning.js";
 
 /** throttle (0 back, 1 neutral, 2 forward) x turn (0 left, 1 none, 2 right) x fire. */
 export const CANDIDATES = [];
@@ -59,18 +60,10 @@ export const OWN_BULLET_GUARD_HORIZON = 24;
 const ACTIVE_KILL_SCORE = 12000.0;
 const OPPONENT_SELF_SCORE = 1500.0;
 const DEATH_SCORE = -12000.0;
-const FIELD_ASCENT_WEIGHT = 34.0;
-const FIELD_PEAK_WEIGHT = 6.0;
-const HUNT_CHAIN_GAIN_WEIGHT = 12.0;
-const GUIDANCE_PROGRESS_WEIGHT = 120.0;
-const ALIGNMENT_WEIGHT = 190.0;
-export const GOOD_FIRE_BONUS = 1800.0;
-export const SHOT_FLIGHT_TIME_WEIGHT = 12.0;
-export const AMMO_FLIGHT_PRESSURE = 1.5;
-export const AMMO_RESERVE_WEIGHT = 450.0;
-const FAILED_FIRE_PENALTY = 260.0;
-const SUICIDE_FIRE_PENALTY = 2500.0;
-const RISK_WEIGHT = 320.0;
+export const GOOD_FIRE_BONUS = TUNING_DEFAULTS.goodFireBonus;
+export const SHOT_FLIGHT_TIME_WEIGHT = TUNING_DEFAULTS.shotFlightTimeWeight;
+export const AMMO_FLIGHT_PRESSURE = TUNING_DEFAULTS.ammoFlightPressure;
+export const AMMO_RESERVE_WEIGHT = TUNING_DEFAULTS.ammoReserveWeight;
 export const NO_EFFECT_REPEAT_PENALTY = 600.0;
 
 // Every field term is quantised to whole cells, so a tank grinding against a
@@ -85,7 +78,6 @@ export const NO_EFFECT_REPEAT_PENALTY = 600.0;
 // about 26 points — decisive against a tie, negligible against a real field
 // gradient (hundreds). Normalised by cell size because the engine re-derives
 // the grid pitch every round.
-const MOBILITY_WEIGHT = 60.0;
 const MOVING_FIRE_SCORE = -1.0e9;
 const SCORE_SCALE = 12000.0;
 const POST_KILL_FIRE_PENALTY = 3000.0;
@@ -102,7 +94,7 @@ export function remainingBulletSlots(game, tank) {
 export function ammoReserveScore(remaining, capacity = C.SETTINGS_MAX_BULLETS) {
   const cap = Math.max(1, capacity);
   const slots = Math.max(0, Math.min(cap, Number.isFinite(remaining) ? remaining : cap));
-  return -AMMO_RESERVE_WEIGHT * Math.log((cap + 1.0) / (slots + 1.0));
+  return -tuning.ammoReserveWeight * Math.log((cap + 1.0) / (slots + 1.0));
 }
 
 /** Predicted-hit shaping used only when no real kill occurred in the rollout. */
@@ -112,8 +104,9 @@ export function predictedHitBonus(flightFrames, remaining = C.SETTINGS_MAX_BULLE
   const cap = Math.max(1, capacity);
   const slots = Math.max(0, Math.min(cap, Number.isFinite(remaining) ? remaining : cap));
   const scarcity = 1.0 - slots / cap;
-  const timeWeight = SHOT_FLIGHT_TIME_WEIGHT * (1.0 + AMMO_FLIGHT_PRESSURE * scarcity);
-  return GOOD_FIRE_BONUS - timeWeight * time;
+  const timeWeight = tuning.shotFlightTimeWeight
+    * (1.0 + tuning.ammoFlightPressure * scarcity);
+  return tuning.goodFireBonus - timeWeight * time;
 }
 
 export function actionIndex(action) {
@@ -263,7 +256,7 @@ export function densityRollout(game, action, field, rngSeed, {
         remainingBulletSlots(sandbox, me), sandbox.settingsMaxBullets);
       // Killing them yourself is worth eight times more per frame saved than
       // watching them die, which is why it hunts instead of waiting.
-      if (activeHit) return ACTIVE_KILL_SCORE - 8.0 * frame + reserve;
+      if (activeHit) return ACTIVE_KILL_SCORE - tuning.activeKillTimeWeight * frame + reserve;
       return OPPONENT_SELF_SCORE - 2.0 * frame + reserve;
     }
 
@@ -283,22 +276,22 @@ export function densityRollout(game, action, field, rngSeed, {
   }
 
   const [endAlignment, endConcentration] = alignmentOf(field, sandbox, me);
-  let score = FIELD_ASCENT_WEIGHT * fieldAscent;
-  score += FIELD_PEAK_WEIGHT * Math.max(0.0, peakValue - startValue);
-  score += GUIDANCE_PROGRESS_WEIGHT * guidanceAscent;
-  score += HUNT_CHAIN_GAIN_WEIGHT * chainGain;
+  let score = tuning.fieldAscentWeight * fieldAscent;
+  score += tuning.fieldPeakWeight * Math.max(0.0, peakValue - startValue);
+  score += tuning.guidanceProgressWeight * guidanceAscent;
+  score += tuning.huntChainGainWeight * chainGain;
 
   // Turning toward the best firing angle only counts for much when the cell
   // we are standing in is actually a good place to shoot from.
   const alignmentGain = endAlignment - startAlignment;
   const opportunityWeight = startRelative * Math.max(startValue, 1.0);
   const concentration = Math.max(startConcentration, endConcentration, 0.10);
-  score += ALIGNMENT_WEIGHT * opportunityWeight * concentration * alignmentGain;
+  score += tuning.alignmentWeight * opportunityWeight * concentration * alignmentGain;
 
   // Net displacement, not distance travelled: grinding back and forth against
   // a wall must not pay the same as actually getting somewhere.
   const travelled = Math.hypot(me.x - startX, me.y - startY);
-  score += MOBILITY_WEIGHT * (travelled / Math.max(sandbox.scale, 1e-6));
+  score += tuning.mobilityWeight * (travelled / Math.max(sandbox.scale, 1e-6));
 
   if (fired) {
     // Actual kills returned their terminal score inside the rollout loop. This
@@ -308,14 +301,14 @@ export function densityRollout(game, action, field, rngSeed, {
       score += predictedHitBonus(
         shot.time, startRemainingSlots, sandbox.settingsMaxBullets);
     } else if (shot !== null && shot.result === "SUICIDE") {
-      score -= SUICIDE_FIRE_PENALTY;
+      score -= tuning.suicideFirePenalty;
     }
     // Wasting a shot costs more from a high-density cell, where the ammo was
     // worth more.
-    else score -= FAILED_FIRE_PENALTY * (1.0 + startRelative);
+    else score -= tuning.failedFirePenalty * (1.0 + startRelative);
   }
 
-  score -= RISK_WEIGHT * incomingRisk(sandbox, boxes);
+  score -= tuning.riskWeight * incomingRisk(sandbox, boxes);
   score += ammoReserveScore(
     remainingBulletSlots(sandbox, me), sandbox.settingsMaxBullets);
   return score;
