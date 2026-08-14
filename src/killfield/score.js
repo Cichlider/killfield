@@ -66,6 +66,8 @@ const GUIDANCE_PROGRESS_WEIGHT = 120.0;
 const ALIGNMENT_WEIGHT = 190.0;
 export const GOOD_FIRE_BONUS = 1800.0;
 export const SHOT_FLIGHT_TIME_WEIGHT = 12.0;
+export const AMMO_FLIGHT_PRESSURE = 1.0;
+export const AMMO_RESERVE_WEIGHT = 300.0;
 const FAILED_FIRE_PENALTY = 260.0;
 const SUICIDE_FIRE_PENALTY = 2500.0;
 const RISK_WEIGHT = 320.0;
@@ -88,10 +90,30 @@ const MOVING_FIRE_SCORE = -1.0e9;
 const SCORE_SCALE = 12000.0;
 const POST_KILL_FIRE_PENALTY = 3000.0;
 
+export function remainingBulletSlots(game, tank) {
+  return Math.max(0, Math.min(
+    game.settingsMaxBullets, game.settingsMaxBullets - tank.bulletsFired));
+}
+
+/**
+ * Zero with a full magazine and increasingly negative as slots disappear.
+ * The logarithm makes losing the last slot cost more than losing the fifth.
+ */
+export function ammoReserveScore(remaining, capacity = C.SETTINGS_MAX_BULLETS) {
+  const cap = Math.max(1, capacity);
+  const slots = Math.max(0, Math.min(cap, Number.isFinite(remaining) ? remaining : cap));
+  return -AMMO_RESERVE_WEIGHT * Math.log((cap + 1.0) / (slots + 1.0));
+}
+
 /** Predicted-hit shaping used only when no real kill occurred in the rollout. */
-export function predictedHitBonus(flightFrames) {
+export function predictedHitBonus(flightFrames, remaining = C.SETTINGS_MAX_BULLETS,
+  capacity = C.SETTINGS_MAX_BULLETS) {
   const time = Number.isFinite(flightFrames) ? Math.max(0.0, flightFrames) : 0.0;
-  return GOOD_FIRE_BONUS - SHOT_FLIGHT_TIME_WEIGHT * time;
+  const cap = Math.max(1, capacity);
+  const slots = Math.max(0, Math.min(cap, Number.isFinite(remaining) ? remaining : cap));
+  const scarcity = 1.0 - slots / cap;
+  const timeWeight = SHOT_FLIGHT_TIME_WEIGHT * (1.0 + AMMO_FLIGHT_PRESSURE * scarcity);
+  return GOOD_FIRE_BONUS - timeWeight * time;
 }
 
 export function actionIndex(action) {
@@ -207,6 +229,7 @@ export function densityRollout(game, action, field, rngSeed, {
   const startCell = cellOf(sandbox, me);
   const startValue = field.valueAt(startCell);
   const startRelative = field.relativeSuccessAt(startCell);
+  const startRemainingSlots = remainingBulletSlots(sandbox, me);
   const [startAlignment, startConcentration] = alignmentOf(field, sandbox, me);
 
   // Ask the engine's own ballistics whether this shot lands, before firing it.
@@ -236,10 +259,12 @@ export function densityRollout(game, action, field, rngSeed, {
     }
     if (!me.alive) return DEATH_SCORE + frame;
     if (!enemy.alive) {
+      const reserve = ammoReserveScore(
+        remainingBulletSlots(sandbox, me), sandbox.settingsMaxBullets);
       // Killing them yourself is worth eight times more per frame saved than
       // watching them die, which is why it hunts instead of waiting.
-      if (activeHit) return ACTIVE_KILL_SCORE - 8.0 * frame;
-      return OPPONENT_SELF_SCORE - 2.0 * frame;
+      if (activeHit) return ACTIVE_KILL_SCORE - 8.0 * frame + reserve;
+      return OPPONENT_SELF_SCORE - 2.0 * frame + reserve;
     }
 
     chain.advance();
@@ -279,14 +304,20 @@ export function densityRollout(game, action, field, rngSeed, {
     // Actual kills returned their terminal score inside the rollout loop. This
     // estimate is therefore only reached when no real kill occurred within
     // 36 frames, and cannot double-charge terminal kill latency.
-    if (shot !== null && shot.result === "HIT") score += predictedHitBonus(shot.time);
-    else if (shot !== null && shot.result === "SUICIDE") score -= SUICIDE_FIRE_PENALTY;
+    if (shot !== null && shot.result === "HIT") {
+      score += predictedHitBonus(
+        shot.time, startRemainingSlots, sandbox.settingsMaxBullets);
+    } else if (shot !== null && shot.result === "SUICIDE") {
+      score -= SUICIDE_FIRE_PENALTY;
+    }
     // Wasting a shot costs more from a high-density cell, where the ammo was
     // worth more.
     else score -= FAILED_FIRE_PENALTY * (1.0 + startRelative);
   }
 
   score -= RISK_WEIGHT * incomingRisk(sandbox, boxes);
+  score += ammoReserveScore(
+    remainingBulletSlots(sandbox, me), sandbox.settingsMaxBullets);
   return score;
 }
 

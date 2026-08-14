@@ -14,8 +14,9 @@ import { LaikaAI } from "../src/laika.js";
 import { Rng } from "../src/rng.js";
 import {
   NO_FIRE_ACTIONS, ROLLOUT_PLANS, STATIONARY_FIRE_ACTION, actionIndex,
-  applyRolloutPlanFrame, densityRollout, predictedHitBonus,
+  ammoReserveScore, applyRolloutPlanFrame, densityRollout, predictedHitBonus,
 } from "../src/killfield/score.js";
+import { HuntChainState, huntChainTimeMultiplier } from "../src/killfield/chain.js";
 import { KillFieldAgent } from "../src/killfield/teacher.js";
 import {
   createMaze, calcReachable, calcDistances, pointHitsWalls,
@@ -188,6 +189,16 @@ export function runSuite() {
       predictedHitBonus(8) === 1704
       && predictedHitBonus(25) === 1500
       && predictedHitBonus(60) === 1080);
+    check("low remaining ammo tightens the predicted-hit time penalty",
+      predictedHitBonus(8, 1, 5) < predictedHitBonus(8, 5, 5)
+      && predictedHitBonus(60, 1, 5) === 504);
+    check("ammo reserve value is monotone and the last slot is most valuable", (() => {
+      const values = Array.from({ length: 6 }, (_, remaining) => (
+        ammoReserveScore(remaining, 5)));
+      return values.every((value, i) => i === 0 || value > values[i - 1])
+        && values[5] === 0
+        && values[1] - values[0] > values[5] - values[4];
+    })());
 
     // A real hit inside the rollout returns the terminal score immediately;
     // the predicted-hit bonus below the loop must never be added as well.
@@ -204,6 +215,7 @@ export function runSuite() {
     terminalMe.x = 100;
     terminalMe.y = 100;
     terminalMe.rotation = 90;
+    terminalMe.bulletsFired = 2;
     terminalEnemy.x = 150;
     terminalEnemy.y = 100;
     terminalEnemy.rotation = 0;
@@ -219,10 +231,38 @@ export function runSuite() {
       { boxes: [], horizon: 36, oppModel: "L1", continuationAction: neutral },
     );
     check("an actual in-horizon kill uses terminal timing without predicted bonus",
-      terminalScore === 12000 - 8 * 7);
+      Math.abs(terminalScore - (12000 - 8 * 7 + ammoReserveScore(3, 5))) < 1e-9);
   }
 
   // ---------------------------------------------------------------- 5b
+  section("Time-dependent hunt chain");
+  {
+    check("hunt urgency starts at one, rises smoothly, and stays bounded",
+      huntChainTimeMultiplier(0) === 1
+      && huntChainTimeMultiplier(125) > huntChainTimeMultiplier(0)
+      && huntChainTimeMultiplier(250) > huntChainTimeMultiplier(125)
+      && huntChainTimeMultiplier(250) < 8
+      && huntChainTimeMultiplier(100000) <= 8);
+
+    const field = {
+      targetCell: [4, 4],
+      guidanceAt: ([x]) => x,
+    };
+    const immediate = new HuntChainState();
+    const immediateReward = immediate.collectAscent(field, [0, 0], [1, 0]);
+    const delayed = new HuntChainState();
+    delayed.advance(250);
+    const delayedReward = delayed.collectAscent(field, [0, 0], [1, 0]);
+    check("the same first ascent pays more later in a long round",
+      immediateReward === 1 && delayedReward > 5 * immediateReward);
+
+    const clone = delayed.clone();
+    clone.advance(10);
+    check("rollout clones preserve hunt age without mutating live state",
+      delayed.elapsedFrames === 250 && clone.elapsedFrames === 260);
+  }
+
+  // ---------------------------------------------------------------- 5c
   section("Self-harm requires a bounce");
   {
     // Drive straight down your own shot. Before the bullet touches a wall it

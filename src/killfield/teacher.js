@@ -19,7 +19,7 @@
 
 import * as C from "../constants.js";
 import { LaikaAI } from "../laika.js";
-import { HuntChainState } from "./chain.js";
+import { HuntChainState, huntChainTimeMultiplier } from "./chain.js";
 import {
   InverseDensityFieldBuilder, DEFAULT_RAYS, DEFAULT_BOUNCES, DEFAULT_FLIGHT_FRAMES,
 } from "./field.js";
@@ -334,6 +334,8 @@ export class KillFieldAgent {
       cachedTargetCells: this.fieldCache.size,
       huntChain: this.chain.count,
       huntChainTotal: this.chainTotal,
+      huntAgeFrames: this.chain.elapsedFrames,
+      huntTimeMultiplier: huntChainTimeMultiplier(this.chain.elapsedFrames),
       ownBulletGuardEvents: this.ownBulletGuardEvents,
       noEffectEvents: this.noEffectEvents,
       planMedianMs: at(0.5),

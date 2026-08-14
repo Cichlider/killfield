@@ -8,11 +8,23 @@
  *
  * It is deliberately hard to farm. Five gates all have to hold, and the
  * (target cell, cell) key means pacing back and forth over the same boundary
- * pays exactly once. The whole map reopens only when the enemy moves.
+ * pays exactly once until the ten-second rebuild timer reopens the map.
  */
 
 export const HUNT_CHAIN_WINDOW_FRAMES = 75; // three seconds at 25 FPS
 export const HUNT_CHAIN_MAX_EXPONENT = 6;
+export const HUNT_CHAIN_TIME_SCALE_FRAMES = 250; // ten-second aggression ramp
+export const HUNT_CHAIN_TIME_MAX_MULTIPLIER = 8.0;
+
+/**
+ * Bounded urgency multiplier for a round that is taking too long.
+ * m(0)=1, m(10s)≈5.42, m(20s)≈7.05, and m(t)<8 for every finite t.
+ */
+export function huntChainTimeMultiplier(elapsedFrames) {
+  const t = Number.isFinite(elapsedFrames) ? Math.max(0.0, elapsedFrames) : 0.0;
+  return 1.0 + (HUNT_CHAIN_TIME_MAX_MULTIPLIER - 1.0)
+    * (1.0 - Math.exp(-t / HUNT_CHAIN_TIME_SCALE_FRAMES));
+}
 
 // The collected set only reopened when the enemy changed cell. Two agents
 // circling each other at a stable distance eventually claim every (target,
@@ -23,23 +35,26 @@ export const HUNT_CHAIN_MAX_EXPONENT = 6;
 export const HUNT_CHAIN_REBUILD_FRAMES = 250; // ten seconds at 25 FPS
 
 export class HuntChainState {
-  constructor(count = 0, timer = 0, collected = null, sinceRebuild = 0) {
+  constructor(count = 0, timer = 0, collected = null, sinceRebuild = 0,
+    elapsedFrames = 0) {
     this.count = count;
     this.timer = timer;
     this.collected = collected ? new Set(collected) : new Set();
     this.sinceRebuild = sinceRebuild;
+    this.elapsedFrames = elapsedFrames;
   }
 
   /** Rollouts score against a copy so they never disturb the live chain. */
   clone() {
     return new HuntChainState(
-      this.count, this.timer, this.collected, this.sinceRebuild);
+      this.count, this.timer, this.collected, this.sinceRebuild, this.elapsedFrames);
   }
 
   advance(frames = 1) {
     this.timer = Math.max(0, this.timer - frames);
     if (this.timer === 0) this.count = 0;
     this.sinceRebuild += frames;
+    this.elapsedFrames += frames;
     if (this.sinceRebuild >= HUNT_CHAIN_REBUILD_FRAMES) {
       this.sinceRebuild = 0;
       this.collected.clear();
@@ -52,7 +67,8 @@ export class HuntChainState {
    * @param {number[]} currentCell
    * @param {boolean} targetStable  false when the enemy changed cell, which
    *                                invalidates the comparison
-   * @returns {number} 1, 2, 4 … 64, or 0 when any gate fails
+   * @returns {number} base chain payout multiplied by the elapsed-time urgency,
+   *                   or 0 when any gate fails
    */
   collectAscent(field, previousCell, currentCell, targetStable = true) {
     if (!targetStable) return 0.0;
@@ -66,7 +82,8 @@ export class HuntChainState {
     const key = `${field.targetCell[0]},${field.targetCell[1]}|${currentCell[0]},${currentCell[1]}`;
     if (this.collected.has(key)) return 0.0;
 
-    const reward = 2 ** Math.min(this.count, HUNT_CHAIN_MAX_EXPONENT);
+    const baseReward = 2 ** Math.min(this.count, HUNT_CHAIN_MAX_EXPONENT);
+    const reward = baseReward * huntChainTimeMultiplier(this.elapsedFrames);
     this.count = Math.min(this.count + 1, HUNT_CHAIN_MAX_EXPONENT);
     this.timer = HUNT_CHAIN_WINDOW_FRAMES;
     this.collected.add(key);
