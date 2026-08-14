@@ -17,8 +17,8 @@ export const THEME = {
   bullet: "#101214",
   outline: "#08090B",
   tanks: [
-    { base: "#17191C", turret: "#35383D", bullet: "#101214" }, // tank 0: KillField
-    { base: "#9E101B", turret: "#D82432", bullet: "#B7101E" }, // tank 1: player / Laika
+    { base: "#17191C", turret: "#35383D" }, // tank 0: KillField
+    { base: "#9E101B", turret: "#D82432" }, // tank 1: player / Laika
   ],
 };
 
@@ -119,9 +119,8 @@ export class Renderer {
 
     // Bullets
     const br = Math.max(2.0, 2.5 * (g.scale / 50.0));
+    ctx.fillStyle = THEME.bullet;
     for (const b of g.bullets) {
-      const ownerColors = THEME.tanks[b.owner.number % THEME.tanks.length];
-      ctx.fillStyle = ownerColors?.bullet ?? THEME.bullet;
       ctx.beginPath();
       ctx.arc(ox + b.x, oy + b.y, br, 0, Math.PI * 2);
       ctx.fill();
