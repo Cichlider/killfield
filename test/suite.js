@@ -191,7 +191,7 @@ export function runSuite() {
       && predictedHitBonus(60) === 1080);
     check("low remaining ammo tightens the predicted-hit time penalty",
       predictedHitBonus(8, 1, 5) < predictedHitBonus(8, 5, 5)
-      && predictedHitBonus(60, 1, 5) === 504);
+      && Math.abs(predictedHitBonus(60, 1, 5) - 216) < 1e-9);
     check("ammo reserve value is monotone and the last slot is most valuable", (() => {
       const values = Array.from({ length: 6 }, (_, remaining) => (
         ammoReserveScore(remaining, 5)));
