@@ -64,7 +64,8 @@ const FIELD_PEAK_WEIGHT = 6.0;
 const HUNT_CHAIN_GAIN_WEIGHT = 12.0;
 const GUIDANCE_PROGRESS_WEIGHT = 120.0;
 const ALIGNMENT_WEIGHT = 190.0;
-const GOOD_FIRE_BONUS = 1800.0;
+export const GOOD_FIRE_BONUS = 1800.0;
+export const SHOT_FLIGHT_TIME_WEIGHT = 12.0;
 const FAILED_FIRE_PENALTY = 260.0;
 const SUICIDE_FIRE_PENALTY = 2500.0;
 const RISK_WEIGHT = 320.0;
@@ -86,6 +87,12 @@ const MOBILITY_WEIGHT = 60.0;
 const MOVING_FIRE_SCORE = -1.0e9;
 const SCORE_SCALE = 12000.0;
 const POST_KILL_FIRE_PENALTY = 3000.0;
+
+/** Predicted-hit shaping used only when no real kill occurred in the rollout. */
+export function predictedHitBonus(flightFrames) {
+  const time = Number.isFinite(flightFrames) ? Math.max(0.0, flightFrames) : 0.0;
+  return GOOD_FIRE_BONUS - SHOT_FLIGHT_TIME_WEIGHT * time;
+}
 
 export function actionIndex(action) {
   return action[0] * 6 + action[1] * 2 + action[2];
@@ -269,7 +276,10 @@ export function densityRollout(game, action, field, rngSeed, {
   score += MOBILITY_WEIGHT * (travelled / Math.max(sandbox.scale, 1e-6));
 
   if (fired) {
-    if (shot !== null && shot.result === "HIT") score += GOOD_FIRE_BONUS;
+    // Actual kills returned their terminal score inside the rollout loop. This
+    // estimate is therefore only reached when no real kill occurred within
+    // 36 frames, and cannot double-charge terminal kill latency.
+    if (shot !== null && shot.result === "HIT") score += predictedHitBonus(shot.time);
     else if (shot !== null && shot.result === "SUICIDE") score -= SUICIDE_FIRE_PENALTY;
     // Wasting a shot costs more from a high-density cell, where the ammo was
     // worth more.

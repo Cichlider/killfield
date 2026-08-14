@@ -14,7 +14,7 @@ import { LaikaAI } from "../src/laika.js";
 import { Rng } from "../src/rng.js";
 import {
   NO_FIRE_ACTIONS, ROLLOUT_PLANS, STATIONARY_FIRE_ACTION, actionIndex,
-  applyRolloutPlanFrame,
+  applyRolloutPlanFrame, densityRollout, predictedHitBonus,
 } from "../src/killfield/score.js";
 import { KillFieldAgent } from "../src/killfield/teacher.js";
 import {
@@ -183,6 +183,43 @@ export function runSuite() {
     const scores = agent.scores(capped);
     check("fire plans are unavailable while all bullet slots are occupied",
       scores[actionIndex(STATIONARY_FIRE_ACTION)] === -1e9);
+
+    check("predicted-hit reward prefers shorter bullet flight time",
+      predictedHitBonus(8) === 1704
+      && predictedHitBonus(25) === 1500
+      && predictedHitBonus(60) === 1080);
+
+    // A real hit inside the rollout returns the terminal score immediately;
+    // the predicted-hit bonus below the loop must never be added as well.
+    const terminalGame = new Game({ seed: 1, aiFactory: null });
+    terminalGame.wallGrid = { hit: () => false };
+    terminalGame.walls = [];
+    terminalGame.scale = 50;
+    const terminalMe = terminalGame.tanks[0];
+    const terminalEnemy = terminalGame.tanks[1];
+    for (const tank of terminalGame.tanks) {
+      tank.displayScale = C.TANK_DISPLAY_SCALE_FACTOR * terminalGame.scale;
+      tank.forward = tank.backup = tank.turnLeft = tank.turnRight = tank.fire = false;
+    }
+    terminalMe.x = 100;
+    terminalMe.y = 100;
+    terminalMe.rotation = 90;
+    terminalEnemy.x = 150;
+    terminalEnemy.y = 100;
+    terminalEnemy.rotation = 0;
+    const flatField = {
+      valueAt: () => 0,
+      relativeSuccessAt: () => 0,
+      bestAimAt: () => [null, 0],
+      guidanceAt: () => 0,
+    };
+    const neutral = NO_FIRE_ACTIONS.find((action) => action[0] === 1 && action[1] === 1);
+    const terminalScore = densityRollout(
+      terminalGame, STATIONARY_FIRE_ACTION, flatField, 0,
+      { boxes: [], horizon: 36, oppModel: "L1", continuationAction: neutral },
+    );
+    check("an actual in-horizon kill uses terminal timing without predicted bonus",
+      terminalScore === 12000 - 8 * 7);
   }
 
   // ---------------------------------------------------------------- 5b
