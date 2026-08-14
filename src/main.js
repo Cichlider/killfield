@@ -319,6 +319,7 @@ function newGame() {
 
 function setMode(next) {
   mode = next;
+  keyboard.clear();
   watchButton.classList.toggle("active", next === "watch");
   playButton.classList.toggle("active", next === "play");
   selfplayButton.classList.toggle("active", next === "selfplay");

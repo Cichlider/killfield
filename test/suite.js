@@ -11,6 +11,7 @@
 import * as C from "../src/constants.js";
 import { Game, Tank, normRot } from "../src/game.js";
 import { LaikaAI } from "../src/laika.js";
+import { Keyboard } from "../src/input.js";
 import { Rng } from "../src/rng.js";
 import {
   NO_FIRE_ACTIONS, ROLLOUT_PLANS, STATIONARY_FIRE_ACTION, actionIndex,
@@ -317,6 +318,60 @@ export function runSuite() {
   }
 
   // ---------------------------------------------------------------- 6
+  section("Keyboard sampling");
+  {
+    class FakeTarget {
+      constructor() { this.listeners = new Map(); }
+      addEventListener(type, callback) { this.listeners.set(type, callback); }
+      emit(type, key = "") {
+        this.listeners.get(type)?.({
+          key, target: null, metaKey: false, ctrlKey: false, altKey: false,
+          preventDefault() {},
+        });
+      }
+    }
+    const target = new FakeTarget();
+    const keyboard = new Keyboard(target);
+    const tank = {};
+
+    target.emit("keydown", "ArrowUp");
+    target.emit("keyup", "ArrowUp");
+    keyboard.applyTo(tank);
+    check("a tap completed between ticks is latched for one simulation frame",
+      tank.forward === true);
+    keyboard.applyTo(tank);
+    check("a consumed tap does not turn into a stuck key", tank.forward === false);
+
+    const integrationTarget = new FakeTarget();
+    const integrationKeyboard = new Keyboard(integrationTarget);
+    const inputGame = new Game({ seed: 77, aiFactory: null });
+    const humanTank = inputGame.tanks[0];
+    const inputStart = [humanTank.x, humanTank.y];
+    integrationTarget.emit("keydown", "ArrowUp");
+    integrationTarget.emit("keyup", "ArrowUp");
+    integrationKeyboard.applyTo(humanTank);
+    inputGame.step();
+    check("a latched tap produces real tank motion",
+      Math.hypot(humanTank.x - inputStart[0], humanTank.y - inputStart[1]) > 0);
+
+    target.emit("keydown", "f");
+    keyboard.applyTo(tank);
+    const heldFirst = tank.turnRight;
+    keyboard.applyTo(tank);
+    const heldSecond = tank.turnRight;
+    target.emit("keyup", "f");
+    keyboard.applyTo(tank);
+    check("a held key remains active across samples and stops on keyup",
+      heldFirst && heldSecond && !tank.turnRight);
+
+    target.emit("keydown", "q");
+    target.emit("keyup", "q");
+    target.emit("blur");
+    keyboard.applyTo(tank);
+    check("losing focus clears both held and latched input", tank.fire === false);
+  }
+
+  // ---------------------------------------------------------------- 7
   section("Wall collision");
   {
     const g = new Game({ seed: 3, aiFactory: null });
@@ -367,7 +422,24 @@ export function runSuite() {
       && C.TANK_WALL_SLIDE_MIN_RETENTION <= C.TANK_WALL_SLIDE_MAX_RETENTION
       && C.TANK_WALL_SLIDE_MAX_RETENTION < 1
       && C.TANK_WALL_SLIDE_INCIDENCE_DRAG > 0
-      && C.TANK_WALL_ALIGN_SPEED > 0);
+      && C.TANK_WALL_ALIGN_SPEED > 0
+      && C.TANK_WALL_SEPARATION_BASE > 0
+      && C.TANK_WALL_SEPARATION_STEPS > 0);
+
+    const wedged = new Tank(wallOnlyGame, 0, { x: 0, y: 0 }, 50, new Rng(4));
+    wedged.x = 8.2;
+    wedged.y = 50;
+    wedged.rotation = 0;
+    wedged.turnRight = true;
+    const wedgedStartX = wedged.x;
+    const wedgedStartRotation = wedged.rotation;
+    check("the overlap recovery scenario starts with one edge inside the wall",
+      wedged.anySideHit());
+    wedged.update();
+    check("a shallowly wedged tank separates and accepts steering input",
+      !wedged.anySideHit()
+      && wedged.x > wedgedStartX
+      && wedged.rotation !== wedgedStartRotation);
 
     const blocker = new Tank(wallOnlyGame, 0, { x: 0, y: 4 }, 50, new Rng(2));
     blocker.rotation = -90;

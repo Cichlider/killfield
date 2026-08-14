@@ -64,6 +64,12 @@ export const TANK_WALL_SLIDE_MIN_RETENTION = 0.70;
 export const TANK_WALL_SLIDE_MAX_RETENTION = 0.96;
 export const TANK_WALL_SLIDE_INCIDENCE_DRAG = 0.30;
 export const TANK_WALL_ALIGN_SPEED = 2.0; // maximum contact-induced deg/frame
+// A turn beside a wall can put one probe a fraction of a pixel inside the
+// stroke even though shifting the hull slightly outward would make it valid.
+// Search this small radius for that separating translation before rejecting
+// the whole turn. It is scaled with the maze like the rest of tank motion.
+export const TANK_WALL_SEPARATION_BASE = 1.0; // px at reference scale
+export const TANK_WALL_SEPARATION_STEPS = 5;
 
 // ---- tank geometry, in local sprite units ----
 // Rotation 0 points UP (−y). The barrel fires along (rotation − 90)°.

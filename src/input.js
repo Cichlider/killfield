@@ -2,8 +2,10 @@
  * Keyboard input.
  *
  * Tracks which keys are physically down and projects that onto a tank's five
- * input booleans each frame. Firing is edge triggered inside the simulation,
- * so holding the fire key is safe here.
+ * input booleans each frame. A fresh keydown is also latched until one game
+ * tick consumes it: otherwise a quick tap that begins and ends between two
+ * 25 FPS samples disappears completely. Firing is edge triggered inside the
+ * simulation, so holding the fire key is safe here.
  */
 
 const BINDINGS = {
@@ -22,6 +24,7 @@ const SWALLOW = new Set([
 export class Keyboard {
   constructor(target = window) {
     this.pressed = new Set();
+    this.pending = new Set();
     this.onReroll = null;
     this.onPause = null;
 
@@ -42,22 +45,23 @@ export class Keyboard {
         if (this.onPause) this.onPause();
         return;
       }
+      if (!this.pressed.has(k)) this.pending.add(k);
       this.pressed.add(k);
     };
     this._up = (e) => {
       this.pressed.delete(e.key.toLowerCase());
     };
     // A tab switch or alert can eat the keyup, leaving a key stuck down.
-    this._blur = () => this.pressed.clear();
+    this._blur = () => this.clear();
 
     target.addEventListener("keydown", this._down);
     target.addEventListener("keyup", this._up);
-    window.addEventListener("blur", this._blur);
+    target.addEventListener("blur", this._blur);
   }
 
   has(action) {
     for (const key of BINDINGS[action]) {
-      if (this.pressed.has(key)) return true;
+      if (this.pressed.has(key) || this.pending.has(key)) return true;
     }
     return false;
   }
@@ -68,5 +72,11 @@ export class Keyboard {
     tank.turnLeft = this.has("turnLeft");
     tank.turnRight = this.has("turnRight");
     tank.fire = this.has("fire");
+    this.pending.clear();
+  }
+
+  clear() {
+    this.pressed.clear();
+    this.pending.clear();
   }
 }

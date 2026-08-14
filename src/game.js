@@ -126,6 +126,39 @@ export class Tank {
       || this.hitCheck(this.hitPointsRight);
   }
 
+  /**
+   * Move the hull the shortest small distance that clears every wall probe.
+   *
+   * Tank motion is substepped, but rotation happens around the centre. Close
+   * to a wall that can put one corner a fraction of a pixel inside the wall;
+   * rejecting the entire turn makes the controls feel locked. Axis-aligned
+   * walls only need four normal and four corner directions here. Failed
+   * searches restore the exact starting pose.
+   */
+  separateFromWall(maxDistance = C.TANK_WALL_SEPARATION_BASE
+      * (this.game.scale / 50.0)) {
+    if (!this.anySideHit()) return true;
+    const startX = this.x;
+    const startY = this.y;
+    const diagonal = Math.SQRT1_2;
+    const directions = [
+      [1, 0], [-1, 0], [0, 1], [0, -1],
+      [diagonal, diagonal], [diagonal, -diagonal],
+      [-diagonal, diagonal], [-diagonal, -diagonal],
+    ];
+    for (let ring = 1; ring <= C.TANK_WALL_SEPARATION_STEPS; ring++) {
+      const distance = maxDistance * ring / C.TANK_WALL_SEPARATION_STEPS;
+      for (const [nx, ny] of directions) {
+        this.x = startX + nx * distance;
+        this.y = startY + ny * distance;
+        if (!this.anySideHit()) return true;
+      }
+    }
+    this.x = startX;
+    this.y = startY;
+    return false;
+  }
+
   /** Gently turn the hull toward the closest direction parallel to the wall. */
   alignToWallTangent(tangentAxis) {
     const tangentHeading = tangentAxis === 1 ? 90.0 : 0.0;
@@ -233,10 +266,6 @@ export class Tank {
     if (g.frozen) return;
     if (!this.alive) return;
 
-    const oldX = this.x;
-    const oldY = this.y;
-    const oldRot = this.rotation;
-
     // The AI writes this tank's input vector before any motion happens.
     if (this.ai !== null) {
       if (this.ai.makeDecisionsAndUpdateGoal()) {
@@ -244,6 +273,18 @@ export class Tank {
       }
       this.ai.setInputToDoActions();
     }
+
+    // Recover shallow numerical/contact overlap as soon as the player asks to
+    // move. Without this, every candidate pose starts out invalid and even a
+    // command pointing away from the wall can be rejected forever.
+    if ((this.forward || this.backup || this.turnLeft || this.turnRight)
+        && this.anySideHit()) {
+      this.separateFromWall();
+    }
+
+    const oldX = this.x;
+    const oldY = this.y;
+    const oldRot = this.rotation;
 
     const STEPS = C.TANK_MOVE_STEPS;
     let moveSize = 0.0;
@@ -274,14 +315,22 @@ export class Tank {
       this.y = oldY;
       this.rotation = oldRot;
       for (let i = 0; i < STEPS; i++) {
+        const stepOldX = this.x;
+        const stepOldY = this.y;
         const stepOldRot = this.rotation;
         this.rotation = normRot(this.rotation + turnSize);
         if (this.anySideHit()) {
-          this.rotation = stepOldRot;
-          this.hitSomething = true;
+          if (this.separateFromWall()) {
+            this.wallSliding = true;
+          } else {
+            this.x = stepOldX;
+            this.y = stepOldY;
+            this.rotation = stepOldRot;
+            this.hitSomething = true;
+          }
         }
-        const stepOldX = this.x;
-        const stepOldY = this.y;
+        const moveOldX = this.x;
+        const moveOldY = this.y;
         const rad = (this.rotation - 90) * DEG;
         const dx = Math.cos(rad) * moveSize;
         const dy = Math.sin(rad) * moveSize;
@@ -290,8 +339,8 @@ export class Tank {
         const leadingPoints = moveSize > 0 ? this.hitPointsFront
           : moveSize < 0 ? this.hitPointsRear : null;
         if (leadingPoints !== null && this.hitCheck(leadingPoints)) {
-          this.x = stepOldX;
-          this.y = stepOldY;
+          this.x = moveOldX;
+          this.y = moveOldY;
           const tangentAxis = this.resolveWallContact(dx, dy);
           if (tangentAxis !== 0) {
             this.wallSliding = true;
