@@ -382,6 +382,9 @@ canvas {
     aspect-ratio: 1;
     overflow: hidden;
     background:
+      radial-gradient(circle at center,
+        transparent 0 49%, rgba(31,111,120,.48) 49.5% 50.5%,
+        transparent 51% 71%, rgba(31,111,120,.28) 71.5% 72.5%, transparent 73%),
       repeating-conic-gradient(from -11.25deg, rgba(31,111,120,.22) 0 1deg, transparent 1deg 22.5deg),
       rgba(255, 255, 255, 0.68);
     border: 2px solid rgba(31, 111, 120, 0.72);
