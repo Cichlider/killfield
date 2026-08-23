@@ -5,6 +5,7 @@ target/
 __pycache__/
 .DS_Store
 *.wasm
+!viewer/kf_engine.wasm
 .venv/
 experiments/probe_oar/*.f32
 experiments/probe_oar/*.u8
