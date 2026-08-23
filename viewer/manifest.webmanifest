@@ -1,0 +1,11 @@
+{
+  "name": "killfield Rust/WASM",
+  "short_name": "killfield",
+  "start_url": "./",
+  "scope": "./",
+  "display": "fullscreen",
+  "display_override": ["fullscreen", "standalone"],
+  "orientation": "landscape",
+  "background_color": "#000000",
+  "theme_color": "#000000"
+}
