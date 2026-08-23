@@ -29,6 +29,10 @@ export const STRINGS = {
     raysLabel: "rays",
     rays512: "512 — full",
     rays256: "256 — mobile",
+    forwardAlignmentLabel: "player joystick forward alignment",
+    forwardAlignmentValue: (forward, reverse) => reverse === 0
+      ? forward + "° / 360° · no reverse"
+      : forward + "° / 360° · reverse " + reverse + "°",
     oppModelLabel: "planner assumes opponent is",
     oppModelLaika: "Laika (scripted)",
     oppModelHuman: "human (unpredictable)",
@@ -51,7 +55,7 @@ export const STRINGS = {
     touchControls: {
       joystick: "Joystick",
       dpad: "Forward / turn",
-      joystickAria: "16-direction movement joystick: 270-degree forward sector, 90-degree reverse sector",
+      joystickAria: "16-direction movement joystick with configurable forward and reverse sectors",
       dpadAria: "Forward, reverse, turn left and turn right controls",
       fire: "FIRE",
       hide: "Hide touch controls",
@@ -127,6 +131,10 @@ export const STRINGS = {
     raysLabel: "射线",
     rays512: "512 — 完整",
     rays256: "256 — 移动端",
+    forwardAlignmentLabel: "玩家摇杆前向对齐",
+    forwardAlignmentValue: (forward, reverse) => reverse === 0
+      ? forward + "° / 360° · 不后退"
+      : forward + "° / 360° · 后退区 " + reverse + "°",
     oppModelLabel: "规划器假设对手是",
     oppModelLaika: "Laika（脚本）",
     oppModelHuman: "人类（不可预测）",
@@ -147,7 +155,7 @@ export const STRINGS = {
     touchControls: {
       joystick: "手柄",
       dpad: "前后左右",
-      joystickAria: "十六方向移动轮盘：270 度前进区，90 度后退区",
+      joystickAria: "十六方向移动轮盘：可调前向与后退对齐范围",
       dpadAria: "前进、后退、左转、右转控制",
       fire: "开火",
       hide: "隐藏触控控制器",

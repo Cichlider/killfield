@@ -102,7 +102,7 @@ pub struct HitRecord {
 }
 
 impl Event {
-    /// Canonical text form, matching the JS event tuples for the difftest.
+    /// Canonical text form, matching the historical JS event tuples.
     pub fn fingerprint(&self) -> String {
         match *self {
             Event::NewRound(n) => format!("new_round,{}", n),

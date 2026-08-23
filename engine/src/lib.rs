@@ -1,7 +1,7 @@
 //! Killfield engine — Rust port of `killfield/src/`.
 //!
-//! Ported module by module against the JS reference. Every module carries a
-//! differential test against dumped JS state; see `tools/difftest/`.
+//! Ported module by module against the historical JS reference. The finished
+//! engine is now maintained through Rust unit tests and deterministic seeds.
 
 pub mod ballistics;
 pub mod chain;

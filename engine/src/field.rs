@@ -267,8 +267,8 @@ impl InverseDensityFieldBuilder {
     /// same entry distance. Their normals are merged, which makes a corner
     /// reverse both components instead of arbitrarily picking one.
     ///
-    /// Two deviations from the JS shape, both verified bit-identical by
-    /// `tools/difftest`: the slab bounds are computed once into `scratch`
+    /// Two deviations from the historical JS shape were verified bit-identical
+    /// during the port: the slab bounds are computed once into `scratch`
     /// rather than twice, and the per-box divisions are hoisted into two
     /// reciprocals per call. This is the hottest loop in the project — the JS
     /// version costs ~14.7M divisions per field build.

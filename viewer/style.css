@@ -561,6 +561,19 @@ button:hover { border-color: var(--accent); color: var(--accent); }
   gap: 6px;
 }
 
+.alignment-box input[type="range"] {
+  width: 132px;
+  padding: 0;
+  border: 0;
+  accent-color: var(--accent);
+}
+
+.alignment-box output {
+  min-width: 145px;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
 input {
   font: inherit;
   font-size: 13px;

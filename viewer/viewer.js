@@ -82,6 +82,9 @@ const rerollButton = document.getElementById("reroll");
 const resetScoreButton = document.getElementById("reset-score");
 const seedInput = document.getElementById("seed");
 const raysSelect = document.getElementById("rays");
+const forwardAlignmentInput = document.getElementById("forward-alignment");
+const forwardAlignmentLabel = document.getElementById("forward-alignment-label");
+const forwardAlignmentValue = document.getElementById("forward-alignment-value");
 const oppModelSelect = document.getElementById("oppmodel");
 const oppModelHint = document.getElementById("oppmodel-hint");
 const watchButton = document.getElementById("mode-watch");
@@ -502,6 +505,18 @@ function renderTuningPanel() {
   }
 }
 
+function syncForwardAlignmentControl() {
+  const forward = touchControls.forwardAlignmentDegrees;
+  const reverse = 360 - forward;
+  const text = t().forwardAlignmentValue(forward, reverse);
+  forwardAlignmentInput.value = String(forward);
+  forwardAlignmentLabel.textContent = t().forwardAlignmentLabel;
+  forwardAlignmentValue.textContent = text;
+  forwardAlignmentInput.setAttribute(
+    "aria-label", t().forwardAlignmentLabel + ": " + text,
+  );
+}
+
 function applyLanguage() {
   const s = t();
   document.documentElement.lang = s.htmlLang;
@@ -517,6 +532,7 @@ function applyLanguage() {
   raysLabel.textContent = s.raysLabel;
   rays512.textContent = s.rays512;
   rays256.textContent = s.rays256;
+  syncForwardAlignmentControl();
   oppModelLabel.textContent = s.oppModelLabel;
   oppModelLaikaOption.textContent = s.oppModelLaika;
   oppModelHumanOption.textContent = s.oppModelHuman;
@@ -881,6 +897,10 @@ async function boot() {
   soundButton.addEventListener("click", () => { toggleSound(); soundButton.blur(); });
   seedInput.addEventListener("change", newGame);
   raysSelect.addEventListener("change", newGame);
+  forwardAlignmentInput.addEventListener("input", () => {
+    touchControls.setForwardAlignmentDegrees(forwardAlignmentInput.value);
+    syncForwardAlignmentControl();
+  });
   oppModelSelect.addEventListener("change", newGame);
   tuningResetButton.addEventListener("click", () => {
     resetTuning();

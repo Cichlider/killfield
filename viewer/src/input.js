@@ -159,10 +159,18 @@ export class Keyboard {
 }
 
 const CONTROL_STYLE_KEY = "killfield-touch-control-style";
+const FORWARD_ALIGNMENT_KEY = "killfield-forward-alignment-degrees";
 const JOYSTICK_DEADZONE = 0.16;
 const JOYSTICK_DIRECTIONS = 16;
 const JOYSTICK_STEP_DEG = 360 / JOYSTICK_DIRECTIONS;
-const JOYSTICK_REVERSE_START_DEG = 135;
+export const DEFAULT_FORWARD_ALIGNMENT_DEGREES = 270;
+
+export function normaliseForwardAlignmentDegrees(raw) {
+  const value = Number(raw);
+  if (!Number.isFinite(value)) return DEFAULT_FORWARD_ALIGNMENT_DEGREES;
+  const stepped = Math.round(value / JOYSTICK_STEP_DEG) * JOYSTICK_STEP_DEG;
+  return Math.max(0, Math.min(360, stepped));
+}
 
 function normaliseAngle(degrees) {
   let value = degrees % 360;
@@ -175,12 +183,14 @@ function normaliseAngle(degrees) {
  * Convert a world-heading stick vector into simultaneous steering and drive.
  *
  * The wheel's top is world north regardless of the hull's current rotation.
- * Steering never blocks translation. The nose owns a 270-degree sector; only
- * the 90-degree sector centred directly behind the hull aligns the rear and
- * reverses. The half-open boundary maps exactly four of the sixteen headings
- * to reverse instead of making a boundary direction flicker between modes.
+ * Steering never blocks translation. The configurable forward sector is
+ * centred on the nose; its complement is centred behind the hull and reverses.
+ * A 360-degree forward sector disables reverse entirely.
  */
-export function joystickButtons(x, y, currentRotation = 0) {
+export function joystickButtons(
+  x, y, currentRotation = 0,
+  forwardAlignmentDegrees = DEFAULT_FORWARD_ALIGNMENT_DEGREES,
+) {
   const distance = Math.min(1, Math.hypot(x, y));
   if (distance <= JOYSTICK_DEADZONE) {
     return { forward: 0, backup: 0, turnLeft: 0, turnRight: 0 };
@@ -191,8 +201,10 @@ export function joystickButtons(x, y, currentRotation = 0) {
     Math.round(rawDesired / JOYSTICK_STEP_DEG) * JOYSTICK_STEP_DEG,
   );
   const noseDelta = normaliseAngle(desired - currentRotation);
-  const backwards = noseDelta >= JOYSTICK_REVERSE_START_DEG
-    || noseDelta < -JOYSTICK_REVERSE_START_DEG;
+  const forwardDegrees = normaliseForwardAlignmentDegrees(forwardAlignmentDegrees);
+  const reverseStart = forwardDegrees / 2;
+  const backwards = forwardDegrees <= 0
+    || (forwardDegrees < 360 && (noseDelta >= reverseStart || noseDelta < -reverseStart));
   const forwards = !backwards;
   const alignmentHeading = forwards ? desired : normaliseAngle(desired + 180);
   const delta = normaliseAngle(alignmentHeading - currentRotation);
@@ -223,10 +235,15 @@ export class TouchControls {
     this.available = false;
     this.userVisible = true;
     this.labels = null;
+    this.style = "joystick";
+    this.forwardAlignmentDegrees = DEFAULT_FORWARD_ALIGNMENT_DEGREES;
     try {
       this.style = localStorage.getItem(CONTROL_STYLE_KEY) === "dpad" ? "dpad" : "joystick";
+      this.forwardAlignmentDegrees = normaliseForwardAlignmentDegrees(
+        localStorage.getItem(FORWARD_ALIGNMENT_KEY) ?? DEFAULT_FORWARD_ALIGNMENT_DEGREES,
+      );
     } catch {
-      this.style = "joystick";
+      // Defaults remain usable when storage is unavailable.
     }
 
     root.querySelector("#control-style-joystick").addEventListener("click", () => {
@@ -305,6 +322,15 @@ export class TouchControls {
     try { localStorage.setItem(CONTROL_STYLE_KEY, this.style); } catch { /* optional */ }
   }
 
+  setForwardAlignmentDegrees(raw) {
+    this.forwardAlignmentDegrees = normaliseForwardAlignmentDegrees(raw);
+    try {
+      localStorage.setItem(FORWARD_ALIGNMENT_KEY, String(this.forwardAlignmentDegrees));
+    } catch { // Session-only fallback.
+    }
+    return this.forwardAlignmentDegrees;
+  }
+
   setAvailable(available) {
     this.available = available;
     this.visibilityButton.hidden = !available;
@@ -369,7 +395,9 @@ export class TouchControls {
       turnRight: keyboardStrengths.turnRight,
     };
     if (this.style === "joystick" && this.joystickPointer !== null) {
-      movement = joystickButtons(this.joystickVector.x, this.joystickVector.y, rotation);
+      movement = joystickButtons(
+        this.joystickVector.x, this.joystickVector.y, rotation, this.forwardAlignmentDegrees,
+      );
     } else if (this.style === "dpad") {
       for (const control of this.dpadPointers.values()) movement[control] = 1;
     }
