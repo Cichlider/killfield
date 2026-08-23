@@ -1,10 +1,21 @@
 /**
- * Keyboard input.
+ * Keyboard and touch input, ported from killfield/src/input.js.
  *
  * Integrates how long each key was physically down between 25 FPS simulation
- * samples. Movement and steering therefore arrive as continuous 0..1 input
- * strengths instead of every tap being rounded up to one whole frame. Firing
- * remains edge triggered inside the simulation, so holding it is safe here.
+ * samples, so movement/steering strengths arrive as continuous 0..1 values
+ * instead of every tap being rounded up to one whole frame. Firing remains
+ * edge-safe to hold.
+ *
+ * The one deliberate change from killfield: instead of writing
+ * forward/backup/turnLeft/turnRight/fire straight onto a JS tank object,
+ * `applyTo()` calls into the wasm engine:
+ *
+ *   wasm.kf_set_input(handle, tank, forward, backup, turnLeft, turnRight, fire, 1)
+ *
+ * with continuous=1, matching the engine's human-input path (a discrete
+ * controller would pass 1.0 and get the ten-degree turn lattice; a human
+ * passes a fraction and does not). The joystick math, deadzone and
+ * snap-to-22.5-degree logic are otherwise untouched.
  */
 
 import * as C from "./constants.js";
@@ -131,17 +142,12 @@ export class Keyboard {
     return false;
   }
 
-  applyTo(tank) {
-    const strengths = this.sampleStrengths();
-    tank.forwardAmount = strengths.forward;
-    tank.backupAmount = strengths.backup;
-    tank.turnLeftAmount = strengths.turnLeft;
-    tank.turnRightAmount = strengths.turnRight;
-    tank.forward = strengths.forward > 0;
-    tank.backup = strengths.backup > 0;
-    tank.turnLeft = strengths.turnLeft > 0;
-    tank.turnRight = strengths.turnRight > 0;
-    tank.fire = strengths.fire > 0;
+  /** Push this frame's sampled strengths straight to the wasm tank. */
+  applyTo(wasm, handle, tank) {
+    const s = this.sampleStrengths();
+    wasm.kf_set_input(handle, tank, s.forward, s.backup, s.turnLeft, s.turnRight,
+      s.fire > 0 ? 1 : 0, 1);
+    return s;
   }
 
   clear() {
@@ -344,7 +350,14 @@ export class TouchControls {
     this.knob.style.top = `${50 + dy * scale / rect.height * 100}%`;
   }
 
-  applyTo(tank, keyboardStrengths) {
+  /**
+   * Resolve this frame's movement (touch style, falling back to keyboard
+   * strengths) and push it straight to the wasm tank.
+   *
+   * `rotation` is the tank's current heading in degrees, needed by the
+   * joystick's world-heading math (see joystickButtons above).
+   */
+  applyTo(wasm, handle, tank, keyboardStrengths, rotation) {
     let movement = {
       forward: keyboardStrengths.forward,
       backup: keyboardStrengths.backup,
@@ -352,21 +365,13 @@ export class TouchControls {
       turnRight: keyboardStrengths.turnRight,
     };
     if (this.style === "joystick" && this.joystickPointer !== null) {
-      movement = joystickButtons(
-        this.joystickVector.x, this.joystickVector.y, tank.rotation,
-      );
+      movement = joystickButtons(this.joystickVector.x, this.joystickVector.y, rotation);
     } else if (this.style === "dpad") {
       for (const control of this.dpadPointers.values()) movement[control] = 1;
     }
-    tank.forward = movement.forward > 0;
-    tank.backup = movement.backup > 0;
-    tank.turnLeft = movement.turnLeft > 0;
-    tank.turnRight = movement.turnRight > 0;
-    tank.fire = keyboardStrengths.fire > 0 || this.firePointers.size > 0;
-    tank.forwardAmount = movement.forward;
-    tank.backupAmount = movement.backup;
-    tank.turnLeftAmount = movement.turnLeft;
-    tank.turnRightAmount = movement.turnRight;
+    const fire = (keyboardStrengths.fire > 0 || this.firePointers.size > 0) ? 1 : 0;
+    wasm.kf_set_input(handle, tank, movement.forward, movement.backup,
+      movement.turnLeft, movement.turnRight, fire, 1);
   }
 
   clearMovement() {

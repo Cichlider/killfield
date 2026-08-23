@@ -286,6 +286,55 @@ canvas {
 .stage:-webkit-full-screen .touch-controls:not([hidden]),
 .stage.pseudo-fullscreen .touch-controls:not([hidden]) { display: block; }
 
+.orientation-hint[hidden] { display: none !important; }
+
+.orientation-hint {
+  position: absolute;
+  inset: 0;
+  z-index: 8;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 24px;
+  color: #fff;
+  text-align: center;
+  line-height: 1.35;
+  background: rgba(0, 0, 0, 0.82);
+  pointer-events: none;
+}
+
+.orientation-hint strong { font-size: clamp(18px, 5vw, 28px); }
+.orientation-hint > span:last-child { max-width: 28em; color: rgba(255,255,255,.82); }
+
+.orientation-phone {
+  position: relative;
+  width: 34px;
+  height: 58px;
+  margin-bottom: 8px;
+  border: 3px solid currentColor;
+  border-radius: 6px;
+  animation: rotate-phone 1.8s ease-in-out infinite;
+}
+
+.orientation-phone::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: 3px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: currentColor;
+  transform: translateX(-50%);
+}
+
+@keyframes rotate-phone {
+  0%, 30% { transform: rotate(0deg); }
+  70%, 100% { transform: rotate(90deg); }
+}
+
 @media (max-width: 980px), (pointer: coarse) {
   .touch-controls:not([hidden]) {
     display: block;

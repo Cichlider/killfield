@@ -1,9 +1,11 @@
 /**
  * Small Web Audio soundboard for simulation events.
  *
- * Browsers do not allow a page to start audio until the user interacts with
- * it, so unlock() is deliberately separate from playEvent(). The main module
- * calls it from pointer/keyboard handlers and game events remain synchronous.
+ * Ported verbatim from killfield/src/audio.js — pure Web Audio glue with no
+ * engine dependency. Browsers do not allow a page to start audio until the
+ * user interacts with it, so unlock() is deliberately separate from
+ * playEvent(). The main module calls it from pointer/keyboard handlers and
+ * game events remain synchronous.
  */
 
 const FILES = {

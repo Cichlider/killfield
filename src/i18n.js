@@ -1,16 +1,16 @@
 /**
  * UI copy, English and Chinese.
  *
- * Everything here is display text for index.html; none of it touches the
- * engine or the agent. Names that are proper nouns (killfield, Laika) are
- * left as-is in both languages, matching how the Chinese docs already write
- * them.
+ * Ported near-verbatim from killfield/src/i18n.js. Everything here is display
+ * text for index.html; none of it touches the wasm engine. Names that are
+ * proper nouns (killfield, Laika) are left as-is in both languages, matching
+ * how the Chinese docs already write them.
  */
 
 export const STRINGS = {
   en: {
     htmlLang: "en",
-    tagline: "A search-based agent for a maze tank duel. Most of its kills are bank shots.",
+    tagline: "A search-based agent for a maze tank duel, now running the same Rust engine the trainer links. Most of its kills are bank shots.",
     nameYou: "You",
     round: (n) => `round ${n}`,
     roundOver: (n) => `round ${n} · round over`,
@@ -46,6 +46,8 @@ export const STRINGS = {
       + "still take the apparent winner with it.",
     fullscreenEnter: "Fullscreen",
     fullscreenExit: "Exit fullscreen",
+    orientationTitle: "Rotate your phone",
+    orientationBody: "Turn off portrait lock, then rotate to landscape.",
     touchControls: {
       joystick: "Joystick",
       dpad: "Forward / turn",
@@ -106,7 +108,7 @@ export const STRINGS = {
 
   zh: {
     htmlLang: "zh-Hans",
-    tagline: "浏览器里的迷宫坦克对战，配一个搜索型 AI 对手。它的击杀大多靠反弹。",
+    tagline: "浏览器里的迷宫坦克对战，配一个搜索型 AI 对手——现在跑的是训练用的同一份 Rust 引擎。它的击杀大多靠反弹。",
     nameYou: "你",
     round: (n) => `第 ${n} 回合`,
     roundOver: (n) => `第 ${n} 回合 · 已结束`,
@@ -140,6 +142,8 @@ export const STRINGS = {
       + "飞行中的子弹仍可能把看起来已经获胜的一方也带走。",
     fullscreenEnter: "全屏",
     fullscreenExit: "退出全屏",
+    orientationTitle: "请将手机横过来",
+    orientationBody: "先关闭系统竖屏锁定，再把手机旋转到横屏。",
     touchControls: {
       joystick: "手柄",
       dpad: "前后左右",

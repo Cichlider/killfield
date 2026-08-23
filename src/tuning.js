@@ -1,9 +1,11 @@
 /**
- * Live reward tuning shared by every KillFieldAgent on the page.
+ * Live MPC tuning schema, ported from killfield/src/killfield/tuning.js.
  *
- * Defaults remain the committed, benchmarked policy. The UI mutates only this
- * object, so a slider change affects the next MPC plan without rebuilding the
- * game or changing deterministic engine physics.
+ * This module is pure data/clamping logic — it knows nothing about wasm. The
+ * schema's index order matches engine/src/tuning.rs's `Tuning` field order and
+ * wasm.rs's `set_tuning_field`/`kf_set_tuning` exactly (0-15), which the main
+ * viewer module relies on when pushing a changed value across the FFI
+ * boundary via `wasm.kf_set_tuning(handle, tank, index, value)`.
  */
 
 export const TUNING_SCHEMA = Object.freeze([
