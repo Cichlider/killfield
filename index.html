@@ -65,8 +65,31 @@
     <div class="canvas-wrap">
       <canvas id="screen" width="712" height="500"></canvas>
       <button id="sound" type="button" class="sound-toggle" aria-label="Mute sound"></button>
+      <button id="touch-visibility" type="button" class="touch-visibility-toggle" aria-label="Hide touch controls" hidden>CTRL</button>
       <button id="pause" type="button" class="pause-toggle" aria-label="Pause (P)"></button>
       <button id="fullscreen" type="button" class="fullscreen-toggle" aria-label="Fullscreen">⛶</button>
+    </div>
+    <div id="touch-controls" class="touch-controls" hidden>
+      <div class="control-style-switch" role="group" aria-label="Touch control style">
+        <button id="control-style-joystick" type="button">Joystick</button>
+        <button id="control-style-dpad" type="button">Forward / turn</button>
+      </div>
+      <div class="touch-left-control">
+        <div id="touch-joystick" class="touch-joystick" role="application" aria-label="16-direction world heading joystick">
+          <span class="joystick-axis axis-n">▲</span>
+          <span class="joystick-axis axis-e">▶</span>
+          <span class="joystick-axis axis-s">▼</span>
+          <span class="joystick-axis axis-w">◀</span>
+          <span id="touch-knob" class="touch-knob"></span>
+        </div>
+        <div id="touch-dpad" class="touch-dpad" role="group" aria-label="Forward, reverse, left and right">
+          <button type="button" class="dpad-up" data-control="forward" aria-label="Forward">▲</button>
+          <button type="button" class="dpad-left" data-control="turnLeft" aria-label="Turn left">◀</button>
+          <button type="button" class="dpad-right" data-control="turnRight" aria-label="Turn right">▶</button>
+          <button type="button" class="dpad-down" data-control="backup" aria-label="Reverse">▼</button>
+        </div>
+      </div>
+      <button id="touch-fire" type="button" class="touch-fire">FIRE</button>
     </div>
   </div>
 

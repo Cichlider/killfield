@@ -96,7 +96,8 @@ canvas {
 
 .fullscreen-toggle,
 .pause-toggle,
-.sound-toggle {
+.sound-toggle,
+.touch-visibility-toggle {
   position: absolute;
   top: 8px;
   padding: 2px 8px;
@@ -105,11 +106,14 @@ canvas {
   opacity: 0.7;
 }
 
+.touch-visibility-toggle[hidden] { display: none !important; }
+
 /* The pause glyph is an inline SVG, so the box has to centre it the way a
    font would have. Fixed height keeps it the same size as the neighbouring
    fullscreen button, whose mark is still a character. */
 .pause-toggle,
-.sound-toggle {
+.sound-toggle,
+.touch-visibility-toggle {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -122,10 +126,12 @@ canvas {
 .fullscreen-toggle { right: 8px; }
 .pause-toggle { right: 40px; }
 .sound-toggle { right: 72px; }
+.touch-visibility-toggle { right: 104px; font-size: 10px; }
 
 .fullscreen-toggle:hover,
 .pause-toggle:hover,
-.sound-toggle:hover { opacity: 1; }
+.sound-toggle:hover,
+.touch-visibility-toggle:hover { opacity: 1; }
 
 .stage:fullscreen,
 .stage:-webkit-full-screen {
@@ -164,7 +170,9 @@ canvas {
 .stage:fullscreen .pause-toggle,
 .stage:-webkit-full-screen .pause-toggle,
 .stage:fullscreen .sound-toggle,
-.stage:-webkit-full-screen .sound-toggle {
+.stage:-webkit-full-screen .sound-toggle,
+.stage:fullscreen .touch-visibility-toggle,
+.stage:-webkit-full-screen .touch-visibility-toggle {
   top: 16px;
 }
 
@@ -176,6 +184,9 @@ canvas {
 
 .stage:fullscreen .sound-toggle,
 .stage:-webkit-full-screen .sound-toggle { right: 88px; }
+
+.stage:fullscreen .touch-visibility-toggle,
+.stage:-webkit-full-screen .touch-visibility-toggle { right: 124px; }
 
 /* In fullscreen the overlay floats over the top-left corner of the canvas
    instead of sitting above it, so the canvas keeps the full screen. It needs
@@ -208,6 +219,214 @@ canvas {
 .stage:-webkit-full-screen .streakline {
   color: rgba(255, 255, 255, 0.75);
 }
+
+/* iPhone browsers that cannot fullscreen a regular div use the same layout
+   through a fixed-position fallback. The explicit button still enters/exits. */
+.stage.pseudo-fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: #000;
+}
+
+.stage.pseudo-fullscreen .canvas-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+}
+
+.stage.pseudo-fullscreen canvas {
+  width: auto !important;
+  height: auto !important;
+  max-width: 100% !important;
+  max-height: 100% !important;
+}
+
+.stage.pseudo-fullscreen .stage-overlay {
+  position: absolute;
+  top: max(16px, env(safe-area-inset-top));
+  left: max(16px, env(safe-area-inset-left));
+  z-index: 1;
+  margin: 0;
+  padding: 8px 14px;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.45);
+  border-radius: 8px;
+}
+
+.stage.pseudo-fullscreen .side-name,
+.stage.pseudo-fullscreen .side-score { color: #fff; }
+.stage.pseudo-fullscreen .vs,
+.stage.pseudo-fullscreen .roundline,
+.stage.pseudo-fullscreen .streakline { color: rgba(255, 255, 255, 0.75); }
+
+.touch-controls { display: none; }
+.touch-joystick[hidden],
+.touch-dpad[hidden] { display: none !important; }
+
+.touch-controls:not([hidden]) {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+}
+
+.stage:fullscreen .touch-controls:not([hidden]),
+.stage:-webkit-full-screen .touch-controls:not([hidden]),
+.stage.pseudo-fullscreen .touch-controls:not([hidden]) { display: block; }
+
+@media (max-width: 980px), (pointer: coarse) {
+  .touch-controls:not([hidden]) {
+    display: block;
+  }
+}
+
+  .touch-controls button,
+  .touch-joystick,
+  .touch-dpad { pointer-events: auto; touch-action: none; user-select: none; -webkit-user-select: none; }
+
+  .control-style-switch {
+    position: absolute;
+    left: 50%;
+    bottom: max(8px, env(safe-area-inset-bottom));
+    display: flex;
+    padding: 3px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.88);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.22);
+    transform: translateX(-50%);
+    pointer-events: auto;
+  }
+
+  .control-style-switch button {
+    min-height: 32px;
+    padding: 4px 10px;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    color: #343a40;
+    font-size: 11px;
+  }
+
+  .control-style-switch button.active { background: var(--accent); color: #fff; }
+
+  .touch-left-control {
+    position: absolute;
+    left: max(12px, env(safe-area-inset-left));
+    bottom: max(48px, calc(env(safe-area-inset-bottom) + 44px));
+  }
+
+  .touch-joystick {
+    position: relative;
+    width: clamp(126px, 30vw, 178px);
+    aspect-ratio: 1;
+    overflow: hidden;
+    background:
+      repeating-conic-gradient(from -11.25deg, rgba(31,111,120,.22) 0 1deg, transparent 1deg 22.5deg),
+      rgba(255, 255, 255, 0.68);
+    border: 2px solid rgba(31, 111, 120, 0.72);
+    clip-path: polygon(50% 0,69.13% 3.81%,85.36% 14.64%,96.19% 30.87%,100% 50%,
+      96.19% 69.13%,85.36% 85.36%,69.13% 96.19%,50% 100%,30.87% 96.19%,
+      14.64% 85.36%,3.81% 69.13%,0 50%,3.81% 30.87%,14.64% 14.64%,30.87% 3.81%);
+    filter: drop-shadow(0 3px 8px rgba(0,0,0,.2));
+  }
+
+  .touch-joystick.active { background-color: rgba(31, 111, 120, 0.18); }
+
+  .joystick-axis {
+    position: absolute;
+    z-index: 1;
+    color: #25353a;
+    font: 700 10px/1 ui-sans-serif, sans-serif;
+    pointer-events: none;
+  }
+  .axis-n { top: 9%; left: 50%; transform: translateX(-50%); }
+  .axis-e { right: 7%; top: 50%; transform: translateY(-50%); }
+  .axis-s { bottom: 8%; left: 50%; transform: translateX(-50%); }
+  .axis-w { left: 7%; top: 50%; transform: translateY(-50%); }
+
+  .touch-knob {
+    position: absolute;
+    z-index: 2;
+    left: 50%;
+    top: 50%;
+    width: 34%;
+    aspect-ratio: 1;
+    border: 2px solid var(--accent);
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.94);
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+  }
+
+  .touch-dpad {
+    position: relative;
+    width: clamp(126px, 30vw, 178px);
+    aspect-ratio: 1;
+    display: grid;
+    grid-template: repeat(3, 1fr) / repeat(3, 1fr);
+    gap: 4px;
+  }
+
+  .touch-dpad button {
+    min-width: 44px;
+    min-height: 44px;
+    padding: 0;
+    border: 1px solid rgba(31,111,120,.65);
+    background: rgba(255,255,255,.82);
+    color: #25353a;
+    font-size: 20px;
+    box-shadow: 0 2px 8px rgba(0,0,0,.18);
+  }
+  .touch-dpad button.active { background: var(--accent); color: #fff; }
+  .dpad-up { grid-area: 1 / 2; }
+  .dpad-left { grid-area: 2 / 1; }
+  .dpad-right { grid-area: 2 / 3; }
+  .dpad-down { grid-area: 3 / 2; }
+
+  .touch-fire {
+    position: absolute;
+    right: max(16px, env(safe-area-inset-right));
+    bottom: max(62px, calc(env(safe-area-inset-bottom) + 58px));
+    width: clamp(78px, 19vw, 112px);
+    aspect-ratio: 1;
+    padding: 0;
+    border: 3px solid rgba(158, 16, 27, 0.86);
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.82);
+    color: #9e101b;
+    font-size: clamp(13px, 3vw, 18px);
+    font-weight: 800;
+    box-shadow: 0 3px 12px rgba(0,0,0,.25);
+  }
+  .touch-fire.active { background: #9e101b; color: #fff; }
+
+  .fullscreen-toggle,
+  .pause-toggle,
+  .sound-toggle,
+  .touch-visibility-toggle {
+    min-width: 44px;
+    height: 44px;
+    padding: 7px 11px;
+    background: rgba(255,255,255,.88);
+    opacity: .92;
+    touch-action: manipulation;
+  }
+  .fullscreen-toggle { right: 8px; }
+  .pause-toggle { right: 58px; }
+  .sound-toggle { right: 108px; }
+  .touch-visibility-toggle { right: 158px; }
 
 .controls { margin-top: 18px; }
 

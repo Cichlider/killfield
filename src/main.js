@@ -21,7 +21,7 @@ import {
   TUNING_SCHEMA, applyTuning, resetTuning, setTuning, tuning, tuningSnapshot,
 } from "./killfield/tuning.js";
 import { Renderer, tankColorsForMode } from "./render.js";
-import { Keyboard } from "./input.js";
+import { Keyboard, TouchControls } from "./input.js";
 import { Rng } from "./rng.js";
 import { STRINGS, loadLang, saveLang } from "./i18n.js";
 import { SoundEffects } from "./audio.js";
@@ -75,9 +75,12 @@ const tuningDescription = document.getElementById("tuning-description");
 const tuningControls = document.getElementById("tuning-controls");
 const tuningResetButton = document.getElementById("tuning-reset");
 const tuningStatus = document.getElementById("tuning-status");
+const touchControlsRoot = document.getElementById("touch-controls");
+const touchVisibilityButton = document.getElementById("touch-visibility");
 
 const renderer = new Renderer(canvas);
 const keyboard = new Keyboard();
+const touchControls = new TouchControls(touchControlsRoot, touchVisibilityButton);
 const shakeRng = new Rng(1);
 const sounds = new SoundEffects();
 
@@ -265,6 +268,7 @@ function applyLanguage() {
   oppModelHumanOption.textContent = s.oppModelHuman;
   oppModelHint.textContent = s.oppModelHint;
   keyhelp.innerHTML = s.keyhelpHtml;
+  touchControls.setLabels(s.touchControls);
   note.textContent = s.note;
   renderTuningPanel();
   syncFullscreenButton();
@@ -328,10 +332,12 @@ function setMode(next) {
   mode = next;
   syncTeamColors();
   keyboard.clear();
+  touchControls.clear();
   watchButton.classList.toggle("active", next === "watch");
   playButton.classList.toggle("active", next === "play");
   selfplayButton.classList.toggle("active", next === "selfplay");
   keyhelp.style.display = next === "play" ? "" : "none";
+  touchControls.setAvailable(next === "play");
   // A mode switch changes who tank 1 even is, so treat it as a fresh match.
   matchScore = [0, 0];
   streak.current = 0;
@@ -396,7 +402,9 @@ function tick() {
     if (game.tanks[1].alive) agentB.drive(mirrored);
   } else {
     const human = MODES[mode].humanTank;
-    if (human !== null) keyboard.applyTo(game.tanks[human]);
+    if (human !== null) {
+      touchControls.applyTo(game.tanks[human], keyboard.sampleStrengths());
+    }
   }
   roundFrames += 1;
   for (const event of game.step()) {
@@ -494,17 +502,40 @@ function fullscreenElement() {
   return document.fullscreenElement || document.webkitFullscreenElement || null;
 }
 
-function toggleFullscreen() {
+function setPseudoFullscreen(active) {
+  stage.classList.toggle("pseudo-fullscreen", active);
+  document.body.style.overflow = active ? "hidden" : "";
+  syncFullscreenButton();
+}
+
+async function toggleFullscreen() {
   if (fullscreenElement()) {
-    (document.exitFullscreen || document.webkitExitFullscreen).call(document);
-  } else {
-    const request = stage.requestFullscreen || stage.webkitRequestFullscreen;
-    request.call(stage);
+    await (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+    return;
+  }
+  if (stage.classList.contains("pseudo-fullscreen")) {
+    setPseudoFullscreen(false);
+    return;
+  }
+  const request = stage.requestFullscreen || stage.webkitRequestFullscreen;
+  if (!request) {
+    setPseudoFullscreen(true);
+    return;
+  }
+  try {
+    await request.call(stage);
+    // Some embedded/mobile browsers resolve the request without actually
+    // promoting a regular div. Detect the state, not just the Promise result.
+    if (fullscreenElement() !== stage) setPseudoFullscreen(true);
+  } catch {
+    // iPhone Safari versions without element fullscreen still get a genuine
+    // edge-to-edge, fixed-position game surface from the same button.
+    setPseudoFullscreen(true);
   }
 }
 
 function syncFullscreenButton() {
-  const active = fullscreenElement() === stage;
+  const active = fullscreenElement() === stage || stage.classList.contains("pseudo-fullscreen");
   fullscreenButton.textContent = active ? "⤢" : "⛶";
   fullscreenButton.setAttribute("aria-label", active ? t().fullscreenExit : t().fullscreenEnter);
   renderer.resize();

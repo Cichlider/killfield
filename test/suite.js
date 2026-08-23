@@ -11,7 +11,7 @@
 import * as C from "../src/constants.js";
 import { Game, Tank, normRot } from "../src/game.js";
 import { LaikaAI } from "../src/laika.js";
-import { Keyboard } from "../src/input.js";
+import { Keyboard, joystickButtons } from "../src/input.js";
 import { Rng } from "../src/rng.js";
 import { THEME, tankColorsForMode } from "../src/render.js";
 import {
@@ -415,6 +415,53 @@ export function runSuite() {
     target.emit("blur");
     keyboard.applyTo(tank);
     check("losing focus clears both held and latched input", tank.fire === false);
+
+    check("world-left joystick combines forward drive and left turn", (() => {
+      const input = joystickButtons(-1, 0, 0);
+      return input.forward > 0 && input.turnLeft > 0
+        && input.backup === 0 && input.turnRight === 0;
+    })());
+    check("joystick centre deadzone produces no movement", (() => {
+      const input = joystickButtons(0.05, -0.05);
+      return Object.values(input).every((value) => value === 0);
+    })());
+    check("world-south joystick reverses while turning from north", (() => {
+      const input = joystickButtons(0, 1, 0);
+      return input.turnRight === 1 && input.backup === 1
+        && input.forward === 0 && input.turnLeft === 0;
+    })());
+    check("joystick translation and steering happen in the same physics frame", (() => {
+      const joystickGame = new Game({ seed: 80, aiFactory: null });
+      const joystickTank = joystickGame.tanks[0];
+      joystickTank.rotation = 0;
+      const startX = joystickTank.x;
+      const startY = joystickTank.y;
+      const input = joystickButtons(0, 1, joystickTank.rotation);
+      Object.assign(joystickTank, {
+        ...input,
+        forward: input.forward > 0,
+        backup: input.backup > 0,
+        turnLeft: input.turnLeft > 0,
+        turnRight: input.turnRight > 0,
+        forwardAmount: input.forward,
+        backupAmount: input.backup,
+        turnLeftAmount: input.turnLeft,
+        turnRightAmount: input.turnRight,
+      });
+      joystickGame.step();
+      return Math.abs(normRot(joystickTank.rotation) - C.TANK_TURN_SPEED) < 1e-6
+        && Math.hypot(joystickTank.x - startX, joystickTank.y - startY) > 0;
+    })());
+    check("an aligned world heading drives without turning", (() => {
+      const input = joystickButtons(0, -1, 0);
+      return input.forward === 1 && input.backup === 0
+        && input.turnLeft === 0 && input.turnRight === 0;
+    })());
+    check("the last steering step is proportional and still drives", (() => {
+      const input = joystickButtons(0, -1, 5);
+      return input.forward === 1 && input.turnLeft === 0.5
+        && input.backup === 0 && input.turnRight === 0;
+    })());
   }
 
   // ---------------------------------------------------------------- 7
