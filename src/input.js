@@ -169,7 +169,8 @@ function normaliseAngle(degrees) {
  *
  * The wheel's top is world north regardless of the hull's current rotation.
  * Steering never blocks translation: the tank drives forward when the target
- * lies in its front 180-degree hemisphere, and reverses when it lies behind.
+ * lies in its front 180-degree hemisphere and aligns its nose; when the target
+ * lies behind, it reverses and aligns its rear with the requested direction.
  */
 export function joystickButtons(x, y, currentRotation = 0) {
   const distance = Math.min(1, Math.hypot(x, y));
@@ -181,11 +182,13 @@ export function joystickButtons(x, y, currentRotation = 0) {
   const desired = normaliseAngle(
     Math.round(rawDesired / JOYSTICK_STEP_DEG) * JOYSTICK_STEP_DEG,
   );
-  const delta = normaliseAngle(desired - currentRotation);
+  const noseDelta = normaliseAngle(desired - currentRotation);
+  const forwards = Math.abs(noseDelta) <= 90;
+  const alignmentHeading = forwards ? desired : normaliseAngle(desired + 180);
+  const delta = normaliseAngle(alignmentHeading - currentRotation);
   // The final partial turn lands on the selected heading instead of stepping
   // past it and oscillating by ten degrees each simulation frame.
   const turnStrength = Math.min(1, Math.abs(delta) / C.TANK_TURN_SPEED) * magnitude;
-  const forwards = Math.abs(delta) <= 90;
   return {
     forward: forwards ? magnitude : 0,
     backup: forwards ? 0 : magnitude,

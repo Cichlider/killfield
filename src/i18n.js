@@ -50,7 +50,7 @@ export const STRINGS = {
     touchControls: {
       joystick: "Joystick",
       dpad: "Forward / turn",
-      joystickAria: "16-direction world heading joystick: drives while turning to align",
+      joystickAria: "16-direction movement joystick: aligns the nose forward or rear in reverse",
       dpadAria: "Forward, reverse, turn left and turn right controls",
       fire: "FIRE",
       hide: "Hide touch controls",
@@ -145,7 +145,7 @@ export const STRINGS = {
     touchControls: {
       joystick: "手柄",
       dpad: "前后左右",
-      joystickAria: "十六方向世界坐标轮盘：移动同时转向对齐",
+      joystickAria: "十六方向移动轮盘：前进时车头对齐，后退时车尾对齐",
       dpadAria: "前进、后退、左转、右转控制",
       fire: "开火",
       hide: "隐藏触控控制器",

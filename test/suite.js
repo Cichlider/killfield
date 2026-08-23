@@ -421,22 +421,29 @@ export function runSuite() {
       return input.forward > 0 && input.turnLeft > 0
         && input.backup === 0 && input.turnRight === 0;
     })());
+    check("a direction beyond 90 degrees aligns the rear while reversing", (() => {
+      const input = joystickButtons(Math.sin(112.5 * C.DEG), -Math.cos(112.5 * C.DEG), 0);
+      return input.backup === 1 && input.turnLeft === 1
+        && input.forward === 0 && input.turnRight === 0;
+    })());
     check("joystick centre deadzone produces no movement", (() => {
       const input = joystickButtons(0.05, -0.05);
       return Object.values(input).every((value) => value === 0);
     })());
-    check("world-south joystick reverses while turning from north", (() => {
+    check("world-south joystick reverses straight from north", (() => {
       const input = joystickButtons(0, 1, 0);
-      return input.turnRight === 1 && input.backup === 1
+      return input.turnRight === 0 && input.backup === 1
         && input.forward === 0 && input.turnLeft === 0;
     })());
-    check("joystick translation and steering happen in the same physics frame", (() => {
+    check("rear alignment reverses and turns in the same physics frame", (() => {
       const joystickGame = new Game({ seed: 80, aiFactory: null });
       const joystickTank = joystickGame.tanks[0];
       joystickTank.rotation = 0;
       const startX = joystickTank.x;
       const startY = joystickTank.y;
-      const input = joystickButtons(0, 1, joystickTank.rotation);
+      // South-west is behind a north-facing tank. Its rear target is north-east,
+      // so it should reverse while turning right toward that rear alignment.
+      const input = joystickButtons(-1, 1, joystickTank.rotation);
       Object.assign(joystickTank, {
         ...input,
         forward: input.forward > 0,
