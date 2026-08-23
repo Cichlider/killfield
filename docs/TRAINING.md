@@ -39,6 +39,8 @@ zsh training/run_ppo_paint_v1.sh train
 
 ## 当前训练结果
 
-- schema-5 directional128 模型尚未开始正式训练，因此当前没有新模型名对应的胜率；
+- schema-5 `ppo-paint-v1-directional128-nomem-s11`：5,013,504 步；固定 Laika 恰好
+  100 局为 1 胜、90 负、9 双亡、0 超时，胜率 1%。模型已直接接入 `rl` Viewer，
+  本结果不作为部署 gate；
 - 历史 schema-3 `ppo-paint-v1-nomem-s11`：5,013,504 步；固定 Laika 100 局为
   0 胜、95 负、5 双亡；它使用已取消的联合 18 动作，不再出现在网页模型选项中。

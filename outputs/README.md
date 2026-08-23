@@ -1,11 +1,13 @@
 # outputs
 
-当前训练格式是 schema-5 directional128 PPO。训练过程文件不提交 Git：
+当前训练格式是 schema-5 directional128 PPO。仓库只保留当前 review 所需的模型、配置和
+恰好 100 局的结果；断点与逐 update 日志不提交：
 
-- `ppo_paint_v1/nomem/s11/final.pt`：历史 schema-3 checkpoint，与当前动作不兼容；
-- `last.pt`：训练未结束时的断点，完成后可删除；
-- `complete.json`：最终评估摘要；
-- `metrics.jsonl`：训练曲线。
+- `ppo_paint_v1_directional128/nomem/s11/final.pt`：当前
+  `ppo-paint-v1-directional128-nomem-s11` checkpoint；
+- 同目录 `config.json`：训练配置；
+- 同目录 `complete.json`：固定 Laika 恰好 100 局的最终摘要；
+- `last.pt` 与 `metrics.jsonl`：训练过程文件，完成后删除。
 
-当前没有可发布的 schema-5 checkpoint。正式结果只在训练完成后对固定 Laika 运行 100 局，
-不设评测 gate，行为由网页直接 review。
+当前模型对固定 Laika 运行 100 局为 1 胜、90 负、9 双亡、0 超时，胜率 1%。不设评测
+gate，行为由 `rl` 分支网页直接 review。
