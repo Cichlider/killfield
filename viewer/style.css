@@ -827,8 +827,8 @@ select {
   .stage:fullscreen,
   .stage:-webkit-full-screen,
   .stage.pseudo-fullscreen {
-    --record-left-rail: clamp(128px, 18vw, 220px);
-    --record-right-rail: clamp(108px, 15vw, 176px);
+    --record-left-rail: clamp(var(--record-left-rail-min, 153.6px), var(--record-left-rail-fluid, 21.6vw), var(--record-left-rail-max, 264px));
+    --record-right-rail: clamp(var(--record-right-rail-min, 129.6px), var(--record-right-rail-fluid, 18vw), var(--record-right-rail-max, 211.2px));
     display: grid;
     grid-template-columns: var(--record-left-rail) minmax(0, 1fr) var(--record-right-rail);
     grid-template-rows: 100%;
@@ -931,9 +931,12 @@ select {
     top: max(10px, env(safe-area-inset-top));
     right: max(10px, env(safe-area-inset-right));
     display: grid;
-    grid-template-columns: repeat(2, minmax(40px, 52px));
-    gap: 6px;
-    width: min(110px, calc(var(--record-right-rail) - 20px - env(safe-area-inset-right)));
+    grid-template-columns: repeat(2, var(--touch-toolbar-button, 48px));
+    gap: var(--touch-toolbar-gap, 7.2px);
+    width: min(
+      calc(var(--touch-toolbar-button, 48px) + var(--touch-toolbar-button, 48px) + var(--touch-toolbar-gap, 7.2px)),
+      calc(var(--record-right-rail) - 20px - env(safe-area-inset-right))
+    );
   }
 
   .stage:fullscreen .stage-toolbar > button,
@@ -942,9 +945,9 @@ select {
     position: static;
     width: 100%;
     min-width: 0;
-    height: 40px;
+    height: var(--touch-toolbar-button, 48px);
     padding: 4px;
-    font-size: 14px;
+    font-size: var(--touch-toolbar-font, 16.8px);
     line-height: 1;
     color: rgba(255, 255, 255, 0.9);
     background: rgba(255, 255, 255, 0.12);
@@ -956,7 +959,7 @@ select {
 
   .stage:fullscreen .stage-toolbar > .touch-visibility-toggle,
   .stage:-webkit-full-screen .stage-toolbar > .touch-visibility-toggle,
-  .stage.pseudo-fullscreen .stage-toolbar > .touch-visibility-toggle { font-size: 10px; }
+  .stage.pseudo-fullscreen .stage-toolbar > .touch-visibility-toggle { font-size: var(--touch-small-font, 10.8px); }
 
   .stage:fullscreen .touch-left-control,
   .stage:-webkit-full-screen .touch-left-control,
@@ -974,7 +977,14 @@ select {
   .stage:fullscreen .touch-dpad,
   .stage:-webkit-full-screen .touch-dpad,
   .stage.pseudo-fullscreen .touch-dpad {
-    width: min(100%, clamp(104px, 15vw, 150px));
+    width: min(100%, clamp(var(--touch-joystick-min, 124.8px), var(--touch-joystick-fluid, 18vw), var(--touch-joystick-max, 180px)));
+  }
+
+  .stage:fullscreen .touch-dpad button,
+  .stage:-webkit-full-screen .touch-dpad button,
+  .stage.pseudo-fullscreen .touch-dpad button {
+    min-width: 0;
+    min-height: 0;
   }
 
   .stage:fullscreen .control-style-switch,
@@ -995,7 +1005,7 @@ select {
     min-width: 0;
     min-height: 27px;
     padding: 3px 6px;
-    font-size: 9px;
+    font-size: var(--touch-small-font, 10.8px);
   }
 
   .stage:fullscreen .touch-fire,
@@ -1003,7 +1013,10 @@ select {
   .stage.pseudo-fullscreen .touch-fire {
     right: max(12px, env(safe-area-inset-right));
     bottom: max(14px, env(safe-area-inset-bottom));
-    width: min(calc(var(--record-right-rail) - 24px - env(safe-area-inset-right)), clamp(72px, 11vw, 98px));
+    width: min(
+      calc(var(--record-right-rail) - 24px - env(safe-area-inset-right)),
+      clamp(var(--touch-fire-min, 86.4px), var(--touch-fire-fluid, 13.2vw), var(--touch-fire-max, 117.6px))
+    );
     font-size: clamp(11px, 1.8vw, 15px);
   }
 }
