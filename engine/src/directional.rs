@@ -7,6 +7,7 @@ pub const FIRE_HEAD_DIM: usize = 2;
 pub const STOP: u8 = 16;
 pub const NO_FIRE: u8 = 0;
 pub const FIRE: u8 = 1;
+const HUMAN_REVERSE_START_DEGREES: f64 = 135.0;
 
 /// Movement indices are sixteen clockwise world headings in 22.5-degree
 /// increments beginning at north, followed by STOP.
@@ -42,10 +43,10 @@ pub fn apply_direction(game: &mut Game, tank: usize, movement: u8, fire: u8) {
 /// Human world-direction control used by the browser wheel.
 ///
 /// Unlike PPO's forward-only contract, the player moves immediately while
-/// aligning the nearer end of the hull: the nose drives toward targets in the
-/// front hemisphere, while the rear aligns and reverses toward targets behind.
-/// The final steering frame is proportional so the hull does not oscillate
-/// around a 22.5-degree heading.
+/// aligning the nose across a 270-degree sector. Only the 90-degree sector
+/// centred directly behind the hull aligns the rear and reverses. The final
+/// steering frame is proportional so the hull does not oscillate around a
+/// 22.5-degree heading.
 pub fn apply_human_direction(game: &mut Game, tank: usize, movement: u8, fire: u8) {
     let movement = movement.min(STOP);
     let t = &mut game.tanks[tank];
@@ -65,7 +66,11 @@ pub fn apply_human_direction(game: &mut Game, tank: usize, movement: u8, fire: u
 
     let desired = movement as f64 * 22.5;
     let nose_error = (desired - t.rotation + 180.0).rem_euclid(360.0) - 180.0;
-    let forward = nose_error.abs() <= 90.0;
+    // Half-open [135°, 225°) rear sector: exactly four of the sixteen
+    // quantised world headings select reverse.
+    let backward = nose_error >= HUMAN_REVERSE_START_DEGREES
+        || nose_error < -HUMAN_REVERSE_START_DEGREES;
+    let forward = !backward;
     let alignment = if forward { desired } else { (desired + 180.0) % 360.0 };
     let error = (alignment - t.rotation + 180.0).rem_euclid(360.0) - 180.0;
     let turn_strength = (error.abs() / t.turn_speed).min(1.0);
@@ -124,7 +129,7 @@ mod tests {
     }
 
     #[test]
-    fn human_controller_aligns_the_nearest_end_while_moving() {
+    fn human_controller_uses_a_270_forward_and_90_reverse_split() {
         let mut game = Game::with_ai(123, 2, &[]);
         game.tanks[0].rotation = 0.0;
 
@@ -134,12 +139,13 @@ mod tests {
         assert!(!game.tanks[0].turn_left);
         assert!(!game.tanks[0].turn_right);
 
-        apply_human_direction(&mut game, 0, 10, FIRE);
+        apply_human_direction(&mut game, 0, 9, FIRE);
         assert!(game.tanks[0].backup);
         assert!(game.tanks[0].turn_right);
         assert!(game.tanks[0].fire);
 
-        apply_human_direction(&mut game, 0, 12, NO_FIRE);
+        // 225 degrees is the first heading outside the half-open rear sector.
+        apply_human_direction(&mut game, 0, 10, NO_FIRE);
         assert!(game.tanks[0].forward);
         assert!(game.tanks[0].turn_left);
     }

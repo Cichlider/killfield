@@ -27,8 +27,8 @@ Worker、SharedArrayBuffer 和跨线程状态协议；只有实机遥测重新�
 ## 人工控制与 PPO Action 的边界
 
 PPO 的 Movement 17 类语义保持原设计：16 个世界方向 + STOP，底层只前进。人工网页轮盘
-使用独立的 WASM 入口：目标在车头前方 180° 半平面时车头对齐并前进，目标在后方时车尾
-对齐并倒退。这样网页手感可以演进，而不会无声修改 checkpoint 的 Action contract。
+使用独立的人工控制路径：目标落在 270° 前进区时车头对齐并前进，只有正后方 90° 区域
+才让车尾对齐并倒退。这样网页手感可以演进，而不会无声修改 checkpoint 的 Action contract。
 
 ## 手机展示
 

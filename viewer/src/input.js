@@ -162,6 +162,7 @@ const CONTROL_STYLE_KEY = "killfield-touch-control-style";
 const JOYSTICK_DEADZONE = 0.16;
 const JOYSTICK_DIRECTIONS = 16;
 const JOYSTICK_STEP_DEG = 360 / JOYSTICK_DIRECTIONS;
+const JOYSTICK_REVERSE_START_DEG = 135;
 
 function normaliseAngle(degrees) {
   let value = degrees % 360;
@@ -174,9 +175,10 @@ function normaliseAngle(degrees) {
  * Convert a world-heading stick vector into simultaneous steering and drive.
  *
  * The wheel's top is world north regardless of the hull's current rotation.
- * Steering never blocks translation: the tank drives forward when the target
- * lies in its front 180-degree hemisphere and aligns its nose; when the target
- * lies behind, it reverses and aligns its rear with the requested direction.
+ * Steering never blocks translation. The nose owns a 270-degree sector; only
+ * the 90-degree sector centred directly behind the hull aligns the rear and
+ * reverses. The half-open boundary maps exactly four of the sixteen headings
+ * to reverse instead of making a boundary direction flicker between modes.
  */
 export function joystickButtons(x, y, currentRotation = 0) {
   const distance = Math.min(1, Math.hypot(x, y));
@@ -189,7 +191,9 @@ export function joystickButtons(x, y, currentRotation = 0) {
     Math.round(rawDesired / JOYSTICK_STEP_DEG) * JOYSTICK_STEP_DEG,
   );
   const noseDelta = normaliseAngle(desired - currentRotation);
-  const forwards = Math.abs(noseDelta) <= 90;
+  const backwards = noseDelta >= JOYSTICK_REVERSE_START_DEG
+    || noseDelta < -JOYSTICK_REVERSE_START_DEG;
+  const forwards = !backwards;
   const alignmentHeading = forwards ? desired : normaliseAngle(desired + 180);
   const delta = normaliseAngle(alignmentHeading - currentRotation);
   // The final partial turn lands on the selected heading instead of stepping
