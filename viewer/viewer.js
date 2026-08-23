@@ -29,8 +29,6 @@ const SELFPLAY_TIMEOUT_FRAMES = 30 * C.FPS;
 const STREAK_STORAGE_KEY = "killfield-streak";
 const TUNING_STORAGE_KEY = "killfield-ai-tuning";
 const INSTANT_TURN_STORAGE_KEY = "killfield-human-instant-turn";
-const TOUCH_UI_SIZE_STORAGE_KEY = "killfield-touch-ui-size";
-const DEFAULT_TOUCH_UI_SIZE = 120;
 
 // Render buffer layout, matching engine/src/wasm.rs's build_render() doc
 // comment: 18 header slots, then 120 paint flags (unused here — killfield has
@@ -89,9 +87,6 @@ const raysSelect = document.getElementById("rays");
 const forwardAlignmentInput = document.getElementById("forward-alignment");
 const forwardAlignmentLabel = document.getElementById("forward-alignment-label");
 const forwardAlignmentValue = document.getElementById("forward-alignment-value");
-const touchSizeInput = document.getElementById("touch-size");
-const touchSizeLabel = document.getElementById("touch-size-label");
-const touchSizeValue = document.getElementById("touch-size-value");
 const oppModelSelect = document.getElementById("oppmodel");
 const oppModelHint = document.getElementById("oppmodel-hint");
 const watchButton = document.getElementById("mode-watch");
@@ -129,47 +124,6 @@ const sounds = new SoundEffects();
 
 let wasm = null;
 let scratchPtr = null;
-let touchUiSize = DEFAULT_TOUCH_UI_SIZE;
-try {
-  touchUiSize = normaliseTouchUiSize(localStorage.getItem(TOUCH_UI_SIZE_STORAGE_KEY));
-} catch {
-  // Keep the larger mobile-friendly default when storage is unavailable.
-}
-
-function normaliseTouchUiSize(raw) {
-  if (raw === null || raw === "") return DEFAULT_TOUCH_UI_SIZE;
-  const value = Number(raw);
-  if (!Number.isFinite(value)) return DEFAULT_TOUCH_UI_SIZE;
-  return Math.max(80, Math.min(160, Math.round(value / 10) * 10));
-}
-
-function applyTouchUiSize(raw, persist = true) {
-  touchUiSize = normaliseTouchUiSize(raw);
-  const scale = touchUiSize / 100;
-  const variables = {
-    "--record-left-rail-min": `${128 * scale}px`,
-    "--record-left-rail-fluid": `${18 * scale}vw`,
-    "--record-left-rail-max": `${220 * scale}px`,
-    "--record-right-rail-min": `${108 * scale}px`,
-    "--record-right-rail-fluid": `${15 * scale}vw`,
-    "--record-right-rail-max": `${176 * scale}px`,
-    "--touch-toolbar-button": `${40 * scale}px`,
-    "--touch-toolbar-gap": `${Math.max(4, 6 * scale)}px`,
-    "--touch-joystick-min": `${104 * scale}px`,
-    "--touch-joystick-fluid": `${15 * scale}vw`,
-    "--touch-joystick-max": `${150 * scale}px`,
-    "--touch-fire-min": `${72 * scale}px`,
-    "--touch-fire-fluid": `${11 * scale}vw`,
-    "--touch-fire-max": `${98 * scale}px`,
-    "--touch-toolbar-font": `${14 * scale}px`,
-    "--touch-small-font": `${9 * scale}px`,
-  };
-  for (const [name, value] of Object.entries(variables)) stage.style.setProperty(name, value);
-  touchSizeInput.value = String(touchUiSize);
-  if (persist) {
-    try { localStorage.setItem(TOUCH_UI_SIZE_STORAGE_KEY, String(touchUiSize)); } catch { /* optional */ }
-  }
-}
 
 // ------------------------------------------------------------- renderer
 const MAX_DPR = 2;
@@ -565,14 +519,6 @@ function syncForwardAlignmentControl() {
   );
 }
 
-function syncTouchSizeControl() {
-  const text = t().touchSizeValue(touchUiSize);
-  touchSizeLabel.textContent = t().touchSizeLabel;
-  touchSizeValue.textContent = text;
-  touchSizeInput.value = String(touchUiSize);
-  touchSizeInput.setAttribute("aria-label", `${t().touchSizeLabel}: ${text}`);
-}
-
 function applyLanguage() {
   const s = t();
   document.documentElement.lang = s.htmlLang;
@@ -590,7 +536,6 @@ function applyLanguage() {
   rays512.textContent = s.rays512;
   rays256.textContent = s.rays256;
   syncForwardAlignmentControl();
-  syncTouchSizeControl();
   oppModelLabel.textContent = s.oppModelLabel;
   oppModelLaikaOption.textContent = s.oppModelLaika;
   oppModelHumanOption.textContent = s.oppModelHuman;
@@ -985,11 +930,6 @@ async function boot() {
     touchControls.setForwardAlignmentDegrees(forwardAlignmentInput.value);
     syncForwardAlignmentControl();
   });
-  touchSizeInput.addEventListener("input", () => {
-    applyTouchUiSize(touchSizeInput.value);
-    syncTouchSizeControl();
-    renderer.resize();
-  });
   oppModelSelect.addEventListener("change", newGame);
   tuningResetButton.addEventListener("click", () => {
     resetTuning();
@@ -1017,7 +957,6 @@ async function boot() {
   window.addEventListener("keydown", () => sounds.unlock(), { once: true, capture: true });
 
   loadTuningPreferences();
-  applyTouchUiSize(touchUiSize, false);
   // The 256-ray option already exists specifically for mobile. Selecting it
   // by default prevents synchronous AI planning from starving display
   // refreshes; players can still choose the 512-ray maximum manually.

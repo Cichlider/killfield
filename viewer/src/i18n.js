@@ -36,8 +36,6 @@ export const STRINGS = {
     forwardAlignmentValue: (forward, reverse) => reverse === 0
       ? forward + "° / 360° · no reverse"
       : forward + "° / 360° · reverse " + reverse + "°",
-    touchSizeLabel: "touch control size",
-    touchSizeValue: (percent) => `${percent}%`,
     oppModelLabel: "planner assumes opponent is",
     oppModelLaika: "Laika (scripted)",
     oppModelHuman: "human (unpredictable)",
@@ -143,8 +141,6 @@ export const STRINGS = {
     forwardAlignmentValue: (forward, reverse) => reverse === 0
       ? forward + "° / 360° · 不后退"
       : forward + "° / 360° · 后退区 " + reverse + "°",
-    touchSizeLabel: "触控按钮大小",
-    touchSizeValue: (percent) => `${percent}%`,
     oppModelLabel: "规划器假设对手是",
     oppModelLaika: "Laika（脚本）",
     oppModelHuman: "人类（不可预测）",
