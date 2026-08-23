@@ -16,7 +16,7 @@ export const MOVIEHEIGHT = 480;
 // ---- ballistics (used only for the bullet-interpolation jump guard) ----
 export const BULLETSPEED = 4.5; // px/frame at SCALE=50
 
-// ---- tank steering (used by input.js's 16-direction joystick math) ----
+// ---- tank steering (used by input.js's 32-direction joystick math) ----
 export const TANK_TURN_SPEED = 10; // deg/frame
 
 // ---- tank geometry, in local sprite units (render-only) ----
