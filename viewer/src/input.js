@@ -198,7 +198,7 @@ export function joystickButtons(
 ) {
   const distance = Math.min(1, Math.hypot(x, y));
   if (distance === 0) {
-    return { forward: 0, backup: 0, turnLeft: 0, turnRight: 0 };
+    return { forward: 0, backup: 0, turnLeft: 0, turnRight: 0, targetRotation: null };
   }
   const driveStrength = Math.max(0, Math.min(1,
     (distance - JOYSTICK_DRIVE_START) / (JOYSTICK_FULL_SPEED - JOYSTICK_DRIVE_START),
@@ -225,6 +225,7 @@ export function joystickButtons(
     backup: forwards ? 0 : driveStrength,
     turnLeft: delta < 0 ? turnStrength : 0,
     turnRight: delta > 0 ? turnStrength : 0,
+    targetRotation: alignmentHeading,
   };
 }
 
@@ -396,23 +397,32 @@ export class TouchControls {
    * `rotation` is the tank's current heading in degrees, needed by the
    * joystick's world-heading math (see joystickButtons above).
    */
-  applyTo(wasm, handle, tank, keyboardStrengths, rotation) {
+  applyTo(wasm, handle, tank, keyboardStrengths, rotation, instantTurn = false) {
     let movement = {
       forward: keyboardStrengths.forward,
       backup: keyboardStrengths.backup,
       turnLeft: keyboardStrengths.turnLeft,
       turnRight: keyboardStrengths.turnRight,
+      targetRotation: null,
     };
+    let snappedRotation = null;
     if (this.style === "joystick" && this.joystickPointer !== null) {
       movement = joystickButtons(
         this.joystickVector.x, this.joystickVector.y, rotation, this.forwardAlignmentDegrees,
       );
+      if (instantTurn && movement.targetRotation !== null
+          && wasm.kf_set_rotation_if_clear(handle, tank, movement.targetRotation)) {
+        movement.turnLeft = 0;
+        movement.turnRight = 0;
+        snappedRotation = movement.targetRotation;
+      }
     } else if (this.style === "dpad") {
       for (const control of this.dpadPointers.values()) movement[control] = 1;
     }
     const fire = (keyboardStrengths.fire > 0 || this.firePointers.size > 0) ? 1 : 0;
     wasm.kf_set_input(handle, tank, movement.forward, movement.backup,
       movement.turnLeft, movement.turnRight, fire, 1);
+    return snappedRotation;
   }
 
   clearMovement() {

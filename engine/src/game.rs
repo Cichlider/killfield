@@ -689,6 +689,23 @@ impl Game {
         self.events.push(Event::RoundEnd(winner));
     }
 
+    /// Snap a player tank to an absolute heading without allowing the hull to
+    /// enter a wall. Returns false when the requested pose is not physically
+    /// valid, leaving the tank untouched so normal steering can take over.
+    pub fn set_tank_rotation_if_clear(&mut self, idx: usize, rotation: f64) -> bool {
+        if self.frozen || idx >= self.tanks_count || !rotation.is_finite() || !self.tanks[idx].alive
+        {
+            return false;
+        }
+        let mut candidate = self.tanks[idx];
+        candidate.rotation = norm_rot(rotation);
+        if any_side_hit(&self.wall_grid, &candidate) {
+            return false;
+        }
+        self.tanks[idx].rotation = candidate.rotation;
+        true
+    }
+
     /// Advance one frame (1/25 s) and return this frame's events.
     pub fn step(&mut self) -> Vec<Event> {
         self.frame += 1;

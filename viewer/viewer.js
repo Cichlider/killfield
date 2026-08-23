@@ -28,6 +28,7 @@ const ROUND_START_DELAY_FRAMES = Math.round(0.5 * C.FPS);
 const SELFPLAY_TIMEOUT_FRAMES = 30 * C.FPS;
 const STREAK_STORAGE_KEY = "killfield-streak";
 const TUNING_STORAGE_KEY = "killfield-ai-tuning";
+const INSTANT_TURN_STORAGE_KEY = "killfield-human-instant-turn";
 
 // Render buffer layout, matching engine/src/wasm.rs's build_render() doc
 // comment: 18 header slots, then 120 paint flags (unused here — killfield has
@@ -80,6 +81,7 @@ const telemetryBox = document.getElementById("telemetry");
 const keyhelp = document.getElementById("keyhelp");
 const rerollButton = document.getElementById("reroll");
 const resetScoreButton = document.getElementById("reset-score");
+const instantTurnButton = document.getElementById("instant-turn");
 const seedInput = document.getElementById("seed");
 const raysSelect = document.getElementById("rays");
 const forwardAlignmentInput = document.getElementById("forward-alignment");
@@ -528,6 +530,7 @@ function applyLanguage() {
   selfplayButton.textContent = s.modeSelfplay;
   rerollButton.textContent = s.reroll;
   resetScoreButton.textContent = s.resetScore;
+  syncInstantTurnButton();
   seedLabel.textContent = s.seedLabel;
   raysLabel.textContent = s.raysLabel;
   rays512.textContent = s.rays512;
@@ -550,6 +553,8 @@ function applyLanguage() {
 }
 
 let mode = "watch";
+let instantTurn = false;
+try { instantTurn = localStorage.getItem(INSTANT_TURN_STORAGE_KEY) === "1"; } catch { /* optional */ }
 let handle = null;
 let paused = false;
 let currentRound = 1;
@@ -645,11 +650,28 @@ function setMode(next) {
   selfplayButton.classList.toggle("active", next === "selfplay");
   keyhelp.style.display = next === "play" ? "" : "none";
   touchControls.setAvailable(next === "play");
+  syncInstantTurnButton();
   // A mode switch changes who tank 1 even is, so treat it as a fresh match.
   matchScore = [0, 0];
   streak.current = 0;
   saveStreak();
   newGame();
+}
+
+function syncInstantTurnButton() {
+  const s = t();
+  instantTurnButton.hidden = mode !== "play";
+  instantTurnButton.classList.toggle("active", instantTurn);
+  instantTurnButton.textContent = instantTurn ? s.instantTurnOn : s.instantTurnOff;
+  instantTurnButton.setAttribute("aria-label", s.instantTurnAria);
+  instantTurnButton.setAttribute("aria-pressed", String(instantTurn));
+}
+
+function toggleInstantTurn() {
+  instantTurn = !instantTurn;
+  try { localStorage.setItem(INSTANT_TURN_STORAGE_KEY, instantTurn ? "1" : "0"); } catch { /* optional */ }
+  syncInstantTurnButton();
+  instantTurnButton.blur();
 }
 
 function updateScoreboard() {
@@ -708,7 +730,13 @@ function tick() {
   if (human !== null) {
     const strengths = keyboard.sampleStrengths();
     const rotation = previousRenderState?.tanks[human]?.rotation ?? 0;
-    touchControls.applyTo(wasm, handle, human, strengths, rotation);
+    const snappedRotation = touchControls.applyTo(
+      wasm, handle, human, strengths, rotation, instantTurn,
+    );
+    if (snappedRotation !== null && previousRenderState?.tanks[human]) {
+      // Physics and presentation both snap in the same frame.
+      previousRenderState.tanks[human].rotation = snappedRotation;
+    }
   }
   roundFrames += 1;
   const flags = wasm.kf_step(handle);
@@ -893,6 +921,7 @@ async function boot() {
   keyboard.onPause = togglePause;
   rerollButton.addEventListener("click", () => { newGame(); rerollButton.blur(); });
   resetScoreButton.addEventListener("click", () => { resetScore(); resetScoreButton.blur(); });
+  instantTurnButton.addEventListener("click", toggleInstantTurn);
   pauseButton.addEventListener("click", () => { togglePause(); pauseButton.blur(); });
   soundButton.addEventListener("click", () => { toggleSound(); soundButton.blur(); });
   seedInput.addEventListener("change", newGame);

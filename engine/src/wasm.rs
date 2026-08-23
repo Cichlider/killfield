@@ -194,6 +194,14 @@ pub unsafe extern "C" fn kf_set_input(
     }
 }
 
+/// Instantly set a human tank's absolute heading when the resulting hull pose
+/// is clear of walls. Used only by the optional browser accessibility control.
+#[no_mangle]
+pub unsafe extern "C" fn kf_set_rotation_if_clear(h: *mut Handle, tank: u32, rotation: f32) -> u32 {
+    (*h).game
+        .set_tank_rotation_if_clear(tank as usize, rotation as f64) as u32
+}
+
 /// World-direction input shared with PPO: sixteen 22.5-degree headings + STOP.
 /// Turning and forward motion are resolved by the deterministic controller.
 #[no_mangle]
