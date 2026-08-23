@@ -207,7 +207,7 @@ impl VecEnv {
         self.decision_ids[index] = decision_id;
     }
 
-    fn step(&mut self, actions: &[u8]) {
+    fn step(&mut self, actions: &[u16]) {
         self.rewards.fill(0.0);
         self.reward_channels.fill(0.0);
         self.reward_diagnostics.fill(0.0);
@@ -351,7 +351,7 @@ pub unsafe extern "C" fn kf_vec_free(handle: *mut VecEnv) {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn kf_vec_step(handle: *mut VecEnv, actions: *const u8) {
+pub unsafe extern "C" fn kf_vec_step(handle: *mut VecEnv, actions: *const u16) {
     let env = &mut *handle;
     env.step(std::slice::from_raw_parts(actions, env.slots.len()));
 }

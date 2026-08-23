@@ -15,7 +15,7 @@
  * with continuous=1, matching the engine's human-input path (a discrete
  * controller would pass 1.0 and get the ten-degree turn lattice; a human
  * passes a fraction and does not). The joystick math, deadzone and
- * snap-to-22.5-degree logic are otherwise untouched.
+ * snap-to-2.8125-degree logic are otherwise untouched.
  */
 
 import * as C from "./constants.js";
@@ -160,9 +160,12 @@ export class Keyboard {
 
 const CONTROL_STYLE_KEY = "killfield-touch-control-style";
 const FORWARD_ALIGNMENT_KEY = "killfield-forward-alignment-degrees";
-const JOYSTICK_DEADZONE = 0.16;
-const JOYSTICK_DIRECTIONS = 16;
+const JOYSTICK_TURN_FULL = 0.10;
+const JOYSTICK_DRIVE_START = 0.25;
+const JOYSTICK_FULL_SPEED = 0.33;
+const JOYSTICK_DIRECTIONS = 128;
 const JOYSTICK_STEP_DEG = 360 / JOYSTICK_DIRECTIONS;
+const JOYSTICK_TURN_DEADBAND_DEG = C.TANK_TURN_SPEED / 2;
 export const DEFAULT_FORWARD_ALIGNMENT_DEGREES = 270;
 
 export function normaliseForwardAlignmentDegrees(raw) {
@@ -183,7 +186,9 @@ function normaliseAngle(degrees) {
  * Convert a world-heading stick vector into simultaneous steering and drive.
  *
  * The wheel's top is world north regardless of the hull's current rotation.
- * Steering never blocks translation. The configurable forward sector is
+ * Turn speed ramps from zero to full over the inner 10% radius. Translation
+ * remains off through 25%, then reaches full speed at 33%. A half-step angular
+ * alignment band prevents jitter. The configurable forward sector is
  * centred on the nose; its complement is centred behind the hull and reverses.
  * A 360-degree forward sector disables reverse entirely.
  */
@@ -192,10 +197,12 @@ export function joystickButtons(
   forwardAlignmentDegrees = DEFAULT_FORWARD_ALIGNMENT_DEGREES,
 ) {
   const distance = Math.min(1, Math.hypot(x, y));
-  if (distance <= JOYSTICK_DEADZONE) {
-    return { forward: 0, backup: 0, turnLeft: 0, turnRight: 0 };
+  if (distance === 0) {
+    return { forward: 0, backup: 0, turnLeft: 0, turnRight: 0, targetRotation: null };
   }
-  const magnitude = (distance - JOYSTICK_DEADZONE) / (1 - JOYSTICK_DEADZONE);
+  const driveStrength = Math.max(0, Math.min(1,
+    (distance - JOYSTICK_DRIVE_START) / (JOYSTICK_FULL_SPEED - JOYSTICK_DRIVE_START),
+  ));
   const rawDesired = Math.atan2(x, -y) / C.DEG;
   const desired = normaliseAngle(
     Math.round(rawDesired / JOYSTICK_STEP_DEG) * JOYSTICK_STEP_DEG,
@@ -208,14 +215,17 @@ export function joystickButtons(
   const forwards = !backwards;
   const alignmentHeading = forwards ? desired : normaliseAngle(desired + 180);
   const delta = normaliseAngle(alignmentHeading - currentRotation);
-  // The final partial turn lands on the selected heading instead of stepping
-  // past it and oscillating by ten degrees each simulation frame.
-  const turnStrength = Math.min(1, Math.abs(delta) / C.TANK_TURN_SPEED) * magnitude;
+  // Radial turn smoothing is confined to the first 10%. Beyond that, turning
+  // stays at full strength. The angular deadband prevents lattice oscillation.
+  const radialTurnStrength = Math.min(1, distance / JOYSTICK_TURN_FULL);
+  const turnStrength = Math.abs(delta) > JOYSTICK_TURN_DEADBAND_DEG
+    ? radialTurnStrength : 0;
   return {
-    forward: forwards ? magnitude : 0,
-    backup: forwards ? 0 : magnitude,
+    forward: forwards ? driveStrength : 0,
+    backup: forwards ? 0 : driveStrength,
     turnLeft: delta < 0 ? turnStrength : 0,
     turnRight: delta > 0 ? turnStrength : 0,
+    targetRotation: alignmentHeading,
   };
 }
 
@@ -371,10 +381,10 @@ export class TouchControls {
     const radius = rect.width / 2;
     const distance = Math.hypot(dx, dy);
     this.joystickVector = {
-      x: dx / (radius * 0.62),
-      y: dy / (radius * 0.62),
+      x: dx / radius,
+      y: dy / radius,
     };
-    const knobDistance = Math.min(distance, radius * 0.58);
+    const knobDistance = Math.min(distance, radius * 0.8);
     const scale = distance ? knobDistance / distance : 0;
     this.knob.style.left = `${50 + dx * scale / rect.width * 100}%`;
     this.knob.style.top = `${50 + dy * scale / rect.height * 100}%`;
@@ -387,23 +397,32 @@ export class TouchControls {
    * `rotation` is the tank's current heading in degrees, needed by the
    * joystick's world-heading math (see joystickButtons above).
    */
-  applyTo(wasm, handle, tank, keyboardStrengths, rotation) {
+  applyTo(wasm, handle, tank, keyboardStrengths, rotation, instantTurn = false) {
     let movement = {
       forward: keyboardStrengths.forward,
       backup: keyboardStrengths.backup,
       turnLeft: keyboardStrengths.turnLeft,
       turnRight: keyboardStrengths.turnRight,
+      targetRotation: null,
     };
+    let snappedRotation = null;
     if (this.style === "joystick" && this.joystickPointer !== null) {
       movement = joystickButtons(
         this.joystickVector.x, this.joystickVector.y, rotation, this.forwardAlignmentDegrees,
       );
+      if (instantTurn && movement.targetRotation !== null
+          && wasm.kf_set_rotation_if_clear(handle, tank, movement.targetRotation)) {
+        movement.turnLeft = 0;
+        movement.turnRight = 0;
+        snappedRotation = movement.targetRotation;
+      }
     } else if (this.style === "dpad") {
       for (const control of this.dpadPointers.values()) movement[control] = 1;
     }
     const fire = (keyboardStrengths.fire > 0 || this.firePointers.size > 0) ? 1 : 0;
     wasm.kf_set_input(handle, tank, movement.forward, movement.backup,
       movement.turnLeft, movement.turnRight, fire, 1);
+    return snappedRotation;
   }
 
   clearMovement() {

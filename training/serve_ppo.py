@@ -12,11 +12,12 @@ import torch
 from ppo_models import BULLET_SLOTS, OBS_DIM, make_actor_critic
 
 
-# Schema-3 checkpoints used the retired throttle/turn/fire joint action and are
-# intentionally not exposed as schema-4 directional policies.
+# Older checkpoints use retired action/observation contracts and are not
+# exposed as schema-5 directional128 policies. This entry becomes available
+# automatically once the compatible checkpoint exists under --models.
 SOURCES = {
     "nomem-s11": {
-        "display": "ppo-paint-v1-directional16-nomem-s11",
+        "display": "ppo-paint-v1-directional128-nomem-s11",
         "architecture": "nomem",
         "history": 1,
         "checkpoint": "nomem/s11/final.pt",
@@ -98,7 +99,7 @@ class Models:
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--port", type=int, default=8000)
-    parser.add_argument("--models", type=Path, default=Path("outputs/ppo_paint_v1_directional16"))
+    parser.add_argument("--models", type=Path, default=Path("outputs/ppo_paint_v1_directional128"))
     parser.add_argument("--device", choices=("auto", "cpu", "mps"), default="auto")
     args = parser.parse_args()
     if args.device == "auto":

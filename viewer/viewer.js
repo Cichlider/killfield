@@ -28,6 +28,7 @@ const ROUND_START_DELAY_FRAMES = Math.round(0.5 * C.FPS);
 const SELFPLAY_TIMEOUT_FRAMES = 30 * C.FPS;
 const STREAK_STORAGE_KEY = "killfield-streak";
 const TUNING_STORAGE_KEY = "killfield-ai-tuning";
+const INSTANT_TURN_STORAGE_KEY = "killfield-human-instant-turn";
 
 // Render buffer layout, matching engine/src/wasm.rs's build_render() doc
 // comment: 18 header slots, then 120 paint flags (unused here — killfield has
@@ -80,6 +81,7 @@ const telemetryBox = document.getElementById("telemetry");
 const keyhelp = document.getElementById("keyhelp");
 const rerollButton = document.getElementById("reroll");
 const resetScoreButton = document.getElementById("reset-score");
+const instantTurnButton = document.getElementById("instant-turn");
 const seedInput = document.getElementById("seed");
 const raysSelect = document.getElementById("rays");
 const forwardAlignmentInput = document.getElementById("forward-alignment");
@@ -124,7 +126,7 @@ const sounds = new SoundEffects();
 
 let wasm = null;
 let scratchPtr = null;
-const OBS_DIM = 1178;
+const OBS_DIM = 1290;
 const BULLET_SLOTS = 10;
 let selectedModel = "";
 let modelHistory = [];
@@ -149,7 +151,7 @@ async function loadModelCatalogue() {
     if (!selectedModel) {
       const option = document.createElement("option");
       option.value = "";
-      option.textContent = "no compatible schema-4 checkpoint";
+      option.textContent = "no compatible schema-5 directional128 checkpoint";
       rlModelSelect.append(option);
       rlStatus.textContent = "模型尚未训练；运行训练后刷新。本页不会用 MPC 冒充 PPO。";
     } else {
@@ -566,6 +568,7 @@ function applyLanguage() {
   selfplayButton.textContent = s.modeSelfplay;
   rerollButton.textContent = s.reroll;
   resetScoreButton.textContent = s.resetScore;
+  syncInstantTurnButton();
   seedLabel.textContent = s.seedLabel;
   raysLabel.textContent = s.raysLabel;
   rays512.textContent = s.rays512;
@@ -588,12 +591,14 @@ function applyLanguage() {
     ? "PPO 行为 review：所选模型以 25 Hz 对战固定 Laika。"
     : "PPO behavior review: the selected model plays fixed Laika at 25 Hz.";
   note.textContent = lang === "zh"
-    ? "左侧只接受 schema-4 directional16 PPO 的双 head 动作；右侧始终由固定 Laika 脚本控制。"
-    : "The left tank accepts only schema-4 directional16 PPO actions; fixed Laika always drives the right tank.";
+    ? "左侧只接受 schema-5 directional128 PPO 的双 head 动作；右侧始终由固定 Laika 脚本控制。"
+    : "The left tank accepts only schema-5 directional128 PPO actions; fixed Laika always drives the right tank.";
   updateScoreboard();
 }
 
 let mode = "watch";
+let instantTurn = false;
+try { instantTurn = localStorage.getItem(INSTANT_TURN_STORAGE_KEY) === "1"; } catch { /* optional */ }
 let handle = null;
 let paused = false;
 let currentRound = 1;
@@ -663,7 +668,7 @@ function newGame() {
   inferenceGeneration += 1;
   inferencePending = false;
   inferenceSummary = selectedModel ? "waiting for first action" : "no model loaded";
-  wasm.kf_set_direction_input(handle, 0, 16, 0);
+  wasm.kf_set_direction_input(handle, 0, 128, 0);
 
   // The instant a new round starts reads as relentless when a human is on the
   // sticks. Play mode only; watch/self-play have no human waiting to catch a
@@ -686,11 +691,28 @@ function setMode(next) {
   selfplayButton.classList.toggle("active", next === "selfplay");
   keyhelp.style.display = next === "play" ? "" : "none";
   touchControls.setAvailable(next === "play");
+  syncInstantTurnButton();
   // A mode switch changes who tank 1 even is, so treat it as a fresh match.
   matchScore = [0, 0];
   streak.current = 0;
   saveStreak();
   newGame();
+}
+
+function syncInstantTurnButton() {
+  const s = t();
+  instantTurnButton.hidden = mode !== "play";
+  instantTurnButton.classList.toggle("active", instantTurn);
+  instantTurnButton.textContent = instantTurn ? s.instantTurnOn : s.instantTurnOff;
+  instantTurnButton.setAttribute("aria-label", s.instantTurnAria);
+  instantTurnButton.setAttribute("aria-pressed", String(instantTurn));
+}
+
+function toggleInstantTurn() {
+  instantTurn = !instantTurn;
+  try { localStorage.setItem(INSTANT_TURN_STORAGE_KEY, instantTurn ? "1" : "0"); } catch { /* optional */ }
+  syncInstantTurnButton();
+  instantTurnButton.blur();
 }
 
 function updateScoreboard() {
@@ -747,12 +769,12 @@ function requestModelAction() {
     if (generation !== inferenceGeneration) return;
     lastModelAction = result.movement * 2 + result.fire;
     wasm.kf_set_direction_input(handle, 0, result.movement, result.fire);
-    inferenceSummary = `${result.model} · move ${result.movement}/16 · fire ${result.fire} · `
+    inferenceSummary = `${result.model} · move ${result.movement}/128 · fire ${result.fire} · `
       + `${Math.round(result.movement_confidence * 100)}% / ${Math.round(result.fire_confidence * 100)}%`;
   }).catch((error) => {
     if (generation !== inferenceGeneration) return;
     inferenceSummary = `inference error: ${error.message}`;
-    wasm.kf_set_direction_input(handle, 0, 16, 0);
+    wasm.kf_set_direction_input(handle, 0, 128, 0);
   }).finally(() => {
     if (generation === inferenceGeneration) inferencePending = false;
   });
@@ -772,7 +794,13 @@ function tick() {
   if (human !== null) {
     const strengths = keyboard.sampleStrengths();
     const rotation = previousRenderState?.tanks[human]?.rotation ?? 0;
-    touchControls.applyTo(wasm, handle, human, strengths, rotation);
+    const snappedRotation = touchControls.applyTo(
+      wasm, handle, human, strengths, rotation, instantTurn,
+    );
+    if (snappedRotation !== null && previousRenderState?.tanks[human]) {
+      // Physics and presentation both snap in the same frame.
+      previousRenderState.tanks[human].rotation = snappedRotation;
+    }
   }
   roundFrames += 1;
   const flags = wasm.kf_step(handle);
@@ -960,6 +988,7 @@ async function boot() {
   keyboard.onPause = togglePause;
   rerollButton.addEventListener("click", () => { newGame(); rerollButton.blur(); });
   resetScoreButton.addEventListener("click", () => { resetScore(); resetScoreButton.blur(); });
+  instantTurnButton.addEventListener("click", toggleInstantTurn);
   pauseButton.addEventListener("click", () => { togglePause(); pauseButton.blur(); });
   soundButton.addEventListener("click", () => { toggleSound(); soundButton.blur(); });
   seedInput.addEventListener("change", newGame);

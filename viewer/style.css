@@ -382,7 +382,11 @@ canvas {
     aspect-ratio: 1;
     overflow: hidden;
     background:
-      repeating-conic-gradient(from -11.25deg, rgba(31,111,120,.22) 0 1deg, transparent 1deg 22.5deg),
+      radial-gradient(circle closest-side at center,
+        transparent 0 9%, rgba(31,111,120,.22) 9.5% 10.5%,
+        transparent 11% 24%, rgba(31,111,120,.48) 24.5% 25.5%,
+        transparent 26% 32%, rgba(31,111,120,.28) 32.5% 33.5%, transparent 34%),
+      repeating-conic-gradient(from -1.40625deg, rgba(31,111,120,.20) 0 .18deg, transparent .18deg 2.8125deg),
       rgba(255, 255, 255, 0.68);
     border: 2px solid rgba(31, 111, 120, 0.72);
     clip-path: polygon(50% 0,69.13% 3.81%,85.36% 14.64%,96.19% 30.87%,100% 50%,

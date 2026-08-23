@@ -18,7 +18,7 @@ from torch.distributions import Categorical
 
 from ppo_models import (
     BULLET_SLOTS, MAP_DIM, OBS_DIM, OBS_SCHEMA_VERSION,
-    make_actor_critic,
+    MOVEMENT_ACTIONS, make_actor_critic,
 )
 
 
@@ -41,7 +41,7 @@ def atomic_torch_save(value, path):
 
 @dataclass(frozen=True)
 class Config:
-    stage: str = "paint-v1-directional16"
+    stage: str = "paint-v1-directional128"
     observation_schema: int = OBS_SCHEMA_VERSION
     opponent: str = "Laika"
     envs: int = 64
@@ -83,7 +83,7 @@ class PpoVec:
         self.handle = self.lib.kf_vec_new_ppo_paint_v1(count, seed)
         if not self.handle:
             raise RuntimeError("kf_vec_new_ppo_paint_v1 failed")
-        self.lib.kf_vec_step.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_uint8)]
+        self.lib.kf_vec_step.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_uint16)]
         self.lib.kf_vec_reset_done.argtypes = [ctypes.c_void_p]
         self.lib.kf_vec_free.argtypes = [ctypes.c_void_p]
         self.obs = self._view("kf_vec_obs", ctypes.c_float, (count, OBS_DIM))
@@ -104,9 +104,9 @@ class PpoVec:
         return np.ctypeslib.as_array(function(self.handle), shape=shape)
 
     def step(self, actions):
-        actions = np.asarray(actions, np.uint8)
+        actions = np.asarray(actions, np.uint16)
         self.lib.kf_vec_step(
-            self.handle, actions.ctypes.data_as(ctypes.POINTER(ctypes.c_uint8))
+            self.handle, actions.ctypes.data_as(ctypes.POINTER(ctypes.c_uint16))
         )
 
     def reset_done(self):
@@ -203,7 +203,7 @@ def collect_rollout(env, model, kind, config, device, starts, hidden):
         "reward_mean": float(rewards.mean()),
         "reward_std": float(rewards.std()),
         "fire_rate": float((actions[..., 1] == 1).mean()),
-        "stop_rate": float((actions[..., 0] == 8).mean()),
+        "stop_rate": float((actions[..., 0] == MOVEMENT_ACTIONS - 1).mean()),
         "done_count": int(dones.sum()),
         "outcomes": outcome_counts,
         "phi_self_mean": float(diagnostics[..., 0].mean()),
@@ -357,7 +357,7 @@ def evaluate(model, kind, config, device):
                     ~starts, device=device, dtype=torch.float32
                 ).view(1, config.eval_envs, 1)
             logits, _value, hidden = model.step(*tensors(current_obs, current_masks, device), hidden)
-            movement = logits[0].argmax(-1).cpu().numpy().astype(np.uint8)
+            movement = logits[0].argmax(-1).cpu().numpy().astype(np.uint16)
             fire = logits[1].argmax(-1).cpu().numpy().astype(np.uint8)
             action = movement * 2 + fire
             fired |= fire == 1
@@ -433,7 +433,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", required=True, choices=("nomem", "gru"))
     parser.add_argument("--seed", required=True, type=int, choices=TRAIN_SEEDS)
-    parser.add_argument("--output", type=Path, default=Path("outputs/ppo_paint_v1_directional16"))
+    parser.add_argument("--output", type=Path, default=Path("outputs/ppo_paint_v1_directional128"))
     parser.add_argument("--device", choices=("auto", "cpu", "mps"), default="auto")
     parser.add_argument("--smoke", action="store_true")
     args = parser.parse_args()
@@ -525,7 +525,7 @@ def main():
     model.eval()
     final_eval = evaluate(model, args.model, config, device)
     result = {
-        "name": f"ppo-paint-v1-directional16-{args.model}-s{args.seed}",
+        "name": f"ppo-paint-v1-directional128-{args.model}-s{args.seed}",
         "model": args.model, "seed": args.seed, "total_steps": total_steps,
         "seconds_this_run": time.perf_counter() - started,
         "evaluation": final_eval, "config": config_dict,

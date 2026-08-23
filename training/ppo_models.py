@@ -8,8 +8,8 @@ import torch
 import torch.nn as nn
 
 
-OBS_SCHEMA_VERSION = 4
-OBS_DIM = 1178
+OBS_SCHEMA_VERSION = 5
+OBS_DIM = 1290
 MAP_DIM = 1080
 SELF_OFFSET = 1081
 OPPONENT_OFFSET = 1090
@@ -18,8 +18,9 @@ BULLET_SLOTS = 10
 BULLET_DIM = 6
 PHASE_OFFSET = 1156
 ACTION_OFFSET = 1159
-MOVEMENT_ACTIONS = 17
+MOVEMENT_ACTIONS = 129
 FIRE_ACTIONS = 2
+SCALAR_DIM = (BULLET_OFFSET - MAP_DIM) + (OBS_DIM - PHASE_OFFSET)
 
 
 class FrameEncoder(nn.Module):
@@ -36,7 +37,7 @@ class FrameEncoder(nn.Module):
             nn.Linear(BULLET_DIM, 32), nn.ReLU(),
             nn.Linear(32, 32), nn.ReLU(),
         )
-        self.scalar_encoder = nn.Sequential(nn.Linear(38, 64), nn.Tanh())
+        self.scalar_encoder = nn.Sequential(nn.Linear(SCALAR_DIM, 64), nn.Tanh())
         self.fusion = nn.Sequential(nn.Linear(128 + 64 + 64, 128), nn.Tanh())
 
     def forward(self, obs: torch.Tensor, bullet_mask: torch.Tensor) -> torch.Tensor:
