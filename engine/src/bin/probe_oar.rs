@@ -5,7 +5,7 @@
 //! the Python update probe consumes.
 
 use kf_engine::game::Game;
-use kf_engine::directional::{apply_direction, unpack_action};
+use kf_engine::directional::{apply_direction, unpack_action, MOVEMENT_HEAD_DIM, FIRE_HEAD_DIM};
 use kf_engine::reward::RewardTracker;
 use kf_engine::rng::Rng;
 use kf_engine::semantic_obs::{
@@ -78,7 +78,7 @@ fn main() {
             t_obs += t.elapsed();
 
             let t = Instant::now();
-            let action = rng.randrange(34) as u8;
+            let action = rng.randrange((MOVEMENT_HEAD_DIM * FIRE_HEAD_DIM) as i32) as u16;
             let (movement, fire) = unpack_action(action);
             apply_direction(&mut env.game, 0, movement, fire);
             env.obs_state.push_action(movement, fire);

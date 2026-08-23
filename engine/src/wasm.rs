@@ -202,7 +202,7 @@ pub unsafe extern "C" fn kf_set_rotation_if_clear(h: *mut Handle, tank: u32, rot
         .set_tank_rotation_if_clear(tank as usize, rotation as f64) as u32
 }
 
-/// World-direction input shared with PPO: sixteen 22.5-degree headings + STOP.
+/// World-direction input shared with PPO: 128 headings at 2.8125° + STOP.
 /// Turning and forward motion are resolved by the deterministic controller.
 #[no_mangle]
 pub unsafe extern "C" fn kf_set_direction_input(
@@ -211,7 +211,7 @@ pub unsafe extern "C" fn kf_set_direction_input(
     movement: u32,
     fire: u32,
 ) {
-    apply_direction(&mut (*h).game, tank as usize, movement.min(16) as u8, fire.min(1) as u8);
+    apply_direction(&mut (*h).game, tank as usize, movement.min(128) as u16, fire.min(1) as u8);
 }
 
 /// World-direction input for the human browser wheel. This intentionally has
@@ -227,7 +227,7 @@ pub unsafe extern "C" fn kf_set_human_direction_input(
     apply_human_direction(
         &mut (*h).game,
         tank as usize,
-        movement.min(16) as u8,
+        movement.min(128) as u16,
         fire.min(1) as u8,
     );
 }
@@ -484,7 +484,7 @@ pub unsafe extern "C" fn kf_reward_info(h: *mut Handle, out: *mut f32) {
     out.copy_from_slice(&values);
 }
 
-/// Encode schema-4 observation for a browser-hosted learned policy.
+/// Encode schema-5 observation for a browser-hosted learned policy.
 /// The packed action is movement*2+fire, or -1 at a round boundary.
 #[no_mangle]
 pub unsafe extern "C" fn kf_semantic_observation(
@@ -494,9 +494,9 @@ pub unsafe extern "C" fn kf_semantic_observation(
 ) -> *const f32 {
     let h = &mut *h;
     let mut state = h.semantic_state.clone();
-    if (0..34).contains(&last_action) {
-        let action = last_action as u8;
-        state.push_action(action / 2, action % 2);
+    if (0..258).contains(&last_action) {
+        let action = last_action as u16;
+        state.push_action(action / 2, (action % 2) as u8);
     }
     encode_semantic(&h.game, tank as usize, &state, &mut h.semantic);
     h.semantic_buffer[..OBS_DIM].copy_from_slice(&h.semantic.values);

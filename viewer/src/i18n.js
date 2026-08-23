@@ -58,7 +58,7 @@ export const STRINGS = {
     touchControls: {
       joystick: "Joystick",
       dpad: "Forward / turn",
-      joystickAria: "32-direction movement joystick with configurable forward and reverse sectors",
+      joystickAria: "128-direction movement joystick with configurable forward and reverse sectors",
       dpadAria: "Forward, reverse, turn left and turn right controls",
       fire: "FIRE",
       hide: "Hide touch controls",
@@ -161,7 +161,7 @@ export const STRINGS = {
     touchControls: {
       joystick: "手柄",
       dpad: "前后左右",
-      joystickAria: "三十二方向移动轮盘：可调前向与后退对齐范围",
+      joystickAria: "一百二十八方向移动轮盘：可调前向与后退对齐范围",
       dpadAria: "前进、后退、左转、右转控制",
       fire: "开火",
       hide: "隐藏触控控制器",

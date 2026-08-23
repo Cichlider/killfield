@@ -4,9 +4,9 @@
 
 | 项目 | 配置 |
 |---|---|
-| 下一模型名 | `ppo-paint-v1-directional16-nomem-s11` |
+| 下一模型名 | `ppo-paint-v1-directional128-nomem-s11` |
 | 对手 | 固定 Laika |
-| 网络 | schema-4 frame encoder + MLP-256 Actor-Critic，无记忆；Movement-17/Fire-2 双 head |
+| 网络 | schema-5 frame encoder + MLP-256 Actor-Critic，无记忆；Movement-129/Fire-2 双 head |
 | 动作频率 | 25 Hz，每引擎帧一次 |
 | 并行环境 | 64 |
 | rollout | 每环境 256 步 |
@@ -39,6 +39,6 @@ zsh training/run_ppo_paint_v1.sh train
 
 ## 当前训练结果
 
-- schema-4 directional 模型尚未开始正式训练，因此当前没有新模型名对应的胜率；
+- schema-5 directional128 模型尚未开始正式训练，因此当前没有新模型名对应的胜率；
 - 历史 schema-3 `ppo-paint-v1-nomem-s11`：5,013,504 步；固定 Laika 100 局为
   0 胜、95 负、5 双亡；它使用已取消的联合 18 动作，不再出现在网页模型选项中。

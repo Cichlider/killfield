@@ -15,7 +15,7 @@
  * with continuous=1, matching the engine's human-input path (a discrete
  * controller would pass 1.0 and get the ten-degree turn lattice; a human
  * passes a fraction and does not). The joystick math, deadzone and
- * snap-to-11.25-degree logic are otherwise untouched.
+ * snap-to-2.8125-degree logic are otherwise untouched.
  */
 
 import * as C from "./constants.js";
@@ -163,7 +163,7 @@ const FORWARD_ALIGNMENT_KEY = "killfield-forward-alignment-degrees";
 const JOYSTICK_TURN_FULL = 0.10;
 const JOYSTICK_DRIVE_START = 0.25;
 const JOYSTICK_FULL_SPEED = 0.33;
-const JOYSTICK_DIRECTIONS = 32;
+const JOYSTICK_DIRECTIONS = 128;
 const JOYSTICK_STEP_DEG = 360 / JOYSTICK_DIRECTIONS;
 const JOYSTICK_TURN_DEADBAND_DEG = C.TANK_TURN_SPEED / 2;
 export const DEFAULT_FORWARD_ALIGNMENT_DEGREES = 270;
