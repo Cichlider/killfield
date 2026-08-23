@@ -85,6 +85,16 @@ h1 {
   line-height: 0;
 }
 
+.stage-toolbar {
+  position: absolute;
+  z-index: 3;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  gap: 4px;
+  line-height: normal;
+}
+
 canvas {
   display: block;
   width: 100%;
@@ -127,6 +137,11 @@ canvas {
 .pause-toggle { right: 40px; }
 .sound-toggle { right: 72px; }
 .touch-visibility-toggle { right: 104px; font-size: 10px; }
+
+.stage-toolbar > button {
+  position: static;
+  flex: none;
+}
 
 .fullscreen-toggle:hover,
 .pause-toggle:hover,
@@ -803,4 +818,192 @@ select {
   .telemetry { font-size: 11px; grid-template-columns: 1fr 1fr; gap: 0 12px; }
   #tuning-controls { grid-template-columns: 1fr; }
   .tuning-panel { padding: 14px; }
+}
+
+/* Mobile landscape recording layout. The maze owns the centre column; HUD,
+   toolbar and touch controls stay in dedicated black side rails so recordings
+   never have interface chrome covering gameplay. */
+@media (max-width: 980px), (pointer: coarse) {
+  .stage:fullscreen,
+  .stage:-webkit-full-screen,
+  .stage.pseudo-fullscreen {
+    --record-left-rail: clamp(128px, 18vw, 220px);
+    --record-right-rail: clamp(108px, 15vw, 176px);
+    display: grid;
+    grid-template-columns: var(--record-left-rail) minmax(0, 1fr) var(--record-right-rail);
+    grid-template-rows: 100%;
+    align-items: stretch;
+    justify-content: stretch;
+  }
+
+  .stage:fullscreen .canvas-wrap,
+  .stage:-webkit-full-screen .canvas-wrap,
+  .stage.pseudo-fullscreen .canvas-wrap {
+    grid-column: 2;
+    grid-row: 1;
+    width: 100%;
+    height: 100%;
+    min-width: 0;
+  }
+
+  .stage:fullscreen .stage-overlay,
+  .stage:-webkit-full-screen .stage-overlay,
+  .stage.pseudo-fullscreen .stage-overlay {
+    position: fixed;
+    z-index: 5;
+    top: max(10px, env(safe-area-inset-top));
+    left: max(10px, env(safe-area-inset-left));
+    width: calc(var(--record-left-rail) - 20px - env(safe-area-inset-left));
+    margin: 0;
+    padding: 7px 8px 8px;
+    overflow: hidden;
+    color: #fff;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 9px;
+    backdrop-filter: blur(5px);
+  }
+
+  .stage:fullscreen .scoreboard,
+  .stage:-webkit-full-screen .scoreboard,
+  .stage.pseudo-fullscreen .scoreboard {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 2px;
+    margin: 0 0 5px;
+  }
+
+  .stage:fullscreen .scoreboard .side,
+  .stage:-webkit-full-screen .scoreboard .side,
+  .stage.pseudo-fullscreen .scoreboard .side {
+    display: grid;
+    grid-template-columns: 11px minmax(0, 1fr) auto;
+    gap: 6px;
+    width: 100%;
+  }
+
+  .stage:fullscreen .side-right .swatch,
+  .stage:-webkit-full-screen .side-right .swatch,
+  .stage.pseudo-fullscreen .side-right .swatch { order: -1; }
+
+  .stage:fullscreen .side-right .side-score,
+  .stage:-webkit-full-screen .side-right .side-score,
+  .stage.pseudo-fullscreen .side-right .side-score { order: 2; }
+
+  .stage:fullscreen .swatch,
+  .stage:-webkit-full-screen .swatch,
+  .stage.pseudo-fullscreen .swatch {
+    width: 10px;
+    height: 10px;
+    border-radius: 3px;
+  }
+
+  .stage:fullscreen .side-name,
+  .stage:-webkit-full-screen .side-name,
+  .stage.pseudo-fullscreen .side-name {
+    overflow: hidden;
+    font-size: clamp(10px, 1.55vw, 13px);
+    text-overflow: ellipsis;
+  }
+
+  .stage:fullscreen .side-score,
+  .stage:-webkit-full-screen .side-score,
+  .stage.pseudo-fullscreen .side-score { font-size: clamp(18px, 2.6vw, 25px); }
+
+  .stage:fullscreen .vs,
+  .stage:-webkit-full-screen .vs,
+  .stage.pseudo-fullscreen .vs { display: none; }
+
+  .stage:fullscreen .roundline,
+  .stage:-webkit-full-screen .roundline,
+  .stage.pseudo-fullscreen .roundline { margin-bottom: 0; font-size: clamp(10px, 1.35vw, 12px); }
+
+  .stage:fullscreen .streakline,
+  .stage:-webkit-full-screen .streakline,
+  .stage.pseudo-fullscreen .streakline { font-size: clamp(9px, 1.2vw, 11px); }
+
+  .stage:fullscreen .stage-toolbar,
+  .stage:-webkit-full-screen .stage-toolbar,
+  .stage.pseudo-fullscreen .stage-toolbar {
+    position: fixed;
+    z-index: 6;
+    top: max(10px, env(safe-area-inset-top));
+    right: max(10px, env(safe-area-inset-right));
+    display: grid;
+    grid-template-columns: repeat(2, minmax(40px, 52px));
+    gap: 6px;
+    width: min(110px, calc(var(--record-right-rail) - 20px - env(safe-area-inset-right)));
+  }
+
+  .stage:fullscreen .stage-toolbar > button,
+  .stage:-webkit-full-screen .stage-toolbar > button,
+  .stage.pseudo-fullscreen .stage-toolbar > button {
+    position: static;
+    width: 100%;
+    min-width: 0;
+    height: 40px;
+    padding: 4px;
+    font-size: 14px;
+    line-height: 1;
+    color: rgba(255, 255, 255, 0.9);
+    background: rgba(255, 255, 255, 0.12);
+    border-color: rgba(255, 255, 255, 0.18);
+    border-radius: 9px;
+    opacity: 1;
+    backdrop-filter: blur(5px);
+  }
+
+  .stage:fullscreen .stage-toolbar > .touch-visibility-toggle,
+  .stage:-webkit-full-screen .stage-toolbar > .touch-visibility-toggle,
+  .stage.pseudo-fullscreen .stage-toolbar > .touch-visibility-toggle { font-size: 10px; }
+
+  .stage:fullscreen .touch-left-control,
+  .stage:-webkit-full-screen .touch-left-control,
+  .stage.pseudo-fullscreen .touch-left-control {
+    left: max(10px, env(safe-area-inset-left));
+    bottom: max(10px, env(safe-area-inset-bottom));
+    display: flex;
+    justify-content: center;
+    width: calc(var(--record-left-rail) - 20px - env(safe-area-inset-left));
+  }
+
+  .stage:fullscreen .touch-joystick,
+  .stage:-webkit-full-screen .touch-joystick,
+  .stage.pseudo-fullscreen .touch-joystick,
+  .stage:fullscreen .touch-dpad,
+  .stage:-webkit-full-screen .touch-dpad,
+  .stage.pseudo-fullscreen .touch-dpad {
+    width: min(100%, clamp(104px, 15vw, 150px));
+  }
+
+  .stage:fullscreen .control-style-switch,
+  .stage:-webkit-full-screen .control-style-switch,
+  .stage.pseudo-fullscreen .control-style-switch {
+    top: max(108px, calc(env(safe-area-inset-top) + 102px));
+    bottom: auto;
+    left: max(10px, env(safe-area-inset-left));
+    justify-content: center;
+    width: calc(var(--record-left-rail) - 20px - env(safe-area-inset-left));
+    padding: 2px;
+    transform: none;
+  }
+
+  .stage:fullscreen .control-style-switch button,
+  .stage:-webkit-full-screen .control-style-switch button,
+  .stage.pseudo-fullscreen .control-style-switch button {
+    min-width: 0;
+    min-height: 27px;
+    padding: 3px 6px;
+    font-size: 9px;
+  }
+
+  .stage:fullscreen .touch-fire,
+  .stage:-webkit-full-screen .touch-fire,
+  .stage.pseudo-fullscreen .touch-fire {
+    right: max(12px, env(safe-area-inset-right));
+    bottom: max(14px, env(safe-area-inset-bottom));
+    width: min(calc(var(--record-right-rail) - 24px - env(safe-area-inset-right)), clamp(72px, 11vw, 98px));
+    font-size: clamp(11px, 1.8vw, 15px);
+  }
 }

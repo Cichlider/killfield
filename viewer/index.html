@@ -47,10 +47,12 @@
     </div>
     <div class="canvas-wrap">
       <canvas id="screen" width="712" height="500"></canvas>
-      <button id="sound" type="button" class="sound-toggle" aria-label="Mute sound"></button>
-      <button id="touch-visibility" type="button" class="touch-visibility-toggle" aria-label="Hide touch controls" hidden>CTRL</button>
-      <button id="pause" type="button" class="pause-toggle" aria-label="Pause (P)"></button>
-      <button id="fullscreen" type="button" class="fullscreen-toggle" aria-label="Fullscreen">⛶</button>
+      <div class="stage-toolbar" aria-label="Game controls">
+        <button id="touch-visibility" type="button" class="touch-visibility-toggle" aria-label="Hide touch controls" hidden>CTRL</button>
+        <button id="sound" type="button" class="sound-toggle" aria-label="Mute sound"></button>
+        <button id="pause" type="button" class="pause-toggle" aria-label="Pause (P)"></button>
+        <button id="fullscreen" type="button" class="fullscreen-toggle" aria-label="Fullscreen">⛶</button>
+      </div>
     </div>
     <div id="touch-controls" class="touch-controls" hidden>
       <div class="control-style-switch" role="group" aria-label="Touch control style">
