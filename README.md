@@ -1,5 +1,13 @@
 # Killfield
 
+> 当前分支：`rl`。这里的 Viewer 只用于 **PPO 模型 vs 固定 Laika** 的行为 review；
+> GitHub Pages 的 MPC 观看/对战版本位于 `main`。当前尚无兼容 schema-4 checkpoint，
+> 所以页面会诚实显示未就绪，不会用 MPC 代替模型。
+
+首次运行先执行 `python3 -m venv .venv` 和
+`.venv/bin/pip install -r training/requirements.txt`。之后用 `bash viewer/serve.sh` 启动，
+打开 <http://127.0.0.1:8000/>。
+
 Killfield 是一个用于 Tank Trouble 风格迷宫坦克对战的实时 MPC（Model Predictive
 Control）智能体。游戏引擎、物理、弹道和规划器使用 Rust 编写；网页加载同一份
 Rust/WASM 引擎，用来观看 Killfield 对战、亲自与它交手，以及观察 AI 自对弈。

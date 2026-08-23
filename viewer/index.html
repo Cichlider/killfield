@@ -7,8 +7,8 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>killfield — Rust/WASM maze tank duel</title>
-<meta name="description" content="Browser maze tank duel against the killfield search agent, running on the Rust/WASM kf_engine.">
+<title>killfield RL — PPO model vs Laika</title>
+<meta name="description" content="Review a PPO policy against the fixed Laika opponent in the Rust/WASM Killfield engine.">
 <link rel="icon" type="image/png" sizes="48x48" href="assets/brand/favicon-48.png">
 <link rel="icon" type="image/png" sizes="192x192" href="assets/brand/icon-192.png">
 <link rel="apple-touch-icon" sizes="180x180" href="assets/brand/apple-touch-icon.png">
@@ -22,7 +22,7 @@
       <h1>killfield</h1>
       <button id="lang-toggle" type="button" class="lang-toggle" aria-label="Switch to Chinese">中文</button>
     </div>
-    <p class="tagline" id="tagline">A search-based agent for a maze tank duel. Most of its kills are bank shots.</p>
+    <p class="tagline" id="tagline">PPO behavior review: the selected model plays 25 Hz against fixed Laika.</p>
   </header>
 
   <div class="play-layout">
@@ -32,7 +32,7 @@
       <div class="scoreboard" id="scoreboard">
         <div class="side">
           <span class="swatch" id="swatch-0"></span>
-          <span class="side-name" id="name-0">killfield AI</span>
+          <span class="side-name" id="name-0">PPO model</span>
           <span class="side-score" id="score-0">0</span>
         </div>
         <span class="vs">vs</span>
@@ -83,9 +83,14 @@
 
   <div class="controls">
     <div class="row modes" role="group" aria-label="Mode">
-      <button id="mode-watch" type="button" class="mode active">Watch it play</button>
-      <button id="mode-play" type="button" class="mode">Play against it</button>
-      <button id="mode-selfplay" type="button" class="mode">AI vs AI</button>
+      <label class="seedbox">
+        <span>model</span>
+        <select id="rl-model"><option value="">checking checkpoints…</option></select>
+      </label>
+      <span id="rl-status" class="hint" role="status">connecting to inference service…</span>
+      <button id="mode-watch" type="button" class="mode active" hidden>Model vs Laika</button>
+      <button id="mode-play" type="button" class="mode" hidden>Play</button>
+      <button id="mode-selfplay" type="button" class="mode" hidden>AI vs AI</button>
     </div>
 
     <div class="row">
@@ -138,7 +143,7 @@
   </div>
   </div>
 
-  <aside class="tuning-panel" id="tuning-panel" aria-labelledby="tuning-title">
+  <aside class="tuning-panel" id="tuning-panel" aria-labelledby="tuning-title" hidden>
     <div class="tuning-heading">
       <p class="tuning-eyebrow" id="tuning-eyebrow">AI lab</p>
       <h2 id="tuning-title">Live parameters</h2>

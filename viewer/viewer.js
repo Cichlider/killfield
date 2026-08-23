@@ -115,6 +115,8 @@ const touchVisibilityButton = document.getElementById("touch-visibility");
 const orientationHint = document.getElementById("orientation-hint");
 const orientationTitle = document.getElementById("orientation-title");
 const orientationBody = document.getElementById("orientation-body");
+const rlModelSelect = document.getElementById("rl-model");
+const rlStatus = document.getElementById("rl-status");
 
 const keyboard = new Keyboard();
 const touchControls = new TouchControls(touchControlsRoot, touchVisibilityButton);
@@ -122,6 +124,42 @@ const sounds = new SoundEffects();
 
 let wasm = null;
 let scratchPtr = null;
+const OBS_DIM = 1178;
+const BULLET_SLOTS = 10;
+let selectedModel = "";
+let modelHistory = [];
+let lastModelAction = -1;
+let inferencePending = false;
+let inferenceGeneration = 0;
+let inferenceSummary = "";
+
+async function loadModelCatalogue() {
+  try {
+    const response = await fetch("/api/models", { cache: "no-store" });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const catalogue = await response.json();
+    rlModelSelect.replaceChildren();
+    for (const token of catalogue.models) {
+      const option = document.createElement("option");
+      option.value = token;
+      option.textContent = catalogue.display[token] || token;
+      rlModelSelect.append(option);
+    }
+    selectedModel = catalogue.models[0] || "";
+    if (!selectedModel) {
+      const option = document.createElement("option");
+      option.value = "";
+      option.textContent = "no compatible schema-4 checkpoint";
+      rlModelSelect.append(option);
+      rlStatus.textContent = "模型尚未训练；运行训练后刷新。本页不会用 MPC 冒充 PPO。";
+    } else {
+      rlStatus.textContent = `ready · ${catalogue.device} · deterministic argmax`;
+    }
+  } catch (error) {
+    rlModelSelect.innerHTML = '<option value="">inference service unavailable</option>';
+    rlStatus.textContent = `请用 bash viewer/serve.sh 启动（${error.message}）`;
+  }
+}
 
 // ------------------------------------------------------------- renderer
 const MAX_DPR = 2;
@@ -432,7 +470,7 @@ function formatTuningValue(spec, value) {
 let mpcTanks = [];
 
 /** Push the full current tuning snapshot to every attached agent. Needed
- *  after newGame() (kf_attach_mpc resets tuning to Tuning::default()) and
+ *  after newGame() and
  *  after any tuning-panel edit. */
 function pushTuningToEngine() {
   if (!wasm || handle === null) return;
@@ -546,6 +584,12 @@ function applyLanguage() {
   syncFullscreenButton();
   syncPauseButton();
   syncSoundButton();
+  tagline.textContent = lang === "zh"
+    ? "PPO 行为 review：所选模型以 25 Hz 对战固定 Laika。"
+    : "PPO behavior review: the selected model plays fixed Laika at 25 Hz.";
+  note.textContent = lang === "zh"
+    ? "左侧只接受 schema-4 directional16 PPO 的双 head 动作；右侧始终由固定 Laika 脚本控制。"
+    : "The left tank accepts only schema-4 directional16 PPO actions; fixed Laika always drives the right tank.";
   updateScoreboard();
 }
 
@@ -608,21 +652,18 @@ function newGame() {
     : (parsed >>> 0);
 
   if (handle !== null) wasm.kf_free(handle);
-  const laikaMask = mode === "watch" ? 2 : 0;
+  const laikaMask = 2;
   handle = wasm.kf_new(seed, laikaMask);
 
-  const rayCount = Number(raysSelect.value);
-  const oppL1 = oppModelSelect.value === "L1" ? 1 : 0;
-  if (mode === "selfplay") {
-    wasm.kf_attach_mpc(handle, 0, 7, rayCount, oppL1);
-    wasm.kf_attach_mpc(handle, 1, 11, rayCount, oppL1);
-    mpcTanks = [0, 1];
-  } else {
-    // watch and play both put a single MPC agent on tank 0.
-    wasm.kf_attach_mpc(handle, 0, 7, rayCount, oppL1);
-    mpcTanks = [0];
-  }
-  pushTuningToEngine();
+  // RL branch contract: tank 0 is driven only by /api/act; tank 1 is Laika.
+  // Never attach the MPC planner here, even while no checkpoint is available.
+  mpcTanks = [];
+  modelHistory = [];
+  lastModelAction = -1;
+  inferenceGeneration += 1;
+  inferencePending = false;
+  inferenceSummary = selectedModel ? "waiting for first action" : "no model loaded";
+  wasm.kf_set_direction_input(handle, 0, 16, 0);
 
   // The instant a new round starts reads as relentless when a human is on the
   // sticks. Play mode only; watch/self-play have no human waiting to catch a
@@ -636,7 +677,7 @@ function newGame() {
 }
 
 function setMode(next) {
-  mode = next;
+  mode = "watch";
   syncTeamColors();
   keyboard.clear();
   touchControls.clear();
@@ -655,7 +696,8 @@ function setMode(next) {
 function updateScoreboard() {
   if (handle === null) return;
   const s = t();
-  const labels = ["killfield AI", opponentLabel()];
+  const selectedName = rlModelSelect.selectedOptions[0]?.textContent || "PPO model";
+  const labels = [selectedName, "Laika"];
   for (let i = 0; i < 2; i++) {
     if (nameLabels[i].textContent !== labels[i]) nameLabels[i].textContent = labels[i];
     const score = String(matchScore[i]);
@@ -677,22 +719,43 @@ let telemetryTick = 0;
 function updateTelemetry() {
   // Throttled: this is a debug readout, not part of the frame budget.
   if (telemetryTick++ % 10 !== 0) return;
-  const s = t();
-  const info = agentInfo(0);
-  if (info[3] < 0) {
-    telemetryBox.innerHTML = "";
-    return;
-  }
-  const decision = DECISION_NAMES[info[3]] ?? "?";
-  const rows = [
-    [s.telemetryLabels.decision, decision],
-    [s.telemetryLabels.planP95, s.telemetryValue.planP95(info[5].toFixed(1))],
-    [s.telemetryLabels.fieldBuilds, s.telemetryValue.fieldBuilds(info[7], info[8].toFixed(1))],
-    [s.telemetryLabels.huntChain, s.telemetryValue.huntChain(info[6], info[9].toFixed(0))],
-    [s.telemetryLabels.ownBulletGuard, info[10]],
-    [s.telemetryLabels.stuckEvents, info[11]],
-  ];
-  telemetryBox.innerHTML = rows.map(([k, v]) => `<div>${k} <b>${v}</b></div>`).join("");
+  telemetryBox.textContent = inferenceSummary;
+}
+
+function semanticFrame() {
+  const ptr = wasm.kf_semantic_observation(handle, 0, lastModelAction);
+  const values = new Float32Array(wasm.memory.buffer, ptr, OBS_DIM + BULLET_SLOTS);
+  return {
+    obs: Array.from(values.subarray(0, OBS_DIM)),
+    mask: Array.from(values.subarray(OBS_DIM), (value) => value > 0.5),
+  };
+}
+
+function requestModelAction() {
+  if (!selectedModel || inferencePending || handle === null) return;
+  const generation = inferenceGeneration;
+  modelHistory.push(semanticFrame());
+  if (modelHistory.length > 64) modelHistory.shift();
+  inferencePending = true;
+  fetch("/api/act", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ model: selectedModel, history: modelHistory }),
+  }).then(async (response) => {
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || `HTTP ${response.status}`);
+    if (generation !== inferenceGeneration) return;
+    lastModelAction = result.movement * 2 + result.fire;
+    wasm.kf_set_direction_input(handle, 0, result.movement, result.fire);
+    inferenceSummary = `${result.model} · move ${result.movement}/16 · fire ${result.fire} · `
+      + `${Math.round(result.movement_confidence * 100)}% / ${Math.round(result.fire_confidence * 100)}%`;
+  }).catch((error) => {
+    if (generation !== inferenceGeneration) return;
+    inferenceSummary = `inference error: ${error.message}`;
+    wasm.kf_set_direction_input(handle, 0, 16, 0);
+  }).finally(() => {
+    if (generation === inferenceGeneration) inferencePending = false;
+  });
 }
 
 function tick() {
@@ -702,8 +765,9 @@ function tick() {
     freezeFrames -= 1;
     return;
   }
-  // kf_step drives any attached MPC agent internally, so unlike killfield's
-  // JS loop this only needs to push human input before stepping.
+  requestModelAction();
+  // Laika is engine-side; tank 0 keeps the latest async model action while
+  // the next 25 Hz request is in flight, so rendering and physics never block.
   const human = MODES[mode].humanTank;
   if (human !== null) {
     const strengths = keyboard.sampleStrengths();
@@ -718,6 +782,8 @@ function tick() {
   frozen = buf[14] > 0.5;
   if (flags & 1) { // new_round
     roundFrames = 0;
+    modelHistory = [];
+    lastModelAction = -1;
     if (mode === "play") freezeFrames = ROUND_START_DELAY_FRAMES;
   }
   if (flags & 64) { // round_end
@@ -879,6 +945,7 @@ async function boot() {
   const { instance } = await WebAssembly.instantiate(await res.arrayBuffer(), {});
   wasm = instance.exports;
   scratchPtr = wasm.kf_scratch_ptr();
+  await loadModelCatalogue();
   const paramCount = wasm.kf_tuning_param_count();
   if (paramCount !== TUNING_SCHEMA.length) {
     throw new Error(`Tuning schema mismatch: wasm reports ${paramCount}, viewer has ${TUNING_SCHEMA.length}`);
@@ -902,6 +969,10 @@ async function boot() {
     syncForwardAlignmentControl();
   });
   oppModelSelect.addEventListener("change", newGame);
+  rlModelSelect.addEventListener("change", () => {
+    selectedModel = rlModelSelect.value;
+    newGame();
+  });
   tuningResetButton.addEventListener("click", () => {
     resetTuning();
     pushTuningToEngine();
@@ -932,6 +1003,11 @@ async function boot() {
   // by default prevents synchronous AI planning from starving display
   // refreshes; players can still choose the 512-ray maximum manually.
   if (window.matchMedia?.("(pointer: coarse)").matches) raysSelect.value = "256";
+  raysSelect.closest("label").hidden = true;
+  forwardAlignmentInput.closest("label").hidden = true;
+  oppModelSelect.closest("label").hidden = true;
+  oppModelHint.hidden = true;
+  keyhelp.hidden = true;
   setMode("watch");
   applyLanguage();
   requestAnimationFrame(frame);

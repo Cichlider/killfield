@@ -14,7 +14,14 @@ from ppo_models import BULLET_SLOTS, OBS_DIM, make_actor_critic
 
 # Schema-3 checkpoints used the retired throttle/turn/fire joint action and are
 # intentionally not exposed as schema-4 directional policies.
-SOURCES = {}
+SOURCES = {
+    "nomem-s11": {
+        "display": "ppo-paint-v1-directional16-nomem-s11",
+        "architecture": "nomem",
+        "history": 1,
+        "checkpoint": "nomem/s11/final.pt",
+    },
+}
 
 
 class Models:
