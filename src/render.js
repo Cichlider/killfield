@@ -9,6 +9,15 @@
 import * as C from "./constants.js";
 
 const DEG = C.DEG;
+const MAX_DEVICE_PIXEL_RATIO = 2;
+
+/** Interpolate through the short side of the wraparound at ±180 degrees. */
+export function interpolateAngle(from, to, alpha) {
+  let delta = (to - from) % 360;
+  if (delta > 180) delta -= 360;
+  else if (delta <= -180) delta += 360;
+  return from + delta * alpha;
+}
 
 export const THEME = {
   page: "#FFFFFF",
@@ -63,7 +72,10 @@ export class Renderer {
    * the logical-to-display ratio into the context transform.
    */
   resize() {
-    const dpr = window.devicePixelRatio || 1;
+    // DPR 3/4 phones otherwise repaint several million mostly-flat pixels on
+    // every display refresh. Two physical pixels per CSS pixel stays crisp and
+    // leaves substantially more main-thread time for the synchronous planner.
+    const dpr = Math.min(window.devicePixelRatio || 1, MAX_DEVICE_PIXEL_RATIO);
     const rect = this.canvas.getBoundingClientRect();
     const cssWidth = rect.width || this.width;
     const cssHeight = rect.height || this.height;
@@ -85,13 +97,25 @@ export class Renderer {
     if (this.sizeCheckTick++ % 15 !== 0) return;
     const rect = this.canvas.getBoundingClientRect();
     if (!rect.width) return;
-    const dpr = window.devicePixelRatio || 1;
+    const dpr = Math.min(window.devicePixelRatio || 1, MAX_DEVICE_PIXEL_RATIO);
     if (Math.abs(Math.round(rect.width * dpr) - this.canvas.width) > 1) {
       this.resize();
     }
   }
 
-  draw(game, rng, tankColors = THEME.tanks) {
+  /** Capture the last logic state used for display-refresh interpolation. */
+  capture(game) {
+    return {
+      tanks: new Map(game.tanks.map((tank) => [tank, {
+        x: tank.x, y: tank.y, rotation: tank.rotation,
+      }])),
+      bullets: new Map(game.bullets.map((bullet) => [bullet, {
+        x: bullet.x, y: bullet.y,
+      }])),
+    };
+  }
+
+  draw(game, rng, tankColors = THEME.tanks, previous = null, alpha = 1) {
     this.syncSize();
     const ctx = this.ctx;
     const g = game;
@@ -132,27 +156,36 @@ export class Renderer {
     const br = Math.max(2.0, 2.5 * (g.scale / 50.0));
     ctx.fillStyle = THEME.bullet;
     for (const b of g.bullets) {
+      const old = previous?.bullets.get(b);
+      const bx = old ? old.x + (b.x - old.x) * alpha : b.x;
+      const by = old ? old.y + (b.y - old.y) * alpha : b.y;
       ctx.beginPath();
-      ctx.arc(ox + b.x, oy + b.y, br, 0, Math.PI * 2);
+      ctx.arc(ox + bx, oy + by, br, 0, Math.PI * 2);
       ctx.fill();
     }
 
     for (const t of g.tanks) {
       if (!t.alive) continue;
       const colors = tankColors[t.number % tankColors.length];
-      this.drawTank(t, ox, oy, colors);
+      const old = previous?.tanks.get(t);
+      const pose = old ? {
+        x: old.x + (t.x - old.x) * alpha,
+        y: old.y + (t.y - old.y) * alpha,
+        rotation: interpolateAngle(old.rotation, t.rotation, alpha),
+      } : t;
+      this.drawTank(t, ox, oy, colors, pose);
     }
   }
 
-  drawTank(t, ox, oy, colors) {
+  drawTank(t, ox, oy, colors, pose = t) {
     const ctx = this.ctx;
     const s = t.displayScale;
-    const th = t.rotation * DEG;
+    const th = pose.rotation * DEG;
     const c = Math.cos(th);
     const sn = Math.sin(th);
     // Local sprite space to screen. Rotation 0 points up.
-    const px = (lx, ly) => ox + t.x + s * (lx * c - ly * sn);
-    const py = (lx, ly) => oy + t.y + s * (lx * sn + ly * c);
+    const px = (lx, ly) => ox + pose.x + s * (lx * c - ly * sn);
+    const py = (lx, ly) => oy + pose.y + s * (lx * sn + ly * c);
     const poly = (pts) => {
       ctx.beginPath();
       ctx.moveTo(px(pts[0][0], pts[0][1]), py(pts[0][0], pts[0][1]));

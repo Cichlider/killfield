@@ -18,7 +18,7 @@ export function benchmarkKillFieldVsLaika({
   rounds = 1000,
   timeoutSeconds = 60,
   seed = 20260814,
-  rays = 2048,
+  rays = 512,
   progressEvery = 25,
 } = {}) {
   const game = new Game({
@@ -122,7 +122,7 @@ if (isMain) {
   const rounds = Number(process.argv[2] ?? 1000);
   const timeoutSeconds = Number(process.argv[3] ?? 60);
   const seed = Number(process.argv[4] ?? 20260814);
-  const rays = Number(process.argv[5] ?? 2048);
+  const rays = Number(process.argv[5] ?? 512);
   console.log(JSON.stringify(benchmarkKillFieldVsLaika({
     rounds, timeoutSeconds, seed, rays,
   }), null, 2));

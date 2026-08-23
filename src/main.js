@@ -2,9 +2,9 @@
  * Wiring: fixed-timestep loop, input, rendering, and the page controls.
  *
  * The simulation runs at exactly 25 logic steps per second regardless of
- * display refresh rate. Rendering rides on requestAnimationFrame, but the
- * physics never sees a delta time — feeding it one would change how far
- * bullets travel between wall checks.
+ * display refresh rate. Rendering rides on requestAnimationFrame and smoothly
+ * interpolates between logic states, but the physics never sees a delta time —
+ * feeding it one would change how far bullets travel between wall checks.
  *
  * The agent plans synchronously inside the logic step. That is only viable
  * because a full plan costs a few milliseconds against a 40 ms budget; the
@@ -20,7 +20,7 @@ import { mirrorView } from "./killfield/mirror.js";
 import {
   TUNING_SCHEMA, applyTuning, resetTuning, setTuning, tuning, tuningSnapshot,
 } from "./killfield/tuning.js";
-import { Renderer, tankColorsForMode } from "./render.js";
+import { Renderer, tankColorsForMode } from "./render.js?v=20260823-smooth";
 import { Keyboard, TouchControls } from "./input.js";
 import { Rng } from "./rng.js";
 import { STRINGS, loadLang, saveLang } from "./i18n.js";
@@ -62,7 +62,6 @@ const langToggle = document.getElementById("lang-toggle");
 const tagline = document.getElementById("tagline");
 const seedLabel = document.getElementById("seed-label");
 const raysLabel = document.getElementById("rays-label");
-const rays2048 = document.getElementById("rays-2048");
 const rays512 = document.getElementById("rays-512");
 const rays256 = document.getElementById("rays-256");
 const oppModelLabel = document.getElementById("oppmodel-label");
@@ -260,7 +259,6 @@ function applyLanguage() {
   resetScoreButton.textContent = s.resetScore;
   seedLabel.textContent = s.seedLabel;
   raysLabel.textContent = s.raysLabel;
-  rays2048.textContent = s.rays2048;
   rays512.textContent = s.rays512;
   rays256.textContent = s.rays256;
   oppModelLabel.textContent = s.oppModelLabel;
@@ -288,6 +286,7 @@ let paused = false;
 const SELFPLAY_TIMEOUT_FRAMES = 30 * C.FPS;
 let roundFrames = 0;
 let freezeFrames = 0; // >0 while a round hasn't started moving yet
+let previousRenderState = null;
 
 function activeTankColors() {
   return tankColorsForMode(mode);
@@ -326,6 +325,7 @@ function newGame() {
   // first call, so that event never reaches tick()'s loop below. Priming the
   // delay here is what covers round 1; every later round is caught there.
   freezeFrames = mode === "play" ? ROUND_START_DELAY_FRAMES : 0;
+  previousRenderState = renderer.capture(game);
 }
 
 function setMode(next) {
@@ -442,11 +442,13 @@ function frame(now) {
     accumulator = 0;
   } else {
     while (accumulator >= STEP_MS) {
+      previousRenderState = renderer.capture(game);
       tick();
       accumulator -= STEP_MS;
     }
   }
-  renderer.draw(game, shakeRng, activeTankColors());
+  const renderAlpha = paused ? 1 : Math.min(1, accumulator / STEP_MS);
+  renderer.draw(game, shakeRng, activeTankColors(), previousRenderState, renderAlpha);
   updateScoreboard();
   updateTelemetry();
   requestAnimationFrame(frame);
@@ -508,18 +510,34 @@ function setPseudoFullscreen(active) {
   syncFullscreenButton();
 }
 
+async function preferLandscape() {
+  if (!screen.orientation?.lock) return;
+  try {
+    await screen.orientation.lock("landscape");
+  } catch {
+    // iOS and some embedded browsers only support physical device rotation.
+  }
+}
+
+function releaseOrientationLock() {
+  try { screen.orientation?.unlock?.(); } catch { /* optional platform feature */ }
+}
+
 async function toggleFullscreen() {
   if (fullscreenElement()) {
+    releaseOrientationLock();
     await (document.exitFullscreen || document.webkitExitFullscreen).call(document);
     return;
   }
   if (stage.classList.contains("pseudo-fullscreen")) {
+    releaseOrientationLock();
     setPseudoFullscreen(false);
     return;
   }
   const request = stage.requestFullscreen || stage.webkitRequestFullscreen;
   if (!request) {
     setPseudoFullscreen(true);
+    await preferLandscape();
     return;
   }
   try {
@@ -527,10 +545,12 @@ async function toggleFullscreen() {
     // Some embedded/mobile browsers resolve the request without actually
     // promoting a regular div. Detect the state, not just the Promise result.
     if (fullscreenElement() !== stage) setPseudoFullscreen(true);
+    await preferLandscape();
   } catch {
     // iPhone Safari versions without element fullscreen still get a genuine
     // edge-to-edge, fixed-position game surface from the same button.
     setPseudoFullscreen(true);
+    await preferLandscape();
   }
 }
 
@@ -594,6 +614,10 @@ window.addEventListener("pointerdown", () => sounds.unlock(), { once: true, capt
 window.addEventListener("keydown", () => sounds.unlock(), { once: true, capture: true });
 
 loadTuningPreferences();
+// The 256-ray option already exists specifically for mobile. Selecting it by
+// default prevents synchronous AI planning from starving display refreshes;
+// players can still choose the 512-ray maximum manually.
+if (window.matchMedia?.("(pointer: coarse)").matches) raysSelect.value = "256";
 setMode("watch");
 applyLanguage();
 requestAnimationFrame(frame);

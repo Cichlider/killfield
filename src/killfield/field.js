@@ -15,7 +15,7 @@
 
 import * as C from "../constants.js";
 
-export const DEFAULT_RAYS = 2048;
+export const DEFAULT_RAYS = 512;
 export const DEFAULT_BOUNCES = 2;
 // A geometrically valid ten-second ricochet is not a combat opportunity.
 // Only bullets arriving within three seconds get a vote.

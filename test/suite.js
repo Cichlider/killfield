@@ -13,7 +13,7 @@ import { Game, Tank, normRot } from "../src/game.js";
 import { LaikaAI } from "../src/laika.js";
 import { Keyboard, joystickButtons } from "../src/input.js";
 import { Rng } from "../src/rng.js";
-import { THEME, tankColorsForMode } from "../src/render.js";
+import { THEME, interpolateAngle, tankColorsForMode } from "../src/render.js";
 import {
   NO_FIRE_ACTIONS, ROLLOUT_PLANS, STATIONARY_FIRE_ACTION, actionIndex,
   ammoReserveScore, applyRolloutPlanFrame, densityRollout, predictedHitBonus,
@@ -101,6 +101,8 @@ export function runSuite() {
     check("190 wraps to -170", Math.abs(normRot(190) - -170) < 1e-12);
     check("-190 wraps to 170", Math.abs(normRot(-190) - 170) < 1e-12);
     check("720 collapses to 0", normRot(720) === 0);
+    check("render interpolation crosses the 180-degree seam by the short path",
+      Math.abs(interpolateAngle(179, -179, 0.5) - 180) < 1e-9);
   }
 
   // ---------------------------------------------------------------- 4
