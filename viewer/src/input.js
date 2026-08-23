@@ -160,9 +160,9 @@ export class Keyboard {
 
 const CONTROL_STYLE_KEY = "killfield-touch-control-style";
 const FORWARD_ALIGNMENT_KEY = "killfield-forward-alignment-degrees";
-const JOYSTICK_DEADZONE = 0.08;
-const JOYSTICK_DRIVE_START = 0.5;
-const JOYSTICK_FULL_SPEED = 0.72;
+const JOYSTICK_TURN_FULL = 0.10;
+const JOYSTICK_DRIVE_START = 0.25;
+const JOYSTICK_FULL_SPEED = 0.33;
 const JOYSTICK_DIRECTIONS = 16;
 const JOYSTICK_STEP_DEG = 360 / JOYSTICK_DIRECTIONS;
 const JOYSTICK_TURN_DEADBAND_DEG = C.TANK_TURN_SPEED / 2;
@@ -186,9 +186,9 @@ function normaliseAngle(degrees) {
  * Convert a world-heading stick vector into simultaneous steering and drive.
  *
  * The wheel's top is world north regardless of the hull's current rotation.
- * The inner half of the wheel is steering-only. Outside it, translation ramps
- * smoothly to full speed at 72% radius. Steering uses maximum turn speed until
- * it enters a half-step alignment band. The configurable forward sector is
+ * Turn speed ramps from zero to full over the inner 10% radius. Translation
+ * remains off through 25%, then reaches full speed at 33%. A half-step angular
+ * alignment band prevents jitter. The configurable forward sector is
  * centred on the nose; its complement is centred behind the hull and reverses.
  * A 360-degree forward sector disables reverse entirely.
  */
@@ -197,7 +197,7 @@ export function joystickButtons(
   forwardAlignmentDegrees = DEFAULT_FORWARD_ALIGNMENT_DEGREES,
 ) {
   const distance = Math.min(1, Math.hypot(x, y));
-  if (distance <= JOYSTICK_DEADZONE) {
+  if (distance === 0) {
     return { forward: 0, backup: 0, turnLeft: 0, turnRight: 0 };
   }
   const driveStrength = Math.max(0, Math.min(1,
@@ -215,9 +215,11 @@ export function joystickButtons(
   const forwards = !backwards;
   const alignmentHeading = forwards ? desired : normaliseAngle(desired + 180);
   const delta = normaliseAngle(alignmentHeading - currentRotation);
-  // Use full turn speed as requested. A half-step deadband prevents a 22.5°
-  // target from oscillating forever on the engine's ten-degree turn lattice.
-  const turnStrength = Math.abs(delta) > JOYSTICK_TURN_DEADBAND_DEG ? 1 : 0;
+  // Radial turn smoothing is confined to the first 10%. Beyond that, turning
+  // stays at full strength. The angular deadband prevents lattice oscillation.
+  const radialTurnStrength = Math.min(1, distance / JOYSTICK_TURN_FULL);
+  const turnStrength = Math.abs(delta) > JOYSTICK_TURN_DEADBAND_DEG
+    ? radialTurnStrength : 0;
   return {
     forward: forwards ? driveStrength : 0,
     backup: forwards ? 0 : driveStrength,
