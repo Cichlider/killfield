@@ -9,7 +9,7 @@ from pathlib import Path
 import numpy as np
 
 from ppo_models import (
-    ACTION_COUNT, ACTION_OFFSET, BULLET_DIM, BULLET_OFFSET, BULLET_SLOTS, MAP_DIM, OBS_DIM,
+    ACTION_COUNT, ACTION_OFFSET, BULLET_DIM, BULLET_OFFSET, BULLET_SLOTS, MAP_DIM, NAV_OFFSET, OBS_DIM,
     OBS_SCHEMA_VERSION, OPPONENT_OFFSET, PHASE_OFFSET, SELF_OFFSET, TIME_OFFSET,
 )
 
@@ -43,6 +43,7 @@ def main():
     require("finite", np.isfinite(obs).all(), "observation contains NaN or Inf")
     binary_columns = np.r_[
         np.arange(MAP_DIM),
+        np.arange(NAV_OFFSET, NAV_OFFSET + 4),
         np.arange(SELF_OFFSET + 5, SELF_OFFSET + 9),
         [OPPONENT_OFFSET + 5],
         np.arange(PHASE_OFFSET, PHASE_OFFSET + 3),
@@ -55,20 +56,16 @@ def main():
                     & (obs[:, SELF_OFFSET:SELF_OFFSET + 2] <= 1.0)).all(),
         "self position outside [0,1]",
     )
-    path_upper_bound = (12 * 10 - 1) / (12 + 10)
+    navigation = obs[:, NAV_OFFSET:SELF_OFFSET]
     require(
-        "path_length_bound",
-        ((obs[:, MAP_DIM] >= 0.0) & (obs[:, MAP_DIM] <= path_upper_bound + 1e-6)).all(),
-        f"path exceeds analytic bound {path_upper_bound:.6g}",
+        "navigation_direction",
+        np.isin(navigation[:, :4].sum(1), (0.0, 1.0)).all(),
+        "next-path direction is not empty/one-hot",
     )
-    if obs[:, MAP_DIM].max() > 1.0:
-        warnings.append({
-            "check": "path_not_unit_normalized",
-            "detail": (
-                f"empirical max {obs[:, MAP_DIM].max():.6g}; frozen schema divides by 22, "
-                f"analytic bound is {path_upper_bound:.6g}"
-            ),
-        })
+    path_upper_bound = (12 * 10 - 1) / (12 + 10)
+    require("path_cells_bound", ((navigation[:, 4] >= 0.0)
+            & (navigation[:, 4] <= path_upper_bound + 1e-6)).all(),
+            f"remaining path cells exceed analytic bound {path_upper_bound:.6g}")
     require(
         "opponent_relative", np.abs(obs[:, OPPONENT_OFFSET:OPPONENT_OFFSET + 2]).max() <= 2**0.5 + 1e-5,
         "opponent local position exceeds geometric sqrt(2) bound",
@@ -102,7 +99,7 @@ def main():
 
     groups = {
         "map": obs[:, :MAP_DIM],
-        "path_length": obs[:, MAP_DIM:SELF_OFFSET],
+        "navigation_direction_and_cells": obs[:, NAV_OFFSET:SELF_OFFSET],
         "self": obs[:, SELF_OFFSET:OPPONENT_OFFSET],
         "opponent": obs[:, OPPONENT_OFFSET:BULLET_OFFSET],
         "bullets_active": bullets[masks] if masks.any() else np.zeros((1, BULLET_DIM), np.float32),

@@ -1,39 +1,115 @@
-"""Serve the wasm viewer and the current PPO paint-v1 checkpoint."""
+"""Serve the WASM behavior viewer and completed joystick130 PPO checkpoints."""
 
 from __future__ import annotations
 
 import argparse
 import json
+from collections import deque
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import torch
 
-from ppo_models import BULLET_SLOTS, OBS_DIM, make_actor_critic
+from ppo_models import (
+    BULLET_SLOTS, OBS_DIM, make_actor_critic, make_legacy_schema7_actor_critic,
+)
 
 
-# Only schema-7 joystick130 checkpoints are exposed. Completed runs remain
-# selectable so behavior review never silently replaces an earlier handoff.
+# Completed runs remain selectable so behavior review never silently replaces an
+# earlier handoff. Schema-7 inputs are reconstructed by a read-only adapter.
 SOURCES = {
+    "walking-v6-s11": {
+        "display": "ppo-walking-v6-transition-context-serpentine-joystick130-nomem-s11",
+        "architecture": "nomem", "schema": 8, "history": 1,
+        "checkpoint": "outputs/ppo_walking_v6_transition_context_joystick130/nomem/s11/final.pt",
+    },
+    "walking-v5-s11": {
+        "display": "ppo-walking-v5-waypoint-direction-serpentine-joystick130-nomem-s11",
+        "architecture": "nomem", "schema": 8, "history": 1,
+        "checkpoint": "outputs/ppo_walking_v5_waypoint_direction_joystick130/nomem/s11/final.pt",
+    },
+    "walking-v4-s11": {
+        "display": "ppo-walking-v4-next-direction-serpentine-joystick130-nomem-s11",
+        "architecture": "nomem", "schema": 8, "history": 1,
+        "checkpoint": "outputs/ppo_walking_v4_next_direction_joystick130/nomem/s11/final.pt",
+    },
     "walking-v2-s11": {
         "display": "ppo-walking-v2-no-stop-serpentine-joystick130-nomem-s11",
         "architecture": "nomem",
+        "schema": 7,
         "history": 1,
         "checkpoint": "outputs/ppo_walking_v2_no_stop_joystick130/nomem/s11/final.pt",
     },
     "walking-v1-s11": {
         "display": "ppo-walking-v1-serpentine-joystick130-nomem-s11",
         "architecture": "nomem",
+        "schema": 7,
         "history": 1,
         "checkpoint": "outputs/ppo_walking_v1_joystick130/nomem/s11/final.pt",
     },
     "static-kill-v1-s11": {
         "display": "ppo-static-target-fixed-v1-joystick130-nomem-s11",
         "architecture": "nomem",
+        "schema": 7,
         "history": 1,
         "checkpoint": "outputs/ppo_static_target_fixed_v1_joystick130/nomem/s11/final.pt",
     },
 }
+
+
+def schema8_to_schema7(obs):
+    """Reconstruct the retired path mask so completed schema-7 runs stay reviewable."""
+    old = [0.0] * 1170
+    cells = [[[0.0] * 8 for _ in range(10)] for _ in range(12)]
+    start = goal = None
+    for x in range(12):
+        for y in range(10):
+            source = (x * 10 + y) * 7
+            cells[x][y][:7] = obs[source:source + 7]
+            if cells[x][y][5] > 0.5:
+                start = (x, y)
+            if cells[x][y][6] > 0.5:
+                goal = (x, y)
+
+    def neighbours(cell):
+        x, y = cell
+        flags = cells[x][y]
+        for nx, ny, wall in ((x, y - 1, 1), (x + 1, y, 2),
+                             (x, y + 1, 3), (x - 1, y, 4)):
+            if 0 <= nx < 12 and 0 <= ny < 10 and flags[wall] < 0.5 \
+                    and cells[nx][ny][0] > 0.5:
+                yield nx, ny
+
+    def distances(origin):
+        result = {origin: 0}
+        queue = deque([origin])
+        while queue:
+            cell = queue.popleft()
+            for nxt in neighbours(cell):
+                if nxt not in result:
+                    result[nxt] = result[cell] + 1
+                    queue.append(nxt)
+        return result
+
+    if start is not None and goal is not None:
+        from_start, from_goal = distances(start), distances(goal)
+        length = from_start.get(goal)
+        if length is not None:
+            for cell, first in from_start.items():
+                if first + from_goal.get(cell, 10**9) == length:
+                    cells[cell[0]][cell[1]][7] = 1.0
+    for x in range(12):
+        for y in range(10):
+            target = (x * 10 + y) * 8
+            old[target:target + 8] = cells[x][y]
+    old[960] = obs[844]
+    old[961:970] = obs[845:854]
+    old[970:976] = obs[854:860]
+    old[976:1036] = obs[860:920]
+    old[1036:1039] = obs[920:923]
+    old[1039] = obs[923]
+    old[1040:1170] = obs[924:1054]
+    return old
 
 
 class Models:
@@ -61,7 +137,9 @@ class Models:
             checkpoint = torch.load(
                 checkpoint_path, map_location=self.device, weights_only=False
             )
-            model = make_actor_critic(source["architecture"]).to(self.device)
+            factory = (make_legacy_schema7_actor_critic
+                       if source["schema"] == 7 else make_actor_critic)
+            model = factory(source["architecture"]).to(self.device)
             model.load_state_dict(checkpoint["model"])
             model.eval()
             self.loaded[token] = (stamp, model)
@@ -73,8 +151,11 @@ class Models:
         history = history[-source["history"]:]
         if not history:
             raise ValueError("empty history")
+        obs_rows = [item["obs"] for item in history]
+        if source["schema"] == 7:
+            obs_rows = [schema8_to_schema7(row) for row in obs_rows]
         obs = torch.tensor(
-            [item["obs"] for item in history],
+            obs_rows,
             dtype=torch.float32,
             device=self.device,
         ).unsqueeze(0)

@@ -12,13 +12,14 @@
 use crate::directional::{
     apply_human_direction, apply_joystick_action, ACTION_COUNT, FIRE_ACTION, STOP_ACTION,
 };
-use crate::game::{Event, Game};
+use crate::game::{walking_curriculum_progress, Event, Game};
 use crate::reward::{
     RewardConfig, RewardTracker, CH_STYLE, CH_TERMINAL, REWARD_CHANNELS, REWARD_INFO_LEN,
 };
 use crate::sandbox::{preview_human_input, OppModel};
 use crate::semantic_obs::{
-    encode as encode_semantic, SemanticObsState, SemanticObservation, BULLET_SLOTS, OBS_DIM,
+    encode as encode_semantic, SemanticObsState, SemanticObservation, BULLET_SLOTS, NAV_OFFSET,
+    OBS_DIM,
 };
 use crate::teacher::KillFieldAgent;
 use crate::tuning::Tuning;
@@ -345,8 +346,21 @@ pub unsafe extern "C" fn kf_step(h: *mut Handle) -> u32 {
             tank.turn_right_amount = None;
         }
     }
-    let invalid_stationary_action = h.walking_curriculum
-        && matches!(h.last_rl_action[0], FIRE_ACTION | STOP_ACTION);
+    let route_direction_mismatch = if h.walking_curriculum {
+        let mut observation = SemanticObservation::default();
+        encode_semantic(&h.game, 0, &h.semantic_state, &mut observation);
+        observation.values[NAV_OFFSET..NAV_OFFSET + 4]
+            .iter()
+            .position(|&value| value > 0.5)
+            .map(|direction| [0.0, 90.0, 180.0, -90.0][direction])
+            .is_some_and(|expected| {
+                crate::game::norm_rot(h.game.tanks[0].rotation - expected).abs() > 1.5
+            })
+    } else {
+        false
+    };
+    let invalid_stationary_action =
+        h.walking_curriculum && matches!(h.last_rl_action[0], FIRE_ACTION | STOP_ACTION);
     let events = h.game.step();
     h.paint_step.fill(0.0);
     let mut flags = 0u32;
@@ -378,17 +392,30 @@ pub unsafe extern "C" fn kf_step(h: *mut Handle) -> u32 {
             }
         }
     }
-    if h.walking_curriculum && h.game.tanks[0].alive {
+    let walking_arrived = h.walking_curriculum
+        && h.game.tanks[0].alive
+        && walking_curriculum_progress(&h.game) >= 0.98;
+    if walking_arrived {
+        h.game.frozen = true;
+        h.last_winner = 0.0;
+        flags |= 64;
+    } else if h.walking_curriculum && h.game.tanks[0].alive {
         let tank = h.game.tanks[0];
         let dx = tank.x - before.0;
         let dy = tank.y - before.1;
         let distance = dx.hypot(dy);
         let facing = (tank.rotation - 90.0) * crate::constants::DEG;
-        let aligned = distance > 1e-9
-            && (dx * facing.cos() + dy * facing.sin()) / distance >= 0.995;
-        if invalid_stationary_action || tank.hit_something || tank.wall_sliding || !aligned {
+        let aligned =
+            distance > 1e-9 && (dx * facing.cos() + dy * facing.sin()) / distance >= 0.995;
+        if invalid_stationary_action
+            || route_direction_mismatch
+            || tank.hit_something
+            || tank.wall_sliding
+            || !aligned
+        {
             h.game.tanks[0].alive = false;
             h.game.alive_count = 1;
+            h.game.frozen = true;
             h.last_winner = 1.0;
             flags |= 16 | 64;
         }
@@ -607,7 +634,7 @@ pub unsafe extern "C" fn kf_reward_info(h: *mut Handle, out: *mut f32) {
     out.copy_from_slice(&values);
 }
 
-/// Encode schema-7 observation for a browser-hosted learned policy.
+/// Encode schema-8 observation for a browser-hosted learned policy.
 /// `last_action` is the previous Discrete(130) action, or -1 at a boundary.
 #[no_mangle]
 pub unsafe extern "C" fn kf_semantic_observation(
@@ -631,4 +658,32 @@ pub unsafe extern "C" fn kf_semantic_observation(
 #[no_mangle]
 pub extern "C" fn kf_semantic_observation_len() -> u32 {
     (OBS_DIM + BULLET_SLOTS) as u32
+}
+
+#[cfg(test)]
+mod walking_viewer_tests {
+    use super::*;
+
+    #[test]
+    fn viewer_accepts_the_schema_8_route_actions_and_marks_arrival() {
+        let handle = kf_new_walking_v1();
+        let actions = [(32, 62), (0, 12), (96, 62), (0, 13), (32, 19)];
+        let mut frames = 0;
+        for (action, count) in actions {
+            for _ in 0..count {
+                unsafe {
+                    kf_set_rl_action(handle, 0, action);
+                    let flags = kf_step(handle);
+                    frames += 1;
+                    if frames < 208 {
+                        assert_eq!(flags & 64, 0, "viewer ended at frame {frames}");
+                    } else {
+                        assert_ne!(flags & 64, 0);
+                        assert_eq!((*handle).last_winner, 0.0);
+                    }
+                }
+            }
+        }
+        unsafe { kf_free(handle) };
+    }
 }

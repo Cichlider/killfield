@@ -1,14 +1,16 @@
 # PPO 训练与交付
 
-## walking-v2 no-stop 短课程
+## walking-v6 transition-context 课程
 
 - 地图：固定 seed `20260825`，`6×3` 单通道蛇形道路，终点为不行动、不射击的 Laika；
+- Observation schema 8：地图不再携带整条 path mask；导航只提供当前 waypoint 四方向
+  one-hot 和剩余格子数；
 - 动作仍为冻结的 `Discrete(130)`；方向动作同一帧瞬间对准并前进，没有原地转向动作；
-- 撞墙/侧滑、无位移、位移与车头不一致、开火均 `-10` 并立即终止；
+- 撞墙/侧滑、无位移、偏离当前 waypoint 方向、位移与车头不一致、开火均 `-10` 并终止；
 - 最佳连续路径进度累计最多 `+5`，合法帧 `-0.002`，到达终点 `+10`，300 帧超时 `-10`；
-- 训练 507,904 步（约为上一版十分之一），不设 gate；
-- 同图恰好 100 局：0 到达、100 撞墙、0 超时，平均 33 帧；固定 Laika 旁路报告恰好
-  100 局：5 胜、87 负、8 双亡，胜率 5%。
+- v4 从头 1,015,808 步，v5/v6 各继续 507,904 步，不设 gate；
+- v6 同图恰好 100 局：100 到达、0 失败、0 超时，平均 208 帧；固定 Laika 旁路报告
+  恰好 100 局：5 胜、92 负、3 双亡，胜率 5%。
 
 ## 固定配置
 
@@ -55,6 +57,12 @@ zsh training/run_ppo_paint_v1.sh train
 
 ## 当前训练结果
 
+- schema-8 `ppo-walking-v6-transition-context-serpentine-joystick130-nomem-s11`：固定图
+  恰好 100 局全部到达，平均 208 帧；
+- schema-8 `ppo-walking-v5-waypoint-direction-serpentine-joystick130-nomem-s11`：固定图
+  100 局均在第 138 帧 waypoint 方向错误；
+- schema-8 `ppo-walking-v4-next-direction-serpentine-joystick130-nomem-s11`：固定图
+  100 局全部超时；
 - schema-7 `ppo-walking-v2-no-stop-serpentine-joystick130-nomem-s11`：507,904 步；固定
   曲折道路恰好 100 局全部在第 33 帧撞墙；STOP/无位移已是立即失败；已直接接入 Viewer；
 - schema-7 `ppo-walking-v1-serpentine-joystick130-nomem-s11`：507,904 步；固定曲折道路

@@ -139,7 +139,7 @@ let immediateFirePressed = false;
 
 let wasm = null;
 let scratchPtr = null;
-const OBS_DIM = 1170;
+const OBS_DIM = 1054;
 const BULLET_SLOTS = 10;
 const RL_FIRE_ACTION = 128;
 const RL_STOP_ACTION = 129;
@@ -148,6 +148,7 @@ let selectedModel = "";
 let modelHistory = [];
 let lastModelAction = -1;
 let inferencePending = false;
+let modelActionReady = false;
 let inferenceGeneration = 0;
 let inferenceSummary = "";
 
@@ -167,7 +168,7 @@ async function loadModelCatalogue() {
     if (!selectedModel) {
       const option = document.createElement("option");
       option.value = "";
-      option.textContent = "no compatible schema-7 static-target joystick130 checkpoint";
+      option.textContent = "no compatible schema-8 joystick130 checkpoint";
       rlModelSelect.append(option);
       rlStatus.textContent = "模型尚未训练；运行训练后刷新。本页不会用 MPC 冒充 PPO。";
     } else {
@@ -714,6 +715,7 @@ function newGame() {
   lastModelAction = -1;
   inferenceGeneration += 1;
   inferencePending = false;
+  modelActionReady = false;
   inferenceSummary = selectedModel ? "waiting for first action" : "no model loaded";
   wasm.kf_set_rl_action(handle, 0, RL_STOP_ACTION);
 
@@ -762,10 +764,10 @@ function updateScenarioCopy() {
   note.textContent = lang === "zh"
     ? target
       ? "走路课程：seed 20260825；单条曲折道路，无位移、撞墙、倒车/侧滑或开火即失败，终点是不动靶。"
-      : "评估环境：左侧为 schema-7 PPO，右侧由固定 Laika 控制。"
+      : "评估环境：左侧为 schema-8 PPO，右侧由固定 Laika 控制。"
     : target
       ? "Walking lesson: seed 20260825; one winding corridor. No displacement, wall contact, reverse/sideways motion, or firing fails; the inert target marks the finish."
-      : "Evaluation environment: schema-7 PPO on the left, fixed Laika on the right.";
+      : "Evaluation environment: schema-8 PPO on the left, fixed Laika on the right.";
 }
 
 function syncInstantTurnButton() {
@@ -841,6 +843,7 @@ function requestModelAction() {
     if (generation !== inferenceGeneration) return;
     lastModelAction = result.action;
     wasm.kf_set_rl_action(handle, 0, result.action);
+    modelActionReady = true;
     const actionLabel = result.action < 128
       ? `direction ${result.action}/128`
       : result.action === RL_FIRE_ACTION ? "fire" : "stop";
@@ -849,24 +852,27 @@ function requestModelAction() {
     if (generation !== inferenceGeneration) return;
     inferenceSummary = `inference error: ${error.message}`;
     wasm.kf_set_rl_action(handle, 0, RL_STOP_ACTION);
+    modelActionReady = true;
   }).finally(() => {
     if (generation === inferenceGeneration) inferencePending = false;
   });
 }
 
 function tick() {
-  if (mode === "target" && lastModelAction < 0) {
+  // Training chooses a fresh action for every physics frame. Do the same here:
+  // never carry the previous action across an asynchronous inference boundary,
+  // especially at a waypoint where one extra straight frame can hit a wall.
+  if (frozen || !selectedModel) return;
+  if (!modelActionReady) {
     requestModelAction();
     return;
   }
   if (killfieldDelayFrames > 0) {
     killfieldDelayFrames -= 1;
     wasm.kf_set_rl_action(handle, 0, RL_STOP_ACTION);
-  } else {
-    requestModelAction();
   }
-  // Laika is engine-side; tank 0 keeps the latest async model action while
-  // the next 25 Hz request is in flight, so rendering and physics never block.
+  // Laika is engine-side. PPO physics advances only after this frame's model
+  // action is ready; rendering can continue while inference is in flight.
   const human = MODES[mode].humanTank;
   if (human !== null) {
     const strengths = keyboard.sampleStrengths();
@@ -881,6 +887,7 @@ function tick() {
   }
   roundFrames += 1;
   const flags = wasm.kf_step(handle);
+  modelActionReady = false;
   playSoundsForFlags(flags);
   const buf = renderBuffer();
   currentRound = buf[9];
@@ -889,6 +896,7 @@ function tick() {
     roundFrames = 0;
     modelHistory = [];
     lastModelAction = -1;
+    modelActionReady = false;
     wasm.kf_set_rl_action(handle, 0, RL_STOP_ACTION);
     killfieldDelayFrames = mode === "play" ? openingDelayFrameCount() : 0;
   }
@@ -1088,7 +1096,7 @@ function toggleLanguage() {
 // -------------------------------------------------------------------- boot
 
 async function boot() {
-  const res = await fetch("kf_engine.wasm");
+  const res = await fetch("kf_engine.wasm?v=schema8-walking-v6");
   const { instance } = await WebAssembly.instantiate(await res.arrayBuffer(), {});
   wasm = instance.exports;
   scratchPtr = wasm.kf_scratch_ptr();

@@ -56,6 +56,7 @@ class Config:
     map_name: str = "static-target-fixed-seed-20260824"
     step_cost: float = 0.0
     failure_rules: str = "self-death,double-death,timeout=-10"
+    initial_checkpoint: str = ""
     envs: int = 64
     rollout_steps: int = 256
     total_steps: int = 5_000_000
@@ -78,18 +79,20 @@ class Config:
 
 class PpoVec:
     def __init__(self, count: int, seed: int, static_target=False, walking=False,
+                 walking_training=False,
                  eval_laika=False,
                  library=Path("engine/target/release/libkf_engine.dylib")):
         self.count = count
         self.lib = ctypes.CDLL(str(library.resolve()))
         constructor_name = (
+            "kf_vec_new_walking_train_v3" if walking_training else
             "kf_vec_new_walking_v1" if walking else
             "kf_vec_new_static_target_v1" if static_target else
             "kf_vec_new_ppo_eval" if eval_laika else
             "kf_vec_new_ppo_paint_v1"
         )
         constructor = getattr(self.lib, constructor_name)
-        constructor.argtypes = [ctypes.c_uint32] if (static_target or walking) else [ctypes.c_uint32, ctypes.c_uint32]
+        constructor.argtypes = [ctypes.c_uint32] if (static_target or walking) and not walking_training else [ctypes.c_uint32, ctypes.c_uint32]
         constructor.restype = ctypes.c_void_p
         self.lib.kf_vec_obs_dim.restype = ctypes.c_uint32
         self.lib.kf_vec_bullet_slots.restype = ctypes.c_uint32
@@ -101,7 +104,7 @@ class PpoVec:
         expected = (OBS_DIM, BULLET_SLOTS, len(CHANNEL_NAMES))
         if native != expected:
             raise RuntimeError(f"native/Python schema mismatch: {native} != {expected}")
-        self.handle = constructor(count) if (static_target or walking) else constructor(count, seed)
+        self.handle = constructor(count) if (static_target or walking) and not walking_training else constructor(count, seed)
         if not self.handle:
             raise RuntimeError("kf_vec_new_ppo_paint_v1 failed")
         self.lib.kf_vec_step.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_uint16)]
@@ -444,7 +447,7 @@ def evaluate_walking(model, kind, config, device):
                 reason = int(env.walking_failure_reasons[index])
                 episodes.append({
                     "outcome": "arrived" if winner == 0 else "failed" if winner == 1 else "timeout",
-                    "failure_reason": {1: "wall", 2: "heading", 3: "fire", 4: "timeout", 5: "stop"}.get(reason, "none"),
+                    "failure_reason": {1: "wall", 2: "heading", 3: "fire", 4: "timeout", 5: "stop", 6: "route_direction"}.get(reason, "none"),
                     "decisions": int(decisions[index]),
                     "fired": bool(fired[index]),
                 })
@@ -458,7 +461,7 @@ def evaluate_walking(model, kind, config, device):
     outcomes = {key: sum(row["outcome"] == key for row in episodes)
                 for key in ("arrived", "failed", "timeout")}
     failure_reasons = {key: sum(row["failure_reason"] == key for row in episodes)
-                       for key in ("wall", "heading", "fire", "stop", "timeout")}
+                       for key in ("wall", "heading", "fire", "stop", "route_direction", "timeout")}
     return {
         "episodes": len(episodes),
         "map": "walking-v1-six-by-three-serpentine-seed-20260825",
@@ -500,6 +503,7 @@ def main():
     parser.add_argument("--device", choices=("auto", "cpu", "mps"), default="auto")
     parser.add_argument("--smoke", action="store_true")
     parser.add_argument("--reevaluate", action="store_true")
+    parser.add_argument("--init-checkpoint", type=Path)
     args = parser.parse_args()
     device = select_device(args.device)
     torch.set_num_threads(4)
@@ -509,8 +513,8 @@ def main():
     walking = args.curriculum == "walking"
     if walking:
         config = Config(
-            stage="walking-v2-no-stop-serpentine-joystick130",
-            training_opponent="inert-walking-goal-seed-20260825",
+            stage="walking-v6-transition-context-joystick130",
+            training_opponent="inert-walking-goal-varied-starts-same-map-seed-20260825",
             episode_frames=300,
             navigation_total=5.0,
             success_base=10.0,
@@ -520,7 +524,9 @@ def main():
             shot_attempt_cap=0.0,
             map_name="walking-v1-six-by-three-serpentine-seed-20260825",
             step_cost=-0.002,
-            failure_rules="wall-or-slide,no-displacement,displacement-heading-mismatch,fire=-10;timeout=-10",
+            failure_rules="wall-or-slide,no-displacement,route-direction-mismatch,displacement-heading-mismatch,fire=-10;timeout=-10",
+            initial_checkpoint="outputs/ppo_walking_v5_waypoint_direction_joystick130/nomem/s11/final.pt",
+            learning_rate=1e-4,
             total_steps=500_000,
         )
     if args.smoke:
@@ -530,7 +536,7 @@ def main():
             eval_every_updates=0, eval_episodes=100,
         )
     output_root = args.output or Path(
-        "outputs/ppo_walking_v2_no_stop_joystick130" if walking
+        "outputs/ppo_walking_v6_transition_context_joystick130" if walking
         else "outputs/ppo_static_target_fixed_v1_joystick130"
     )
     output = output_root / args.model / f"s{args.seed}"
@@ -579,11 +585,23 @@ def main():
         torch.set_rng_state(saved["torch_rng"])
         if device.type == "mps" and saved.get("device_rng") is not None:
             torch.mps.set_rng_state(saved["device_rng"])
+    else:
+        init_checkpoint = args.init_checkpoint or (
+            Path(config.initial_checkpoint) if config.initial_checkpoint else None
+        )
+        if init_checkpoint is not None:
+            saved = torch.load(init_checkpoint, map_location=device, weights_only=False)
+            model.load_state_dict(saved["model"])
 
     steps_per_update = config.envs * config.rollout_steps
     updates = math.ceil(config.total_steps / steps_per_update)
     env_seed = TRAIN_ENV_BASE + args.seed * 10_000 + start_update * config.envs * 100
-    env = PpoVec(config.envs, env_seed, static_target=not walking, walking=walking)
+    env = PpoVec(
+        config.envs,
+        env_seed,
+        static_target=not walking,
+        walking_training=walking,
+    )
     starts = np.ones(config.envs, bool)
     hidden = model.initial_hidden(config.envs, device)
     started = time.perf_counter()
@@ -632,7 +650,7 @@ def main():
     model.eval()
     final_eval = evaluate(model, args.model, config, device)
     result = {
-        "name": f"ppo-{'walking-v2-no-stop-serpentine' if walking else 'static-target-fixed-v1'}-joystick130-{args.model}-s{args.seed}",
+        "name": f"ppo-{'walking-v6-transition-context-serpentine' if walking else 'static-target-fixed-v1'}-joystick130-{args.model}-s{args.seed}",
         "model": args.model, "seed": args.seed, "total_steps": total_steps,
         "seconds_this_run": time.perf_counter() - started,
         "evaluation": final_eval, "config": config_dict,

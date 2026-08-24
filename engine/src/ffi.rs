@@ -8,14 +8,15 @@ use crate::ballistics::{check_bullet_path, ShotOutcome};
 use crate::constants as C;
 use crate::directional::apply_joystick_action;
 use crate::game::Tank;
-use crate::game::{Event, Game, WALKING_CURRICULUM_PATH};
+use crate::game::{walking_curriculum_progress, Event, Game};
 use crate::laika::LaikaAI;
 use crate::reward::{
     RewardConfig, RewardTracker, CH_EXAMPLE, CH_STYLE, CH_TERMINAL, REWARD_CHANNELS,
 };
 use crate::score::{action_index, CANDIDATES};
 use crate::semantic_obs::{
-    encode, SemanticObsState, SemanticObservation, BULLET_SLOTS, OBS_DIM, PATH_LENGTH_OFFSET,
+    encode, SemanticObsState, SemanticObservation, BULLET_SLOTS, NAV_OFFSET, OBS_DIM,
+    PATH_LENGTH_OFFSET,
 };
 use crate::teacher::KillFieldAgent;
 
@@ -55,8 +56,13 @@ struct Slot {
 
 impl Slot {
     fn new(seed: u32, reward_enabled: bool, static_target: bool, walking: bool) -> Self {
+        let walking_start = if walking && seed != WALKING_SEED {
+            seed as usize % 13
+        } else {
+            0
+        };
         let game = if walking {
-            Game::walking_curriculum(seed)
+            Game::walking_curriculum_at(seed, walking_start)
         } else {
             Game::with_ai(seed, 2, if static_target { &[] } else { &[1] })
         };
@@ -65,13 +71,23 @@ impl Slot {
         mpc_teacher.ray_count = 512;
         mpc_teacher.commit_move = 0;
         mpc_teacher.commit_turn = 0;
-        let best_path = if walking { walking_progress(&game) as f32 } else { f32::INFINITY };
+        let best_path = if walking {
+            walking_curriculum_progress(&game) as f32
+        } else {
+            f32::INFINITY
+        };
+        let mut obs_state = SemanticObsState::default();
+        if walking_start > 0 {
+            let incoming_action =
+                (game.tanks[0].rotation.rem_euclid(360.0) / (360.0 / 128.0)).round() as u16 % 128;
+            obs_state.push_action(incoming_action);
+        }
         Self {
             game,
             reward: reward_enabled.then(|| RewardTracker::new(0)),
             teacher: LaikaAI::new(scale, 0),
             mpc_teacher,
-            obs_state: SemanticObsState::default(),
+            obs_state,
             decisions: 0,
             done: false,
             best_path,
@@ -79,31 +95,6 @@ impl Slot {
             shot_bonus_total: 0.0,
         }
     }
-}
-
-fn walking_progress(game: &Game) -> f64 {
-    let tank = game.tanks[0];
-    let mut best_distance = f64::INFINITY;
-    let mut best_progress = 0.0;
-    for (index, pair) in WALKING_CURRICULUM_PATH.windows(2).enumerate() {
-        let ax = (pair[0].0 as f64 + 0.5) * game.scale;
-        let ay = (pair[0].1 as f64 + 0.5) * game.scale;
-        let bx = (pair[1].0 as f64 + 0.5) * game.scale;
-        let by = (pair[1].1 as f64 + 0.5) * game.scale;
-        let dx = bx - ax;
-        let dy = by - ay;
-        let length_sq = dx * dx + dy * dy;
-        let projection = (((tank.x - ax) * dx + (tank.y - ay) * dy) / length_sq)
-            .clamp(0.0, 1.0);
-        let px = ax + projection * dx;
-        let py = ay + projection * dy;
-        let distance = (tank.x - px).powi(2) + (tank.y - py).powi(2);
-        if distance < best_distance {
-            best_distance = distance;
-            best_progress = index as f64 + projection;
-        }
-    }
-    best_progress / (WALKING_CURRICULUM_PATH.len() - 1) as f64
 }
 
 pub struct VecEnv {
@@ -160,7 +151,8 @@ impl VecEnv {
             slots: (0..count)
                 .map(|i| {
                     let seed = fixed_seed.unwrap_or_else(|| base_seed.wrapping_add(i as u32));
-                    let mut slot = Slot::new(seed, reward_enabled, static_target, walking_curriculum);
+                    let mut slot =
+                        Slot::new(seed, reward_enabled, static_target, walking_curriculum);
                     if static_target || walking_curriculum || reward_paint {
                         slot.reward = None;
                     } else if reward_r1 {
@@ -292,19 +284,38 @@ impl VecEnv {
                 self.dones[index] = 1;
                 continue;
             }
+            let expected_rotation = if self.walking_curriculum {
+                let mut observation = SemanticObservation::default();
+                encode(&slot.game, 0, &slot.obs_state, &mut observation);
+                observation.values[NAV_OFFSET..NAV_OFFSET + 4]
+                    .iter()
+                    .position(|&value| value > 0.5)
+                    .map(|direction| [0.0, 90.0, 180.0, -90.0][direction])
+            } else {
+                None
+            };
             apply_joystick_action(&mut slot.game, 0, action);
             slot.obs_state.push_action(action);
             slot.decisions += 1;
+            let wrong_route_direction = expected_rotation.is_some_and(|expected| {
+                crate::game::norm_rot(slot.game.tanks[0].rotation - expected).abs() > 1.5
+            });
             if self.walking_curriculum
                 && (action == crate::directional::FIRE_ACTION
-                    || action == crate::directional::STOP_ACTION)
+                    || action == crate::directional::STOP_ACTION
+                    || wrong_route_direction)
             {
                 self.rewards[index] = WALKING_FAILURE as f32;
                 self.reward_channels[index * REWARD_CHANNELS + CH_TERMINAL] =
                     WALKING_FAILURE as f32;
                 self.winners[index] = 1;
-                self.walking_failure_reasons[index] =
-                    if action == crate::directional::FIRE_ACTION { 3 } else { 5 };
+                self.walking_failure_reasons[index] = if action == crate::directional::FIRE_ACTION {
+                    3
+                } else if action == crate::directional::STOP_ACTION {
+                    5
+                } else {
+                    6
+                };
                 slot.done = true;
                 self.dones[index] = 1;
                 self.terminals[index] = 1;
@@ -325,22 +336,21 @@ impl VecEnv {
                     let distance = dx.hypot(dy);
                     let facing = (tank.rotation - 90.0) * C::DEG;
                     let stopped = distance <= 1e-9;
-                    let aligned = !stopped
-                        && (dx * facing.cos() + dy * facing.sin()) / distance >= 0.995;
+                    let aligned =
+                        !stopped && (dx * facing.cos() + dy * facing.sin()) / distance >= 0.995;
                     if tank.hit_something || tank.wall_sliding || stopped || !aligned {
                         reward += WALKING_FAILURE;
                         self.reward_channels[index * REWARD_CHANNELS + CH_TERMINAL] +=
                             WALKING_FAILURE as f32;
                         self.winners[index] = 1;
-                        self.walking_failure_reasons[index] = if tank.hit_something
-                            || tank.wall_sliding
-                        {
-                            1
-                        } else if stopped {
-                            5
-                        } else {
-                            2
-                        };
+                        self.walking_failure_reasons[index] =
+                            if tank.hit_something || tank.wall_sliding {
+                                1
+                            } else if stopped {
+                                5
+                            } else {
+                                2
+                            };
                         terminal = true;
                     }
                 } else if self.static_target {
@@ -426,7 +436,7 @@ impl VecEnv {
                 }
             }
             if self.walking_curriculum && !terminal {
-                let progress = walking_progress(&slot.game) as f32;
+                let progress = walking_curriculum_progress(&slot.game) as f32;
                 if progress > slot.best_path {
                     let value = WALKING_PROGRESS_TOTAL * (progress - slot.best_path) as f64;
                     reward += value;
@@ -441,7 +451,11 @@ impl VecEnv {
                     terminal = true;
                 }
             }
-            if self.static_target && !terminal && slot.game.tanks[0].alive && slot.game.tanks[1].alive {
+            if self.static_target
+                && !terminal
+                && slot.game.tanks[0].alive
+                && slot.game.tanks[1].alive
+            {
                 let mut observation = SemanticObservation::default();
                 encode(&slot.game, 0, &slot.obs_state, &mut observation);
                 let path = observation.values[PATH_LENGTH_OFFSET];
@@ -453,9 +467,9 @@ impl VecEnv {
                     slot.best_path = path;
                 }
             }
-            let timed_out = !terminal && ((self.static_target
-                && slot.decisions >= STATIC_TARGET_FRAMES)
-                || (self.walking_curriculum && slot.decisions >= WALKING_FRAMES));
+            let timed_out = !terminal
+                && ((self.static_target && slot.decisions >= STATIC_TARGET_FRAMES)
+                    || (self.walking_curriculum && slot.decisions >= WALKING_FRAMES));
             if timed_out {
                 let value = if self.walking_curriculum {
                     WALKING_FAILURE
@@ -609,6 +623,29 @@ pub extern "C" fn kf_vec_new_walking_v1(count: u32) -> *mut VecEnv {
         false,
         true,
     )))
+}
+
+#[no_mangle]
+pub extern "C" fn kf_vec_new_walking_train_v3(count: u32, base_seed: u32) -> *mut VecEnv {
+    let count = count.max(1) as usize;
+    let mut env = VecEnv::new(
+        count,
+        base_seed,
+        1,
+        true,
+        false,
+        false,
+        LabelMode::None,
+        false,
+        true,
+    );
+    env.fixed_seed = None;
+    env.next_seed = base_seed.wrapping_add(count as u32);
+    for index in 0..count {
+        env.slots[index] = Slot::new(base_seed.wrapping_add(index as u32), true, false, true);
+        env.encode_slot(index);
+    }
+    Box::into_raw(Box::new(env))
 }
 
 #[no_mangle]

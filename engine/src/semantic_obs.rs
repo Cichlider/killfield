@@ -1,4 +1,4 @@
-//! Human-equivalent semantic observation (DESIGN.md, schema 7).
+//! Human-equivalent semantic observation (DESIGN.md, schema 8).
 //!
 //! The flat payload is useful for storage and ABI transport.  The ten bullet
 //! rows must still go through a shared bullet encoder followed by masked
@@ -10,8 +10,9 @@ use std::collections::VecDeque;
 
 pub const MAX_MAP_W: usize = 12;
 pub const MAX_MAP_H: usize = 10;
-pub const MAP_CHANNELS: usize = 8;
+pub const MAP_CHANNELS: usize = 7;
 pub const MAP_DIM: usize = MAX_MAP_W * MAX_MAP_H * MAP_CHANNELS;
+pub const NAV_DIM: usize = 5;
 pub const SELF_DIM: usize = 9;
 pub const OPPONENT_DIM: usize = 6;
 pub const BULLET_SLOTS: usize = 10;
@@ -19,14 +20,20 @@ pub const BULLET_DIM: usize = 6;
 pub const PHASE_DIM: usize = 3;
 pub const TIME_DIM: usize = 1;
 pub const ACTION_DIM: usize = crate::directional::ACTION_COUNT;
-pub const OBS_DIM: usize =
-    MAP_DIM + 1 + SELF_DIM + OPPONENT_DIM + BULLET_SLOTS * BULLET_DIM + PHASE_DIM + TIME_DIM
-        + ACTION_DIM;
-pub const OBS_SCHEMA_VERSION: u32 = 7;
+pub const OBS_DIM: usize = MAP_DIM
+    + NAV_DIM
+    + SELF_DIM
+    + OPPONENT_DIM
+    + BULLET_SLOTS * BULLET_DIM
+    + PHASE_DIM
+    + TIME_DIM
+    + ACTION_DIM;
+pub const OBS_SCHEMA_VERSION: u32 = 8;
 
 pub const MAP_OFFSET: usize = 0;
-pub const PATH_LENGTH_OFFSET: usize = MAP_OFFSET + MAP_DIM;
-pub const SELF_OFFSET: usize = PATH_LENGTH_OFFSET + 1;
+pub const NAV_OFFSET: usize = MAP_OFFSET + MAP_DIM;
+pub const PATH_LENGTH_OFFSET: usize = NAV_OFFSET + 4;
+pub const SELF_OFFSET: usize = NAV_OFFSET + NAV_DIM;
 pub const OPPONENT_OFFSET: usize = SELF_OFFSET + SELF_DIM;
 pub const BULLET_OFFSET: usize = OPPONENT_OFFSET + OPPONENT_DIM;
 pub const PHASE_OFFSET: usize = BULLET_OFFSET + BULLET_SLOTS * BULLET_DIM;
@@ -227,12 +234,68 @@ pub fn encode(g: &Game, me: usize, state: &SemanticObsState, out: &mut SemanticO
                 (x == 0 || !g.maze.v_open(x as i64, y as i64)) as u8 as f32;
             out.values[map_at(x, y, 5)] = ((x, y) == my_cell) as u8 as f32;
             out.values[map_at(x, y, 6)] = ((x, y) == opp_cell) as u8 as f32;
-            let i = x * g.maze.h + y;
-            out.values[map_at(x, y, 7)] = (path >= 0
-                && from_me[i] >= 0
-                && from_opp[i] >= 0
-                && from_me[i] + from_opp[i] == path) as u8
-                as f32;
+        }
+    }
+    if path == 0 {
+        let dx = g.tanks[opponent].x - g.tanks[me].x;
+        let dy = g.tanks[opponent].y - g.tanks[me].y;
+        if dx.abs().max(dy.abs()) > 0.05 * g.scale {
+            let direction = if dx.abs() >= dy.abs() {
+                if dx > 0.0 {
+                    1
+                } else {
+                    3
+                }
+            } else if dy > 0.0 {
+                2
+            } else {
+                0
+            };
+            out.values[NAV_OFFSET + direction] = 1.0;
+        }
+    } else {
+        let mut candidates = [(0usize, 0usize); 4];
+        let count = neighbours(g, my_cell.0, my_cell.1, &mut candidates);
+        let mut next = None;
+        let mut previous = None;
+        for &(nx, ny) in &candidates[..count] {
+            if from_opp[nx * g.maze.h + ny] == path - 1 {
+                next = Some((nx, ny));
+            } else if from_opp[nx * g.maze.h + ny] == path + 1 {
+                previous = Some((nx, ny));
+            }
+        }
+        let direction_between = |from: (usize, usize), to: (usize, usize)| {
+            if to.1 < from.1 {
+                0
+            } else if to.0 > from.0 {
+                1
+            } else if to.1 > from.1 {
+                2
+            } else {
+                3
+            }
+        };
+        if let Some(next_cell) = next {
+            let mut direction = direction_between(my_cell, next_cell);
+            if let Some(previous_cell) = previous {
+                let incoming = direction_between(previous_cell, my_cell);
+                let centre_x = (my_cell.0 as f64 + 0.5) * g.scale;
+                let centre_y = (my_cell.1 as f64 + 0.5) * g.scale;
+                let (ux, uy) = match incoming {
+                    0 => (0.0, -1.0),
+                    1 => (1.0, 0.0),
+                    2 => (0.0, 1.0),
+                    _ => (-1.0, 0.0),
+                };
+                let before_centre = (g.tanks[me].x - centre_x) * ux
+                    + (g.tanks[me].y - centre_y) * uy
+                    < -0.05 * g.scale;
+                if before_centre {
+                    direction = incoming;
+                }
+            }
+            out.values[NAV_OFFSET + direction] = 1.0;
         }
     }
     out.values[PATH_LENGTH_OFFSET] = path as f32 / (MAX_MAP_W + MAX_MAP_H) as f32;
@@ -307,11 +370,24 @@ mod tests {
     use crate::game::Game;
 
     #[test]
-    fn schema_7_removes_paint_and_adds_time() {
-        assert_eq!(MAP_CHANNELS, 8);
-        assert_eq!(OBS_DIM, 1170);
+    fn schema_8_replaces_path_mask_with_next_direction_and_cells() {
+        assert_eq!(MAP_CHANNELS, 7);
+        assert_eq!(NAV_DIM, 5);
+        assert_eq!(OBS_DIM, 1054);
         assert_eq!(ACTION_DIM, 130);
         assert_eq!(ACTION_OFFSET + ACTION_DIM, OBS_DIM);
+    }
+
+    #[test]
+    fn walking_start_reports_right_and_seventeen_cells() {
+        let game = Game::walking_curriculum(20_260_825);
+        let mut observation = SemanticObservation::default();
+        encode(&game, 0, &SemanticObsState::default(), &mut observation);
+        assert_eq!(
+            &observation.values[NAV_OFFSET..NAV_OFFSET + 4],
+            &[0.0, 1.0, 0.0, 0.0]
+        );
+        assert!((observation.values[PATH_LENGTH_OFFSET] - 17.0 / 22.0).abs() < 1e-6);
     }
 
     #[test]

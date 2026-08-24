@@ -23,9 +23,24 @@ const DEG: f64 = C::DEG;
 /// A six-by-three, one-cell-wide serpentine corridor used by the first
 /// locomotion curriculum. Every reachable cell has at most two neighbours.
 pub const WALKING_CURRICULUM_PATH: [(usize, usize); 18] = [
-    (0, 2), (1, 2), (2, 2), (3, 2), (4, 2), (5, 2),
-    (5, 1), (4, 1), (3, 1), (2, 1), (1, 1), (0, 1),
-    (0, 0), (1, 0), (2, 0), (3, 0), (4, 0), (5, 0),
+    (0, 2),
+    (1, 2),
+    (2, 2),
+    (3, 2),
+    (4, 2),
+    (5, 2),
+    (5, 1),
+    (4, 1),
+    (3, 1),
+    (2, 1),
+    (1, 1),
+    (0, 1),
+    (0, 0),
+    (1, 0),
+    (2, 0),
+    (3, 0),
+    (4, 0),
+    (5, 0),
 ];
 
 /// Normalise an angle to (-180, 180], matching the source engine's setter.
@@ -510,6 +525,31 @@ pub struct Game {
     pub ai_enabled: Vec<bool>,
 }
 
+/// Continuous progress along the fixed serpentine walking curriculum.
+pub fn walking_curriculum_progress(game: &Game) -> f64 {
+    let tank = game.tanks[0];
+    let mut best_distance = f64::INFINITY;
+    let mut best_progress = 0.0;
+    for (index, pair) in WALKING_CURRICULUM_PATH.windows(2).enumerate() {
+        let ax = (pair[0].0 as f64 + 0.5) * game.scale;
+        let ay = (pair[0].1 as f64 + 0.5) * game.scale;
+        let bx = (pair[1].0 as f64 + 0.5) * game.scale;
+        let by = (pair[1].1 as f64 + 0.5) * game.scale;
+        let dx = bx - ax;
+        let dy = by - ay;
+        let projection =
+            (((tank.x - ax) * dx + (tank.y - ay) * dy) / (dx * dx + dy * dy)).clamp(0.0, 1.0);
+        let px = ax + projection * dx;
+        let py = ay + projection * dy;
+        let distance = (tank.x - px).powi(2) + (tank.y - py).powi(2);
+        if distance < best_distance {
+            best_distance = distance;
+            best_progress = index as f64 + projection;
+        }
+    }
+    best_progress / (WALKING_CURRICULUM_PATH.len() - 1) as f64
+}
+
 impl Game {
     pub fn new(seed: u32, tanks: usize) -> Self {
         Game::with_ai(seed, tanks, &[])
@@ -562,6 +602,12 @@ impl Game {
     /// Deterministic walking lesson: one serpentine corridor, the learner at
     /// one end and an inert Laika-shaped goal at the other.
     pub fn walking_curriculum(seed: u32) -> Self {
+        Self::walking_curriculum_at(seed, 0)
+    }
+
+    /// The same fixed corridor with the learner starting later on its unique
+    /// path. Used only to expose all three turns during training.
+    pub fn walking_curriculum_at(seed: u32, start_index: usize) -> Self {
         let mut g = Game::with_ai(seed, 2, &[]);
         let (w, h) = (6usize, 3usize);
         let mut cells = vec![[1u8, 1u8, 1u8]; w * h];
@@ -590,14 +636,33 @@ impl Game {
         g.wall_half_t = (g.scale / 16.0).floor();
         g.wall_grid = Arc::new(WallGrid::new(&g.walls, g.wall_half_t, g.scale));
 
-        let spawns = [WALKING_CURRICULUM_PATH[0], *WALKING_CURRICULUM_PATH.last().unwrap()];
+        let start_index = start_index.min(WALKING_CURRICULUM_PATH.len() - 2);
+        let spawns = [
+            WALKING_CURRICULUM_PATH[start_index],
+            *WALKING_CURRICULUM_PATH.last().unwrap(),
+        ];
         g.tanks = spawns
             .iter()
             .enumerate()
             .map(|(number, &cell)| Tank::new(number, cell, g.scale, &mut g.rng))
             .collect();
-        // rotation 90 faces right in the engine's coordinate convention.
-        g.tanks[0].rotation = 90.0;
+        let heading_target = if start_index == 0 {
+            WALKING_CURRICULUM_PATH[start_index + 1]
+        } else {
+            WALKING_CURRICULUM_PATH[start_index - 1]
+        };
+        let (dx, dy) = if start_index == 0 {
+            (
+                heading_target.0 as f64 - spawns[0].0 as f64,
+                heading_target.1 as f64 - spawns[0].1 as f64,
+            )
+        } else {
+            (
+                spawns[0].0 as f64 - heading_target.0 as f64,
+                spawns[0].1 as f64 - heading_target.1 as f64,
+            )
+        };
+        g.tanks[0].rotation = norm_rot(dy.atan2(dx) / DEG + 90.0);
         g.tanks[1].rotation = -90.0;
         g.tank_fields = spawns.iter().map(|&(x, y)| (x as i64, y as i64)).collect();
         g.bullets.clear();
@@ -615,11 +680,7 @@ impl Game {
             distances[x * h + y] = Some(calc_distances(&g.maze, x, y));
         }
         g.distances_for_maze = Arc::new(distances);
-        g.dead_ends = Arc::new(find_dead_ends(
-            &g.maze,
-            &g.reachable,
-            C::MAXDEADENDPENALTY,
-        ));
+        g.dead_ends = Arc::new(find_dead_ends(&g.maze, &g.reachable, C::MAXDEADENDPENALTY));
         g
     }
 
@@ -1040,16 +1101,18 @@ mod walking_curriculum_tests {
         for (index, &(x, y)) in WALKING_CURRICULUM_PATH.iter().enumerate() {
             let mut neighbours = 0;
             neighbours += (x > 0 && game.maze.v_open(x as i64, y as i64)) as usize;
-            neighbours += (x + 1 < game.maze.w
-                && game.maze.v_open(x as i64 + 1, y as i64)) as usize;
+            neighbours +=
+                (x + 1 < game.maze.w && game.maze.v_open(x as i64 + 1, y as i64)) as usize;
             neighbours += (y > 0 && game.maze.h_open(x as i64, y as i64 - 1)) as usize;
-            neighbours += (y + 1 < game.maze.h
-                && game.maze.h_open(x as i64, y as i64)) as usize;
-            assert_eq!(neighbours, if index == 0 || index + 1 == WALKING_CURRICULUM_PATH.len() {
-                1
-            } else {
-                2
-            });
+            neighbours += (y + 1 < game.maze.h && game.maze.h_open(x as i64, y as i64)) as usize;
+            assert_eq!(
+                neighbours,
+                if index == 0 || index + 1 == WALKING_CURRICULUM_PATH.len() {
+                    1
+                } else {
+                    2
+                }
+            );
         }
     }
 }

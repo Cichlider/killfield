@@ -8,9 +8,9 @@ pub mod chain;
 pub mod collect;
 pub mod constants;
 pub mod directional;
-pub mod field;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod ffi;
+pub mod field;
 pub mod game;
 pub mod laika;
 pub mod maze;
@@ -24,5 +24,5 @@ pub mod semantic_obs;
 pub mod teacher;
 pub mod tuning;
 
-#[cfg(target_arch = "wasm32")]
+#[cfg(any(target_arch = "wasm32", test))]
 pub mod wasm;
