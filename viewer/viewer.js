@@ -18,7 +18,7 @@ import { STRINGS, loadLang, saveLang } from "./src/i18n.js";
 import { Keyboard, TouchControls } from "./src/input.js";
 import { SoundEffects } from "./src/audio.js";
 import { Rng } from "./src/rng.js";
-import { predictLocalTank, simulationBudget } from "./src/low-latency.js";
+import { interpolatePredictedPose, simulationBudget } from "./src/low-latency.js";
 import {
   TUNING_SCHEMA, applyTuning, resetTuning, setTuning, tuning, tuningSnapshot,
 } from "./src/tuning.js";
@@ -129,6 +129,9 @@ const orientationBody = document.getElementById("orientation-body");
 const keyboard = new Keyboard();
 const touchControls = new TouchControls(touchControlsRoot, touchVisibilityButton);
 const sounds = new SoundEffects();
+let keyboardFirePressed = false;
+let touchFirePressed = false;
+let immediateFirePressed = false;
 
 let wasm = null;
 let scratchPtr = null;
@@ -814,7 +817,33 @@ function predictHumanForRender(buf, alpha) {
   if (buf[o + 3] < 0.5) return null;
   const pose = { x: buf[o], y: buf[o + 1], rotation: buf[o + 2] };
   const input = touchControls.resolveMovement(keyboard.sampleStrengths(), pose.rotation);
-  return { tank: human, pose: predictLocalTank(pose, input, buf[2], alpha) };
+  if (!(input.forward || input.backup || input.turnLeft || input.turnRight)) {
+    return { tank: human, pose };
+  }
+  wasm.kf_predict_human_pose(
+    handle, human, input.forward, input.backup, input.turnLeft, input.turnRight, scratchPtr,
+  );
+  const predicted = new Float32Array(wasm.memory.buffer, scratchPtr, 3);
+  return {
+    tank: human,
+    pose: interpolatePredictedPose(pose, {
+      x: predicted[0], y: predicted[1], rotation: predicted[2],
+    }, alpha),
+  };
+}
+
+function syncImmediateHumanFire() {
+  const pressed = keyboardFirePressed || touchFirePressed;
+  if (pressed === immediateFirePressed) return;
+  immediateFirePressed = pressed;
+  const human = MODES[mode].humanTank;
+  if (wasm === null || handle === null || human === null) return;
+  // A release is always safe and must not be lost while paused/frozen, or the
+  // next press could inherit a latched trigger. Only creation is gated.
+  if (pressed && (paused || frozen)) return;
+  if (wasm.kf_set_fire_immediate(handle, human, pressed ? 1 : 0)) {
+    sounds.playEvent(["fire"]);
+  }
 }
 
 function frame(now) {
@@ -977,6 +1006,14 @@ async function boot() {
 
   keyboard.onReroll = newGame;
   keyboard.onPause = togglePause;
+  keyboard.onFireChange = (pressed) => {
+    keyboardFirePressed = pressed;
+    syncImmediateHumanFire();
+  };
+  touchControls.onFireChange = (pressed) => {
+    touchFirePressed = pressed;
+    syncImmediateHumanFire();
+  };
   rerollButton.addEventListener("click", () => { newGame(); rerollButton.blur(); });
   resetScoreButton.addEventListener("click", () => { resetScore(); resetScoreButton.blur(); });
   instantTurnButton.addEventListener("click", toggleInstantTurn);

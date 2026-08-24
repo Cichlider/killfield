@@ -37,6 +37,7 @@ export class Keyboard {
     this.pressed = new Set();
     this.onReroll = null;
     this.onPause = null;
+    this.onFireChange = null;
 
     this._down = (e) => {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
@@ -55,10 +56,17 @@ export class Keyboard {
         if (this.onPause) this.onPause();
         return;
       }
+      const hadFire = this.has("fire");
       this.pressed.add(k);
+      if (!hadFire && BINDINGS.fire.includes(k) && this.onFireChange) {
+        this.onFireChange(true);
+      }
     };
     this._up = (e) => {
-      this.pressed.delete(e.key.toLowerCase());
+      const key = e.key.toLowerCase();
+      const wasFire = BINDINGS.fire.includes(key) && this.pressed.has(key);
+      this.pressed.delete(key);
+      if (wasFire && !this.has("fire") && this.onFireChange) this.onFireChange(false);
     };
     // A tab switch or alert can eat the keyup, leaving a key stuck down.
     this._blur = () => this.clear();
@@ -93,7 +101,9 @@ export class Keyboard {
   }
 
   clear() {
+    const hadFire = this.has("fire");
     this.pressed.clear();
+    if (hadFire && this.onFireChange) this.onFireChange(false);
   }
 }
 
@@ -181,6 +191,7 @@ export class TouchControls {
     this.joystickVector = { x: 0, y: 0 };
     this.dpadPointers = new Map();
     this.firePointers = new Set();
+    this.onFireChange = null;
     this.available = false;
     this.userVisible = true;
     this.labels = null;
@@ -251,14 +262,19 @@ export class TouchControls {
     }
 
     const releaseFire = (event) => {
-      this.firePointers.delete(event.pointerId);
+      const hadPointer = this.firePointers.delete(event.pointerId);
       this.fireButton.classList.toggle("active", this.firePointers.size > 0);
+      if (hadPointer && this.firePointers.size === 0 && this.onFireChange) {
+        this.onFireChange(false);
+      }
     };
     this.fireButton.addEventListener("pointerdown", (event) => {
       event.preventDefault();
       this.fireButton.setPointerCapture(event.pointerId);
+      const wasReleased = this.firePointers.size === 0;
       this.firePointers.add(event.pointerId);
       this.fireButton.classList.add("active");
+      if (wasReleased && this.onFireChange) this.onFireChange(true);
     });
     for (const type of ["pointerup", "pointercancel", "lostpointercapture"]) {
       this.fireButton.addEventListener(type, releaseFire);
@@ -391,7 +407,9 @@ export class TouchControls {
 
   clear() {
     this.clearMovement();
+    const hadFire = this.firePointers.size > 0;
     this.firePointers.clear();
     this.fireButton.classList.remove("active");
+    if (hadFire && this.onFireChange) this.onFireChange(false);
   }
 }

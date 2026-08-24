@@ -9,12 +9,12 @@
 //! trainer run byte-identical physics. That is the whole reason for compiling
 //! to wasm rather than keeping a second engine in JS.
 
-use crate::game::{Event, Game};
 use crate::directional::{apply_direction, apply_human_direction};
+use crate::game::{Event, Game};
 use crate::reward::{
     RewardConfig, RewardTracker, CH_STYLE, CH_TERMINAL, REWARD_CHANNELS, REWARD_INFO_LEN,
 };
-use crate::sandbox::OppModel;
+use crate::sandbox::{preview_human_input, OppModel};
 use crate::semantic_obs::{
     encode as encode_semantic, SemanticObsState, SemanticObservation, BULLET_SLOTS, OBS_DIM,
 };
@@ -210,6 +210,61 @@ pub unsafe extern "C" fn kf_set_input(
     }
 }
 
+/// Apply the human trigger edge immediately instead of waiting for the next
+/// 25 Hz movement tick. A new bullet is authoritative immediately and becomes
+/// eligible to move on the next tick.
+/// Returns 1 only when a shot was created.
+///
+/// # Safety
+/// `h` must come from `kf_new`.
+#[no_mangle]
+pub unsafe extern "C" fn kf_set_fire_immediate(h: *mut Handle, tank: u32, pressed: u32) -> u32 {
+    let h = &mut *h;
+    let fired = h.game.set_human_fire_immediate(tank as usize, pressed != 0);
+    if fired {
+        build_render(h);
+    }
+    fired as u32
+}
+
+/// Return the next pose for a human input using the authoritative wall/contact
+/// solver without advancing or mutating the live game. Writes x, y, rotation.
+///
+/// # Safety
+/// `h` must come from `kf_new`; `out` must point to at least three f32 values.
+#[no_mangle]
+pub unsafe extern "C" fn kf_predict_human_pose(
+    h: *mut Handle,
+    tank: u32,
+    forward: f32,
+    backup: f32,
+    turn_left: f32,
+    turn_right: f32,
+    out: *mut f32,
+) {
+    let h = &*h;
+    let out = std::slice::from_raw_parts_mut(out, 3);
+    if tank as usize >= h.game.tanks.len() {
+        out.fill(0.0);
+        return;
+    }
+    let predicted = preview_human_input(
+        &h.game,
+        tank as usize,
+        [
+            forward as f64,
+            backup as f64,
+            turn_left as f64,
+            turn_right as f64,
+        ],
+    );
+    out.copy_from_slice(&[
+        predicted.x as f32,
+        predicted.y as f32,
+        predicted.rotation as f32,
+    ]);
+}
+
 /// Instantly set a human tank's absolute heading when the resulting hull pose
 /// is clear of walls. Used only by the optional browser accessibility control.
 #[no_mangle]
@@ -227,7 +282,12 @@ pub unsafe extern "C" fn kf_set_direction_input(
     movement: u32,
     fire: u32,
 ) {
-    apply_direction(&mut (*h).game, tank as usize, movement.min(128) as u16, fire.min(1) as u8);
+    apply_direction(
+        &mut (*h).game,
+        tank as usize,
+        movement.min(128) as u16,
+        fire.min(1) as u8,
+    );
 }
 
 /// World-direction input for the human browser wheel. This intentionally has

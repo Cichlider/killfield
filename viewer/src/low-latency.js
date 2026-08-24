@@ -7,8 +7,6 @@
  * expected to produce. Rust corrects walls, hits and every game outcome.
  */
 
-import * as C from "./constants.js";
-
 function normaliseAngle(degrees) {
   let value = degrees % 360;
   if (value > 180) value -= 360;
@@ -16,28 +14,14 @@ function normaliseAngle(degrees) {
   return value;
 }
 
-export function predictLocalTank(pose, input, scale, leadFrames) {
+export function interpolatePredictedPose(pose, predicted, leadFrames) {
   const lead = Math.max(0, Math.min(1, Number.isFinite(leadFrames) ? leadFrames : 0));
-  const predicted = { x: pose.x, y: pose.y, rotation: pose.rotation };
-  if (lead === 0) return predicted;
-
-  const forward = Math.max(0, Math.min(1, input.forward || 0));
-  const backup = Math.max(0, Math.min(1, input.backup || 0));
-  const left = Math.max(0, Math.min(1, input.turnLeft || 0));
-  const right = Math.max(0, Math.min(1, input.turnRight || 0));
-  const movePerSubstep = (
-    C.TANK_FORWARD_SPEED_BASE * forward - C.TANK_BACKUP_SPEED_BASE * backup
-  ) * (scale / 50) * lead / C.TANK_MOVE_STEPS;
-  const turnPerSubstep = C.TANK_TURN_SPEED * (right - left)
-    * lead / C.TANK_MOVE_STEPS;
-
-  for (let i = 0; i < C.TANK_MOVE_STEPS; i++) {
-    predicted.rotation = normaliseAngle(predicted.rotation + turnPerSubstep);
-    const radians = (predicted.rotation - 90) * C.DEG;
-    predicted.x += Math.cos(radians) * movePerSubstep;
-    predicted.y += Math.sin(radians) * movePerSubstep;
-  }
-  return predicted;
+  const delta = normaliseAngle(predicted.rotation - pose.rotation);
+  return {
+    x: pose.x + (predicted.x - pose.x) * lead,
+    y: pose.y + (predicted.y - pose.y) * lead,
+    rotation: normaliseAngle(pose.rotation + delta * lead),
+  };
 }
 
 /**
