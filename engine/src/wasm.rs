@@ -57,7 +57,8 @@ pub struct Handle {
     semantic_state: SemanticObsState,
     semantic: SemanticObservation,
     semantic_buffer: Vec<f32>,
-    walking_curriculum: bool,
+    /// 0 = ordinary match, 1 = walking map v1, 2 = walking map v2.
+    walking_curriculum: u8,
     last_rl_action: [u16; 2],
 }
 
@@ -127,7 +128,7 @@ pub extern "C" fn kf_new(seed: u32, laika_mask: u32) -> *mut Handle {
         semantic_state: SemanticObsState::default(),
         semantic: SemanticObservation::default(),
         semantic_buffer: vec![0.0; OBS_DIM + BULLET_SLOTS],
-        walking_curriculum: false,
+        walking_curriculum: 0,
         last_rl_action: [STOP_ACTION; 2],
     });
     build_render(&mut h);
@@ -140,7 +141,19 @@ pub extern "C" fn kf_new_walking_v1() -> *mut Handle {
     let handle = kf_new(20_260_825, 0);
     unsafe {
         (*handle).game = Game::walking_curriculum(20_260_825);
-        (*handle).walking_curriculum = true;
+        (*handle).walking_curriculum = 1;
+        build_render(&mut *handle);
+    }
+    handle
+}
+
+/// Unseen fixed corridor for locomotion transfer review.
+#[no_mangle]
+pub extern "C" fn kf_new_walking_v2() -> *mut Handle {
+    let handle = kf_new(20_260_826, 0);
+    unsafe {
+        (*handle).game = Game::walking_curriculum_v2(20_260_826);
+        (*handle).walking_curriculum = 2;
         build_render(&mut *handle);
     }
     handle
@@ -346,7 +359,7 @@ pub unsafe extern "C" fn kf_step(h: *mut Handle) -> u32 {
             tank.turn_right_amount = None;
         }
     }
-    let route_direction_mismatch = if h.walking_curriculum {
+    let route_direction_mismatch = if h.walking_curriculum != 0 {
         let mut observation = SemanticObservation::default();
         encode_semantic(&h.game, 0, &h.semantic_state, &mut observation);
         observation.values[NAV_OFFSET..NAV_OFFSET + 4]
@@ -360,7 +373,7 @@ pub unsafe extern "C" fn kf_step(h: *mut Handle) -> u32 {
         false
     };
     let invalid_stationary_action =
-        h.walking_curriculum && matches!(h.last_rl_action[0], FIRE_ACTION | STOP_ACTION);
+        h.walking_curriculum != 0 && matches!(h.last_rl_action[0], FIRE_ACTION | STOP_ACTION);
     let events = h.game.step();
     h.paint_step.fill(0.0);
     let mut flags = 0u32;
@@ -392,14 +405,14 @@ pub unsafe extern "C" fn kf_step(h: *mut Handle) -> u32 {
             }
         }
     }
-    let walking_arrived = h.walking_curriculum
+    let walking_arrived = h.walking_curriculum != 0
         && h.game.tanks[0].alive
         && walking_curriculum_progress(&h.game) >= 0.98;
     if walking_arrived {
         h.game.frozen = true;
         h.last_winner = 0.0;
         flags |= 64;
-    } else if h.walking_curriculum && h.game.tanks[0].alive {
+    } else if h.walking_curriculum != 0 && h.game.tanks[0].alive {
         let tank = h.game.tanks[0];
         let dx = tank.x - before.0;
         let dy = tank.y - before.1;
@@ -420,8 +433,12 @@ pub unsafe extern "C" fn kf_step(h: *mut Handle) -> u32 {
             flags |= 16 | 64;
         }
     }
-    if h.walking_curriculum && new_round {
-        h.game = Game::walking_curriculum(20_260_825);
+    if h.walking_curriculum != 0 && new_round {
+        h.game = if h.walking_curriculum == 2 {
+            Game::walking_curriculum_v2(20_260_826)
+        } else {
+            Game::walking_curriculum(20_260_825)
+        };
         h.semantic_state.reset();
         h.last_rl_action = [STOP_ACTION; 2];
         h.last_winner = -1.0;
@@ -676,6 +693,29 @@ mod walking_viewer_tests {
                     let flags = kf_step(handle);
                     frames += 1;
                     if frames < 208 {
+                        assert_eq!(flags & 64, 0, "viewer ended at frame {frames}");
+                    } else {
+                        assert_ne!(flags & 64, 0);
+                        assert_eq!((*handle).last_winner, 0.0);
+                    }
+                }
+            }
+        }
+        unsafe { kf_free(handle) };
+    }
+
+    #[test]
+    fn viewer_map_v2_accepts_the_transferred_policy_route() {
+        let handle = kf_new_walking_v2();
+        let actions = [(32, 75), (0, 25), (96, 75), (0, 12), (32, 70)];
+        let mut frames = 0;
+        for (action, count) in actions {
+            for _ in 0..count {
+                unsafe {
+                    kf_set_rl_action(handle, 0, action);
+                    let flags = kf_step(handle);
+                    frames += 1;
+                    if frames < 257 {
                         assert_eq!(flags & 64, 0, "viewer ended at frame {frames}");
                     } else {
                         assert_ne!(flags & 64, 0);

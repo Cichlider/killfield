@@ -1,0 +1,26 @@
+{
+  "model": "ppo-walking-v6-transition-context-serpentine-joystick130-nomem-s11",
+  "checkpoint": "outputs/ppo_walking_v6_transition_context_joystick130/nomem/s11/final.pt",
+  "evaluation_kind": "zero-shot-fixed-map-transfer",
+  "episodes": 100,
+  "map": "walking-v2-seven-by-four-five-turn-seed-20260826",
+  "route": "right-up-left-up-right",
+  "path_cells": 22,
+  "turns": 5,
+  "outcomes": {
+    "arrived": 100,
+    "failed": 0,
+    "timeout": 0
+  },
+  "failure_reasons": {
+    "wall": 0,
+    "heading": 0,
+    "fire": 0,
+    "stop": 0,
+    "route_direction": 0,
+    "timeout": 0
+  },
+  "arrival_rate": 1.0,
+  "fire_rate": 0.0,
+  "decisions_mean": 257.0
+}

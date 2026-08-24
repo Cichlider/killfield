@@ -11,6 +11,9 @@
 - v4 从头 1,015,808 步，v5/v6 各继续 507,904 步，不设 gate；
 - v6 同图恰好 100 局：100 到达、0 失败、0 超时，平均 208 帧；固定 Laika 旁路报告
   恰好 100 局：5 胜、92 负、3 双亡，胜率 5%。
+- 地图 v2 是未参与训练的固定 `7×4` 单通道道路，seed `20260826`，路线依次为
+  右→上→左→上→右（22 格、5 次转弯）。v6 零样本恰好 100 局：100 到达、0 失败、
+  0 超时、0 开火，平均 257 帧。Viewer 当前默认在地图 v2 上验收。
 
 ## 固定配置
 
@@ -58,7 +61,8 @@ zsh training/run_ppo_paint_v1.sh train
 ## 当前训练结果
 
 - schema-8 `ppo-walking-v6-transition-context-serpentine-joystick130-nomem-s11`：固定图
-  恰好 100 局全部到达，平均 208 帧；
+  恰好 100 局全部到达，平均 208 帧；未训练地图 v2 零样本恰好 100 局全部到达，
+  平均 257 帧；
 - schema-8 `ppo-walking-v5-waypoint-direction-serpentine-joystick130-nomem-s11`：固定图
   100 局均在第 138 帧 waypoint 方向错误；
 - schema-8 `ppo-walking-v4-next-direction-serpentine-joystick130-nomem-s11`：固定图

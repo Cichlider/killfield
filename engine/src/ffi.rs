@@ -28,6 +28,7 @@ const STATIC_NAV_TOTAL: f64 = 0.5;
 const STATIC_SHOT_ATTEMPT: f64 = 0.10;
 const STATIC_SHOT_BONUS_CAP: f64 = 0.50;
 const WALKING_SEED: u32 = 20_260_825;
+const WALKING_SEED_V2: u32 = 20_260_826;
 const WALKING_FRAMES: u32 = 300;
 const WALKING_PROGRESS_TOTAL: f64 = 5.0;
 const WALKING_SUCCESS: f64 = 10.0;
@@ -56,12 +57,14 @@ struct Slot {
 
 impl Slot {
     fn new(seed: u32, reward_enabled: bool, static_target: bool, walking: bool) -> Self {
-        let walking_start = if walking && seed != WALKING_SEED {
+        let walking_start = if walking && seed != WALKING_SEED && seed != WALKING_SEED_V2 {
             seed as usize % 13
         } else {
             0
         };
-        let game = if walking {
+        let game = if walking && seed == WALKING_SEED_V2 {
+            Game::walking_curriculum_v2(seed)
+        } else if walking {
             Game::walking_curriculum_at(seed, walking_start)
         } else {
             Game::with_ai(seed, 2, if static_target { &[] } else { &[1] })
@@ -623,6 +626,28 @@ pub extern "C" fn kf_vec_new_walking_v1(count: u32) -> *mut VecEnv {
         false,
         true,
     )))
+}
+
+#[no_mangle]
+pub extern "C" fn kf_vec_new_walking_v2(count: u32) -> *mut VecEnv {
+    let count = count.max(1) as usize;
+    let mut env = VecEnv::new(
+        count,
+        WALKING_SEED_V2,
+        1,
+        true,
+        false,
+        false,
+        LabelMode::None,
+        false,
+        true,
+    );
+    env.fixed_seed = Some(WALKING_SEED_V2);
+    for index in 0..count {
+        env.slots[index] = Slot::new(WALKING_SEED_V2, true, false, true);
+        env.encode_slot(index);
+    }
+    Box::into_raw(Box::new(env))
 }
 
 #[no_mangle]

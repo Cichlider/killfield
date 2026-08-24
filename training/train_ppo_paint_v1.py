@@ -79,14 +79,14 @@ class Config:
 
 class PpoVec:
     def __init__(self, count: int, seed: int, static_target=False, walking=False,
-                 walking_training=False,
+                 walking_training=False, walking_map=1,
                  eval_laika=False,
                  library=Path("engine/target/release/libkf_engine.dylib")):
         self.count = count
         self.lib = ctypes.CDLL(str(library.resolve()))
         constructor_name = (
             "kf_vec_new_walking_train_v3" if walking_training else
-            "kf_vec_new_walking_v1" if walking else
+            f"kf_vec_new_walking_v{walking_map}" if walking else
             "kf_vec_new_static_target_v1" if static_target else
             "kf_vec_new_ppo_eval" if eval_laika else
             "kf_vec_new_ppo_paint_v1"
@@ -420,9 +420,9 @@ def evaluate(model, kind, config, device):
 
 
 @torch.inference_mode()
-def evaluate_walking(model, kind, config, device):
+def evaluate_walking(model, kind, config, device, walking_map=1):
     """Exactly 100 deterministic episodes on the curriculum acceptance map."""
-    env = PpoVec(config.eval_envs, 0, walking=True)
+    env = PpoVec(config.eval_envs, 0, walking=True, walking_map=walking_map)
     hidden = model.initial_hidden(config.eval_envs, device)
     starts = np.ones(config.eval_envs, bool)
     decisions = np.zeros(config.eval_envs, np.int64)
@@ -464,7 +464,11 @@ def evaluate_walking(model, kind, config, device):
                        for key in ("wall", "heading", "fire", "stop", "route_direction", "timeout")}
     return {
         "episodes": len(episodes),
-        "map": "walking-v1-six-by-three-serpentine-seed-20260825",
+        "map": (
+            "walking-v2-seven-by-four-five-turn-seed-20260826"
+            if walking_map == 2 else
+            "walking-v1-six-by-three-serpentine-seed-20260825"
+        ),
         "outcomes": outcomes,
         "failure_reasons": failure_reasons,
         "arrival_rate": outcomes["arrived"] / len(episodes),

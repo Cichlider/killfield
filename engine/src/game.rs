@@ -43,6 +43,33 @@ pub const WALKING_CURRICULUM_PATH: [(usize, usize); 18] = [
     (5, 0),
 ];
 
+/// A distinct seven-by-four fixed corridor used to test whether locomotion
+/// transfers to unseen turn order instead of memorising curriculum v1.
+pub const WALKING_CURRICULUM_PATH_V2: [(usize, usize); 22] = [
+    (0, 3),
+    (1, 3),
+    (2, 3),
+    (3, 3),
+    (4, 3),
+    (5, 3),
+    (6, 3),
+    (6, 2),
+    (6, 1),
+    (5, 1),
+    (4, 1),
+    (3, 1),
+    (2, 1),
+    (1, 1),
+    (0, 1),
+    (0, 0),
+    (1, 0),
+    (2, 0),
+    (3, 0),
+    (4, 0),
+    (5, 0),
+    (6, 0),
+];
+
 /// Normalise an angle to (-180, 180], matching the source engine's setter.
 #[inline]
 pub fn norm_rot(deg: f64) -> f64 {
@@ -527,10 +554,15 @@ pub struct Game {
 
 /// Continuous progress along the fixed serpentine walking curriculum.
 pub fn walking_curriculum_progress(game: &Game) -> f64 {
+    let path: &[(usize, usize)] = if game.maze.w == 7 && game.maze.h == 4 {
+        &WALKING_CURRICULUM_PATH_V2
+    } else {
+        &WALKING_CURRICULUM_PATH
+    };
     let tank = game.tanks[0];
     let mut best_distance = f64::INFINITY;
     let mut best_progress = 0.0;
-    for (index, pair) in WALKING_CURRICULUM_PATH.windows(2).enumerate() {
+    for (index, pair) in path.windows(2).enumerate() {
         let ax = (pair[0].0 as f64 + 0.5) * game.scale;
         let ay = (pair[0].1 as f64 + 0.5) * game.scale;
         let bx = (pair[1].0 as f64 + 0.5) * game.scale;
@@ -547,7 +579,7 @@ pub fn walking_curriculum_progress(game: &Game) -> f64 {
             best_progress = index as f64 + projection;
         }
     }
-    best_progress / (WALKING_CURRICULUM_PATH.len() - 1) as f64
+    best_progress / (path.len() - 1) as f64
 }
 
 impl Game {
@@ -605,13 +637,26 @@ impl Game {
         Self::walking_curriculum_at(seed, 0)
     }
 
+    pub fn walking_curriculum_v2(seed: u32) -> Self {
+        Self::walking_curriculum_from_path(seed, 0, 7, 4, &WALKING_CURRICULUM_PATH_V2)
+    }
+
     /// The same fixed corridor with the learner starting later on its unique
     /// path. Used only to expose all three turns during training.
     pub fn walking_curriculum_at(seed: u32, start_index: usize) -> Self {
+        Self::walking_curriculum_from_path(seed, start_index, 6, 3, &WALKING_CURRICULUM_PATH)
+    }
+
+    fn walking_curriculum_from_path(
+        seed: u32,
+        start_index: usize,
+        w: usize,
+        h: usize,
+        path: &[(usize, usize)],
+    ) -> Self {
         let mut g = Game::with_ai(seed, 2, &[]);
-        let (w, h) = (6usize, 3usize);
         let mut cells = vec![[1u8, 1u8, 1u8]; w * h];
-        for pair in WALKING_CURRICULUM_PATH.windows(2) {
+        for pair in path.windows(2) {
             let (x, y) = pair[0];
             let (nx, ny) = pair[1];
             if nx == x + 1 {
@@ -629,27 +674,24 @@ impl Game {
             (C::MOVIEHEIGHT - C::HEIGHTTOBOTTOM) / (h as f64 + 0.125),
             C::MOVIEWIDTH / (w as f64 + 0.125),
         );
-        let reachable = calc_reachable(&g.maze, 0, 2);
+        let reachable = calc_reachable(&g.maze, path[0].0, path[0].1);
         g.reachable = Arc::new(reachable.cells);
         g.reachable_index = Arc::new(reachable.index);
         g.walls = Arc::new(build_wall_segments(&g.maze, g.scale));
         g.wall_half_t = (g.scale / 16.0).floor();
         g.wall_grid = Arc::new(WallGrid::new(&g.walls, g.wall_half_t, g.scale));
 
-        let start_index = start_index.min(WALKING_CURRICULUM_PATH.len() - 2);
-        let spawns = [
-            WALKING_CURRICULUM_PATH[start_index],
-            *WALKING_CURRICULUM_PATH.last().unwrap(),
-        ];
+        let start_index = start_index.min(path.len() - 2);
+        let spawns = [path[start_index], *path.last().unwrap()];
         g.tanks = spawns
             .iter()
             .enumerate()
             .map(|(number, &cell)| Tank::new(number, cell, g.scale, &mut g.rng))
             .collect();
         let heading_target = if start_index == 0 {
-            WALKING_CURRICULUM_PATH[start_index + 1]
+            path[start_index + 1]
         } else {
-            WALKING_CURRICULUM_PATH[start_index - 1]
+            path[start_index - 1]
         };
         let (dx, dy) = if start_index == 0 {
             (
@@ -1114,6 +1156,18 @@ mod walking_curriculum_tests {
                 }
             );
         }
+    }
+
+    #[test]
+    fn walking_map_v2_is_a_distinct_unbranched_path_with_inert_goal() {
+        let game = Game::walking_curriculum_v2(20_260_826);
+        assert_eq!((game.maze.w, game.maze.h), (7, 4));
+        assert_eq!(game.reachable.len(), WALKING_CURRICULUM_PATH_V2.len());
+        assert_eq!(game.tank_fields[0], (0, 3));
+        assert_eq!(game.tank_fields[1], (6, 0));
+        assert!(game.ais.iter().all(Option::is_none));
+        assert!(game.ai_enabled.iter().all(|enabled| !enabled));
+        assert_eq!(walking_curriculum_progress(&game), 0.0);
     }
 }
 
