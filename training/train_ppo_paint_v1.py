@@ -17,8 +17,8 @@ import torch.nn.functional as F
 from torch.distributions import Categorical
 
 from ppo_models import (
-    BULLET_SLOTS, MAP_DIM, OBS_DIM, OBS_SCHEMA_VERSION,
-    MOVEMENT_ACTIONS, make_actor_critic,
+    ACTION_COUNT, BULLET_SLOTS, FIRE_ACTION, MAP_DIM, OBS_DIM,
+    OBS_SCHEMA_VERSION, STOP_ACTION, make_actor_critic,
 )
 
 
@@ -41,8 +41,9 @@ def atomic_torch_save(value, path):
 
 @dataclass(frozen=True)
 class Config:
-    stage: str = "paint-v1-directional128"
+    stage: str = "paint-v1-joystick130"
     observation_schema: int = OBS_SCHEMA_VERSION
+    action_count: int = ACTION_COUNT
     opponent: str = "Laika"
     envs: int = 64
     rollout_steps: int = 256
@@ -131,7 +132,7 @@ def collect_rollout(env, model, kind, config, device, starts, hidden):
     shape = (tmax, count)
     obs = np.empty(shape + (OBS_DIM,), np.float32)
     masks = np.empty(shape + (BULLET_SLOTS,), bool)
-    actions = np.empty(shape + (2,), np.int64)
+    actions = np.empty(shape, np.int64)
     logprob = np.empty(shape, np.float32)
     values = np.empty(shape, np.float32)
     next_values = np.empty(shape, np.float32)
@@ -154,22 +155,14 @@ def collect_rollout(env, model, kind, config, device, starts, hidden):
             ).view(1, count, 1)
             hidden_in[t] = hidden[0].cpu().numpy()
         obs_t, mask_t = tensors(current_obs, current_masks, device)
-        (movement_logits, fire_logits), value, next_hidden = model.step(
-            obs_t, mask_t, hidden
-        )
-        movement_distribution = Categorical(logits=movement_logits)
-        fire_distribution = Categorical(logits=fire_logits)
-        movement = movement_distribution.sample()
-        fire = fire_distribution.sample()
-        actions[t, :, 0] = movement.cpu().numpy()
-        actions[t, :, 1] = fire.cpu().numpy()
-        logprob[t] = (
-            movement_distribution.log_prob(movement)
-            + fire_distribution.log_prob(fire)
-        ).cpu().numpy()
+        logits, value, next_hidden = model.step(obs_t, mask_t, hidden)
+        distribution = Categorical(logits=logits)
+        action = distribution.sample()
+        actions[t] = action.cpu().numpy()
+        logprob[t] = distribution.log_prob(action).cpu().numpy()
         values[t] = value.cpu().numpy()
 
-        env.step(actions[t, :, 0] * 2 + actions[t, :, 1])
+        env.step(actions[t])
         rewards[t] = env.rewards
         channels[t] = env.channels
         diagnostics[t] = env.diagnostics
@@ -202,8 +195,8 @@ def collect_rollout(env, model, kind, config, device, starts, hidden):
     metrics = {
         "reward_mean": float(rewards.mean()),
         "reward_std": float(rewards.std()),
-        "fire_rate": float((actions[..., 1] == 1).mean()),
-        "stop_rate": float((actions[..., 0] == MOVEMENT_ACTIONS - 1).mean()),
+        "fire_rate": float((actions == FIRE_ACTION).mean()),
+        "stop_rate": float((actions == STOP_ACTION).mean()),
         "done_count": int(dones.sum()),
         "outcomes": outcome_counts,
         "phi_self_mean": float(diagnostics[..., 0].mean()),
@@ -225,7 +218,7 @@ def ppo_loss(model, batch, indices, config, device, recurrent):
         flat_masks = batch["masks"].reshape(-1, BULLET_SLOTS)[indices]
         logits, value, _ = model.step(*tensors(flat_obs, flat_masks, device))
         action = torch.as_tensor(
-            batch["actions"].reshape(-1, 2)[indices], device=device
+            batch["actions"].reshape(-1)[indices], device=device
         ).long()
         pick = lambda name: torch.as_tensor(batch[name].reshape(-1)[indices], device=device)
     else:
@@ -244,12 +237,12 @@ def ppo_loss(model, batch, indices, config, device, recurrent):
         hidden_t = torch.as_tensor(initial_hidden, device=device).unsqueeze(0)
         starts_t = torch.as_tensor(episode_starts, device=device, dtype=torch.bool)
         logits, value, _ = model.sequence(obs_t, masks_t, hidden_t, starts_t)
-        logits = tuple(head.flatten(0, 1) for head in logits)
+        logits = logits.flatten(0, 1)
         value = value.flatten()
         action = torch.as_tensor(np.stack([
             batch["actions"][start:start + length, env]
             for env, start in zip(env_indices, starts)
-        ]).reshape(-1, 2), device=device).long()
+        ]).reshape(-1), device=device).long()
         pick = lambda name: torch.as_tensor(np.stack([
             batch[name][start:start + length, env] for env, start in zip(env_indices, starts)
         ]).reshape(-1), device=device)
@@ -259,12 +252,8 @@ def ppo_loss(model, batch, indices, config, device, recurrent):
     advantage = pick("advantages")
     returns = pick("returns")
     advantage = (advantage - advantage.mean()) / advantage.std().clamp(min=1e-8)
-    movement_distribution = Categorical(logits=logits[0])
-    fire_distribution = Categorical(logits=logits[1])
-    new_logprob = (
-        movement_distribution.log_prob(action[:, 0])
-        + fire_distribution.log_prob(action[:, 1])
-    )
+    distribution = Categorical(logits=logits)
+    new_logprob = distribution.log_prob(action)
     ratio = (new_logprob - old_logprob).exp()
     policy_loss = -torch.minimum(
         ratio * advantage,
@@ -274,9 +263,7 @@ def ppo_loss(model, batch, indices, config, device, recurrent):
     value_loss = 0.5 * torch.maximum(
         (value - returns).square(), (clipped_value - returns).square()
     ).mean()
-    entropy = (
-        movement_distribution.entropy() + fire_distribution.entropy()
-    ).mean()
+    entropy = distribution.entropy().mean()
     loss = policy_loss + config.value_coefficient * value_loss - config.entropy_coefficient * entropy
     with torch.no_grad():
         log_ratio = new_logprob - old_logprob
@@ -357,10 +344,8 @@ def evaluate(model, kind, config, device):
                     ~starts, device=device, dtype=torch.float32
                 ).view(1, config.eval_envs, 1)
             logits, _value, hidden = model.step(*tensors(current_obs, current_masks, device), hidden)
-            movement = logits[0].argmax(-1).cpu().numpy().astype(np.uint16)
-            fire = logits[1].argmax(-1).cpu().numpy().astype(np.uint8)
-            action = movement * 2 + fire
-            fired |= fire == 1
+            action = logits.argmax(-1).cpu().numpy().astype(np.uint16)
+            fired |= action == FIRE_ACTION
             decisions += 1
             env.step(action)
             channel_total += env.channels
@@ -433,7 +418,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", required=True, choices=("nomem", "gru"))
     parser.add_argument("--seed", required=True, type=int, choices=TRAIN_SEEDS)
-    parser.add_argument("--output", type=Path, default=Path("outputs/ppo_paint_v1_directional128"))
+    parser.add_argument("--output", type=Path, default=Path("outputs/ppo_paint_v1_joystick130"))
     parser.add_argument("--device", choices=("auto", "cpu", "mps"), default="auto")
     parser.add_argument("--smoke", action="store_true")
     args = parser.parse_args()
@@ -525,7 +510,7 @@ def main():
     model.eval()
     final_eval = evaluate(model, args.model, config, device)
     result = {
-        "name": f"ppo-paint-v1-directional128-{args.model}-s{args.seed}",
+        "name": f"ppo-paint-v1-joystick130-{args.model}-s{args.seed}",
         "model": args.model, "seed": args.seed, "total_steps": total_steps,
         "seconds_this_run": time.perf_counter() - started,
         "evaluation": final_eval, "config": config_dict,

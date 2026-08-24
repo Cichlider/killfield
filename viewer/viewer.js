@@ -137,8 +137,10 @@ let immediateFirePressed = false;
 
 let wasm = null;
 let scratchPtr = null;
-const OBS_DIM = 1290;
+const OBS_DIM = 1289;
 const BULLET_SLOTS = 10;
+const RL_FIRE_ACTION = 128;
+const RL_STOP_ACTION = 129;
 let selectedModel = "";
 let modelHistory = [];
 let lastModelAction = -1;
@@ -162,7 +164,7 @@ async function loadModelCatalogue() {
     if (!selectedModel) {
       const option = document.createElement("option");
       option.value = "";
-      option.textContent = "no compatible schema-5 directional128 checkpoint";
+      option.textContent = "no compatible schema-6 joystick130 checkpoint";
       rlModelSelect.append(option);
       rlStatus.textContent = "模型尚未训练；运行训练后刷新。本页不会用 MPC 冒充 PPO。";
     } else {
@@ -635,8 +637,8 @@ function applyLanguage() {
     ? "PPO 行为 review：所选模型以 25 Hz 对战固定 Laika。"
     : "PPO behavior review: the selected model plays fixed Laika at 25 Hz.";
   note.textContent = lang === "zh"
-    ? "左侧只接受 schema-5 directional128 PPO 的双 head 动作；右侧始终由固定 Laika 脚本控制。"
-    : "The left tank accepts only schema-5 directional128 PPO actions; fixed Laika always drives the right tank.";
+    ? "左侧只接受 schema-6 joystick130 PPO：128 个轮盘方向 + 开火 + 停止；右侧始终由固定 Laika 脚本控制。"
+    : "The left tank accepts schema-6 joystick130 PPO: 128 wheel directions + fire + stop; fixed Laika drives the right tank.";
   updateScoreboard();
 }
 
@@ -712,7 +714,7 @@ function newGame() {
   inferenceGeneration += 1;
   inferencePending = false;
   inferenceSummary = selectedModel ? "waiting for first action" : "no model loaded";
-  wasm.kf_set_direction_input(handle, 0, 128, 0);
+  wasm.kf_set_rl_action(handle, 0, RL_STOP_ACTION);
 
   // In human play the world and human controls start immediately. Only tank 0's
   // PPO policy waits, giving the player genuine reaction/movement time.
@@ -814,14 +816,16 @@ function requestModelAction() {
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || `HTTP ${response.status}`);
     if (generation !== inferenceGeneration) return;
-    lastModelAction = result.movement * 2 + result.fire;
-    wasm.kf_set_direction_input(handle, 0, result.movement, result.fire);
-    inferenceSummary = `${result.model} · move ${result.movement}/128 · fire ${result.fire} · `
-      + `${Math.round(result.movement_confidence * 100)}% / ${Math.round(result.fire_confidence * 100)}%`;
+    lastModelAction = result.action;
+    wasm.kf_set_rl_action(handle, 0, result.action);
+    const actionLabel = result.action < 128
+      ? `direction ${result.action}/128`
+      : result.action === RL_FIRE_ACTION ? "fire" : "stop";
+    inferenceSummary = `${result.model} · ${actionLabel} · ${Math.round(result.confidence * 100)}%`;
   }).catch((error) => {
     if (generation !== inferenceGeneration) return;
     inferenceSummary = `inference error: ${error.message}`;
-    wasm.kf_set_direction_input(handle, 0, 128, 0);
+    wasm.kf_set_rl_action(handle, 0, RL_STOP_ACTION);
   }).finally(() => {
     if (generation === inferenceGeneration) inferencePending = false;
   });
@@ -830,7 +834,7 @@ function requestModelAction() {
 function tick() {
   if (killfieldDelayFrames > 0) {
     killfieldDelayFrames -= 1;
-    wasm.kf_set_direction_input(handle, 0, 128, 0);
+    wasm.kf_set_rl_action(handle, 0, RL_STOP_ACTION);
   } else {
     requestModelAction();
   }
@@ -858,7 +862,7 @@ function tick() {
     roundFrames = 0;
     modelHistory = [];
     lastModelAction = -1;
-    wasm.kf_set_direction_input(handle, 0, 128, 0);
+    wasm.kf_set_rl_action(handle, 0, RL_STOP_ACTION);
     killfieldDelayFrames = mode === "play" ? openingDelayFrameCount() : 0;
   }
   if (flags & 64) { // round_end

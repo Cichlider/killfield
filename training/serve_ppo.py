@@ -13,11 +13,11 @@ from ppo_models import BULLET_SLOTS, OBS_DIM, make_actor_critic
 
 
 # Older checkpoints use retired action/observation contracts and are not
-# exposed as schema-5 directional128 policies. This entry becomes available
+# exposed as schema-6 joystick130 policies. This entry becomes available
 # automatically once the compatible checkpoint exists under --models.
 SOURCES = {
     "nomem-s11": {
-        "display": "ppo-paint-v1-directional128-nomem-s11",
+        "display": "ppo-paint-v1-joystick130-nomem-s11",
         "architecture": "nomem",
         "history": 1,
         "checkpoint": "nomem/s11/final.pt",
@@ -74,21 +74,15 @@ class Models:
         ).unsqueeze(0)
         if source["architecture"] == "gru":
             logits, _values, _hidden = model.sequence(obs, mask)
-            movement_probabilities = logits[0][0, -1].softmax(-1)
-            fire_probabilities = logits[1][0, -1].softmax(-1)
+            probabilities = logits[0, -1].softmax(-1)
         else:
             logits, _values, _hidden = model.step(obs[:, -1], mask[:, -1])
-            movement_probabilities = logits[0][0].softmax(-1)
-            fire_probabilities = logits[1][0].softmax(-1)
-        movement = int(movement_probabilities.argmax())
-        fire = int(fire_probabilities.argmax())
+            probabilities = logits[0].softmax(-1)
+        action = int(probabilities.argmax())
         return {
-            "movement": movement,
-            "fire": fire,
-            "movement_confidence": float(movement_probabilities[movement]),
-            "fire_confidence": float(fire_probabilities[fire]),
-            "movement_probabilities": movement_probabilities.cpu().tolist(),
-            "fire_probabilities": fire_probabilities.cpu().tolist(),
+            "action": action,
+            "confidence": float(probabilities[action]),
+            "probabilities": probabilities.cpu().tolist(),
             "history": len(history),
             "model": source["display"],
             "frame_skip": 1,
@@ -99,7 +93,7 @@ class Models:
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--port", type=int, default=8000)
-    parser.add_argument("--models", type=Path, default=Path("outputs/ppo_paint_v1_directional128"))
+    parser.add_argument("--models", type=Path, default=Path("outputs/ppo_paint_v1_joystick130"))
     parser.add_argument("--device", choices=("auto", "cpu", "mps"), default="auto")
     args = parser.parse_args()
     if args.device == "auto":

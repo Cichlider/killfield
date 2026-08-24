@@ -4,9 +4,10 @@
 
 | 项目 | 配置 |
 |---|---|
-| 下一模型名 | `ppo-paint-v1-directional128-nomem-s11` |
+| 下一模型名 | `ppo-paint-v1-joystick130-nomem-s11` |
 | 对手 | 固定 Laika |
-| 网络 | schema-5 frame encoder + MLP-256 Actor-Critic，无记忆；Movement-129/Fire-2 双 head |
+| 网络 | schema-6 frame encoder + MLP-256 Actor-Critic，无记忆；单一 `Discrete(130)` head |
+| Action | `0..127` 轮盘方向、`128` 原地开火、`129` 停止；方向瞬转，支持轮盘倒车分区 |
 | 动作频率 | 25 Hz，每引擎帧一次 |
 | 并行环境 | 64 |
 | rollout | 每环境 256 步 |
@@ -39,8 +40,10 @@ zsh training/run_ppo_paint_v1.sh train
 
 ## 当前训练结果
 
-- schema-5 `ppo-paint-v1-directional128-nomem-s11`：5,013,504 步；固定 Laika 恰好
-  100 局为 1 胜、90 负、9 双亡、0 超时，胜率 1%。模型已直接接入 `rl` Viewer，
-  本结果不作为部署 gate；
+- schema-6 `ppo-paint-v1-joystick130-nomem-s11`：动作协议和训练链路已实现并通过集成测试，
+  尚未开始正式训练；完成后仍将对固定 Laika 只评估恰好 100 局并直接接入 Viewer；
+- 历史 schema-5 `ppo-paint-v1-directional128-nomem-s11`：5,013,504 步；固定 Laika 恰好
+  100 局为 1 胜、90 负、9 双亡、0 超时，胜率 1%。因旧双 head 动作协议已取消，不再
+  出现在 Viewer 模型列表；
 - 历史 schema-3 `ppo-paint-v1-nomem-s11`：5,013,504 步；固定 Laika 100 局为
   0 胜、95 负、5 双亡；它使用已取消的联合 18 动作，不再出现在网页模型选项中。

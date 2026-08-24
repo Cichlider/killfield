@@ -9,9 +9,8 @@ from pathlib import Path
 import numpy as np
 
 from ppo_models import (
-    ACTION_OFFSET, BULLET_DIM, BULLET_OFFSET, BULLET_SLOTS, MAP_DIM, OBS_DIM,
+    ACTION_COUNT, ACTION_OFFSET, BULLET_DIM, BULLET_OFFSET, BULLET_SLOTS, MAP_DIM, OBS_DIM,
     OBS_SCHEMA_VERSION, OPPONENT_OFFSET, PHASE_OFFSET, SELF_OFFSET,
-    MOVEMENT_ACTIONS, FIRE_ACTIONS,
 )
 
 
@@ -47,7 +46,7 @@ def main():
         np.arange(SELF_OFFSET + 5, SELF_OFFSET + 9),
         [OPPONENT_OFFSET + 5],
         np.arange(PHASE_OFFSET, PHASE_OFFSET + 3),
-        np.arange(ACTION_OFFSET, ACTION_OFFSET + MOVEMENT_ACTIONS + FIRE_ACTIONS),
+        np.arange(ACTION_OFFSET, ACTION_OFFSET + ACTION_COUNT),
     ]
     binary = obs[:, binary_columns]
     require("binary_channels", np.isin(binary, (0.0, 1.0)).all(), "binary value outside {0,1}")
@@ -78,14 +77,11 @@ def main():
         "phase_one_hot", np.allclose(obs[:, PHASE_OFFSET:PHASE_OFFSET + 3].sum(1), 1.0),
         "phase is not exactly one-hot",
     )
-    movement_sum = obs[:, ACTION_OFFSET:ACTION_OFFSET + MOVEMENT_ACTIONS].sum(1)
-    fire_sum = obs[:, ACTION_OFFSET + MOVEMENT_ACTIONS:].sum(1)
+    action_sum = obs[:, ACTION_OFFSET:].sum(1)
     require(
         "previous_action",
-        (np.isin(movement_sum, (0.0, 1.0))
-         & np.isin(fire_sum, (0.0, 1.0))
-         & (movement_sum == fire_sum)).all(),
-        "previous Movement/Fire is not empty/one-hot",
+        np.isin(action_sum, (0.0, 1.0)).all(),
+        "previous Discrete(130) action is not empty/one-hot",
     )
 
     bullets = obs[:, BULLET_OFFSET:PHASE_OFFSET].reshape(-1, BULLET_SLOTS, BULLET_DIM)

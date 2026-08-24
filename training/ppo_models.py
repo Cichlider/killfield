@@ -8,8 +8,8 @@ import torch
 import torch.nn as nn
 
 
-OBS_SCHEMA_VERSION = 5
-OBS_DIM = 1290
+OBS_SCHEMA_VERSION = 6
+OBS_DIM = 1289
 MAP_DIM = 1080
 SELF_OFFSET = 1081
 OPPONENT_OFFSET = 1090
@@ -18,8 +18,9 @@ BULLET_SLOTS = 10
 BULLET_DIM = 6
 PHASE_OFFSET = 1156
 ACTION_OFFSET = 1159
-MOVEMENT_ACTIONS = 129
-FIRE_ACTIONS = 2
+ACTION_COUNT = 130
+FIRE_ACTION = 128
+STOP_ACTION = 129
 SCALAR_DIM = (BULLET_OFFSET - MAP_DIM) + (OBS_DIM - PHASE_OFFSET)
 
 
@@ -78,8 +79,7 @@ class ActorCritic(nn.Module):
             self.memory = nn.GRU(128, 256, batch_first=True)
         else:
             self.memory = nn.Sequential(nn.Linear(128, 256), nn.Tanh())
-        self.movement_actor = nn.Linear(256, MOVEMENT_ACTIONS)
-        self.fire_actor = nn.Linear(256, FIRE_ACTIONS)
+        self.actor = nn.Linear(256, ACTION_COUNT)
         self.critic = nn.Linear(256, 1)
         self._initialise()
 
@@ -97,8 +97,7 @@ class ActorCritic(nn.Module):
                         nn.init.orthogonal_(parameter, gain=1.0)
                     else:
                         nn.init.zeros_(parameter)
-        nn.init.orthogonal_(self.movement_actor.weight, gain=0.01)
-        nn.init.orthogonal_(self.fire_actor.weight, gain=0.01)
+        nn.init.orthogonal_(self.actor.weight, gain=0.01)
         nn.init.orthogonal_(self.critic.weight, gain=1.0)
 
     def initial_hidden(self, batch: int, device):
@@ -117,7 +116,7 @@ class ActorCritic(nn.Module):
             features = features[:, 0]
         else:
             features = self.memory(encoded)
-        logits = (self.movement_actor(features), self.fire_actor(features))
+        logits = self.actor(features)
         return logits, self.critic(features).squeeze(-1), hidden
 
     def sequence(self, obs, bullet_mask, hidden=None, episode_start=None):
@@ -163,7 +162,7 @@ class ActorCritic(nn.Module):
                     features = features.index_copy(0, dirty_indices, dirty_output)
                     final_hidden = final_hidden.index_copy(1, dirty_indices, dirty_hidden)
                 hidden = final_hidden
-        logits = (self.movement_actor(features), self.fire_actor(features))
+        logits = self.actor(features)
         return logits, self.critic(features).squeeze(-1), hidden
 
 

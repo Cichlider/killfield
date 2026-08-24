@@ -1,16 +1,15 @@
 //! Small real O/A/R rollout used to measure the training-system budget.
 //!
 //! This is deliberately not a performance-only toy: it emits the frozen
-//! schema-2 observations, chosen actions, rewards and episode boundaries that
+//! current observations, chosen actions, rewards and episode boundaries that
 //! the Python update probe consumes.
 
+use kf_engine::directional::{apply_joystick_action, ACTION_COUNT};
 use kf_engine::game::Game;
-use kf_engine::directional::{apply_direction, unpack_action, MOVEMENT_HEAD_DIM, FIRE_HEAD_DIM};
 use kf_engine::reward::RewardTracker;
 use kf_engine::rng::Rng;
 use kf_engine::semantic_obs::{
-    encode, SemanticObsState, SemanticObservation, BULLET_SLOTS, OBS_DIM,
-    OBS_SCHEMA_VERSION,
+    encode, SemanticObsState, SemanticObservation, BULLET_SLOTS, OBS_DIM, OBS_SCHEMA_VERSION,
 };
 use std::collections::HashMap;
 use std::fs;
@@ -78,10 +77,9 @@ fn main() {
             t_obs += t.elapsed();
 
             let t = Instant::now();
-            let action = rng.randrange((MOVEMENT_HEAD_DIM * FIRE_HEAD_DIM) as i32) as u16;
-            let (movement, fire) = unpack_action(action);
-            apply_direction(&mut env.game, 0, movement, fire);
-            env.obs_state.push_action(movement, fire);
+            let action = rng.randrange(ACTION_COUNT as i32) as u16;
+            apply_joystick_action(&mut env.game, 0, action);
+            env.obs_state.push_action(action);
             actions.push(action as i64);
             t_action += t.elapsed();
 

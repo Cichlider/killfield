@@ -4,17 +4,15 @@
 //! frames).  Terminal games are deliberately left intact until Python has
 //! evaluated the post-transition state and calls `kf_vec_reset_done`.
 
-use crate::game::{Event, Game};
-use crate::directional::{apply_direction, unpack_action};
 use crate::ballistics::{check_bullet_path, ShotOutcome};
 use crate::constants as C;
+use crate::directional::apply_joystick_action;
 use crate::game::Tank;
+use crate::game::{Event, Game};
 use crate::laika::LaikaAI;
 use crate::reward::{RewardConfig, RewardTracker, CH_STYLE, CH_TERMINAL, REWARD_CHANNELS};
 use crate::score::{action_index, CANDIDATES};
-use crate::semantic_obs::{
-    encode, SemanticObsState, SemanticObservation, BULLET_SLOTS, OBS_DIM,
-};
+use crate::semantic_obs::{encode, SemanticObsState, SemanticObservation, BULLET_SLOTS, OBS_DIM};
 use crate::teacher::KillFieldAgent;
 
 const AIM_DIM: usize = 5;
@@ -162,8 +160,8 @@ impl VecEnv {
                     && slot.game.tanks[0].trigger_released
                     && slot.game.weapon_ready(0);
                 for (i, candidate) in CANDIDATES.iter().enumerate() {
-                    score_valid[i] = candidate[2] == 0
-                        || (can_fire && candidate[0] == 1 && candidate[1] == 1);
+                    score_valid[i] =
+                        candidate[2] == 0 || (can_fire && candidate[0] == 1 && candidate[1] == 1);
                 }
                 action_index(action) as u8
             } else {
@@ -185,8 +183,7 @@ impl VecEnv {
                 slot.decisions as i32,
             )
         };
-        self.obs[index * OBS_DIM..(index + 1) * OBS_DIM]
-            .copy_from_slice(&observation.values);
+        self.obs[index * OBS_DIM..(index + 1) * OBS_DIM].copy_from_slice(&observation.values);
         for (out, value) in self.masks[index * BULLET_SLOTS..(index + 1) * BULLET_SLOTS]
             .iter_mut()
             .zip(observation.bullet_mask)
@@ -224,9 +221,8 @@ impl VecEnv {
                 self.dones[index] = 1;
                 continue;
             }
-            let (movement, fire) = unpack_action(action);
-            apply_direction(&mut slot.game, 0, movement, fire);
-            slot.obs_state.push_action(movement, fire);
+            apply_joystick_action(&mut slot.game, 0, action);
+            slot.obs_state.push_action(action);
             slot.decisions += 1;
             let mut reward = 0.0f64;
             let mut terminal = false;
@@ -311,35 +307,65 @@ impl VecEnv {
 #[no_mangle]
 pub extern "C" fn kf_vec_new(count: u32, base_seed: u32) -> *mut VecEnv {
     Box::into_raw(Box::new(VecEnv::new(
-        count.max(1) as usize, base_seed, 4, true, false, false, LabelMode::Laika,
+        count.max(1) as usize,
+        base_seed,
+        4,
+        true,
+        false,
+        false,
+        LabelMode::Laika,
     )))
 }
 
 #[no_mangle]
 pub extern "C" fn kf_vec_new_dagger(count: u32, base_seed: u32) -> *mut VecEnv {
     Box::into_raw(Box::new(VecEnv::new(
-        count.max(1) as usize, base_seed, 1, false, false, false, LabelMode::Laika,
+        count.max(1) as usize,
+        base_seed,
+        1,
+        false,
+        false,
+        false,
+        LabelMode::Laika,
     )))
 }
 
 #[no_mangle]
 pub extern "C" fn kf_vec_new_mpc_dagger(count: u32, base_seed: u32) -> *mut VecEnv {
     Box::into_raw(Box::new(VecEnv::new(
-        count.max(1) as usize, base_seed, 1, false, false, false, LabelMode::Mpc,
+        count.max(1) as usize,
+        base_seed,
+        1,
+        false,
+        false,
+        false,
+        LabelMode::Mpc,
     )))
 }
 
 #[no_mangle]
 pub extern "C" fn kf_vec_new_ppo_r1(count: u32, base_seed: u32) -> *mut VecEnv {
     Box::into_raw(Box::new(VecEnv::new(
-        count.max(1) as usize, base_seed, 1, true, true, false, LabelMode::None,
+        count.max(1) as usize,
+        base_seed,
+        1,
+        true,
+        true,
+        false,
+        LabelMode::None,
     )))
 }
 
 #[no_mangle]
 pub extern "C" fn kf_vec_new_ppo_paint_v1(count: u32, base_seed: u32) -> *mut VecEnv {
     Box::into_raw(Box::new(VecEnv::new(
-        count.max(1) as usize, base_seed, 1, true, false, true, LabelMode::None,
+        count.max(1) as usize,
+        base_seed,
+        1,
+        true,
+        false,
+        true,
+        LabelMode::None,
     )))
 }
 
@@ -416,15 +442,25 @@ pub extern "C" fn kf_vec_r1_gamma() -> f64 {
 }
 
 fn encode_action(tank: &Tank) -> u8 {
-    let throttle = if tank.backup { 0 } else if tank.forward { 2 } else { 1 };
-    let turn = if tank.turn_left { 0 } else if tank.turn_right { 2 } else { 1 };
+    let throttle = if tank.backup {
+        0
+    } else if tank.forward {
+        2
+    } else {
+        1
+    };
+    let turn = if tank.turn_left {
+        0
+    } else if tank.turn_right {
+        2
+    } else {
+        1
+    };
     throttle * 6 + turn * 2 + tank.fire as u8
 }
 
 fn aim_target(game: &Game, tank: usize) -> [f32; AIM_DIM] {
-    let result = check_bullet_path(
-        game, tank, game.tanks[tank].rotation, 2.0 * game.scale, 2.0,
-    );
+    let result = check_bullet_path(game, tank, game.tanks[tank].rotation, 2.0 * game.scale, 2.0);
     let mut target = [0.0; AIM_DIM];
     target[match result.outcome {
         ShotOutcome::Hit => 0,

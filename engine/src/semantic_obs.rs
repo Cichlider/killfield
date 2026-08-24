@@ -1,4 +1,4 @@
-//! Human-equivalent semantic observation (DESIGN.md, schema 5).
+//! Human-equivalent semantic observation (DESIGN.md, schema 6).
 //!
 //! The flat payload is useful for storage and ABI transport.  The ten bullet
 //! rows must still go through a shared bullet encoder followed by masked
@@ -17,12 +17,10 @@ pub const OPPONENT_DIM: usize = 6;
 pub const BULLET_SLOTS: usize = 10;
 pub const BULLET_DIM: usize = 6;
 pub const PHASE_DIM: usize = 3;
-pub const MOVEMENT_ACTION_DIM: usize = 129;
-pub const FIRE_ACTION_DIM: usize = 2;
-pub const ACTION_DIM: usize = MOVEMENT_ACTION_DIM + FIRE_ACTION_DIM;
+pub const ACTION_DIM: usize = crate::directional::ACTION_COUNT;
 pub const OBS_DIM: usize =
     MAP_DIM + 1 + SELF_DIM + OPPONENT_DIM + BULLET_SLOTS * BULLET_DIM + PHASE_DIM + ACTION_DIM;
-pub const OBS_SCHEMA_VERSION: u32 = 5;
+pub const OBS_SCHEMA_VERSION: u32 = 6;
 
 pub const MAP_OFFSET: usize = 0;
 pub const PATH_LENGTH_OFFSET: usize = MAP_OFFSET + MAP_DIM;
@@ -34,8 +32,7 @@ pub const ACTION_OFFSET: usize = PHASE_OFFSET + PHASE_DIM;
 
 #[derive(Clone, Debug)]
 pub struct SemanticObsState {
-    last_movement: Option<u16>,
-    last_fire: Option<u8>,
+    last_action: Option<u16>,
     painted: [bool; MAX_MAP_W * MAX_MAP_H],
     painted_count: usize,
     paint_round: i32,
@@ -45,8 +42,7 @@ pub struct SemanticObsState {
 impl Default for SemanticObsState {
     fn default() -> Self {
         Self {
-            last_movement: None,
-            last_fire: None,
+            last_action: None,
             painted: [false; MAX_MAP_W * MAX_MAP_H],
             painted_count: 0,
             paint_round: -1,
@@ -56,11 +52,9 @@ impl Default for SemanticObsState {
 }
 
 impl SemanticObsState {
-    pub fn push_action(&mut self, movement: u16, fire: u8) {
-        debug_assert!((movement as usize) < MOVEMENT_ACTION_DIM);
-        debug_assert!((fire as usize) < FIRE_ACTION_DIM);
-        self.last_movement = Some(movement);
-        self.last_fire = Some(fire);
+    pub fn push_action(&mut self, action: u16) {
+        debug_assert!((action as usize) < ACTION_DIM);
+        self.last_action = Some(action);
     }
 
     pub fn reset(&mut self) {
@@ -297,23 +291,21 @@ pub fn encode(g: &Game, me: usize, state: &SemanticObsState, out: &mut SemanticO
         0
     };
     out.values[PHASE_OFFSET + phase] = 1.0;
-    if let Some(movement) = state.last_movement {
-        out.values[ACTION_OFFSET + movement as usize] = 1.0;
-    }
-    if let Some(fire) = state.last_fire {
-        out.values[ACTION_OFFSET + MOVEMENT_ACTION_DIM + fire as usize] = 1.0;
+    if let Some(action) = state.last_action {
+        out.values[ACTION_OFFSET + action as usize] = 1.0;
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::directional::{apply_joystick_action, ACTION_COUNT};
     use crate::game::Game;
-    use crate::directional::{apply_direction, unpack_action};
 
     #[test]
-    fn schema_5_uses_factored_previous_action() {
-        assert_eq!(OBS_DIM, 1290);
+    fn schema_6_uses_discrete_130_previous_action() {
+        assert_eq!(OBS_DIM, 1289);
+        assert_eq!(ACTION_DIM, 130);
         assert_eq!(ACTION_OFFSET + ACTION_DIM, OBS_DIM);
     }
 
@@ -342,10 +334,9 @@ mod tests {
         let mut state = SemanticObsState::default();
         let mut obs = SemanticObservation::default();
         for i in 0..2_000 {
-            let action = (i % (MOVEMENT_ACTION_DIM * FIRE_ACTION_DIM)) as u16;
-            let (movement, fire) = unpack_action(action);
-            apply_direction(&mut g, 0, movement, fire);
-            state.push_action(movement, fire);
+            let action = (i % ACTION_COUNT) as u16;
+            apply_joystick_action(&mut g, 0, action);
+            state.push_action(action);
             for _ in 0..4 {
                 g.step();
             }

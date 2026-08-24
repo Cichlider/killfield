@@ -9,7 +9,7 @@
 //! trainer run byte-identical physics. That is the whole reason for compiling
 //! to wasm rather than keeping a second engine in JS.
 
-use crate::directional::{apply_direction, apply_human_direction};
+use crate::directional::{apply_human_direction, apply_joystick_action, ACTION_COUNT};
 use crate::game::{Event, Game};
 use crate::reward::{
     RewardConfig, RewardTracker, CH_STYLE, CH_TERMINAL, REWARD_CHANNELS, REWARD_INFO_LEN,
@@ -273,26 +273,14 @@ pub unsafe extern "C" fn kf_set_rotation_if_clear(h: *mut Handle, tank: u32, rot
         .set_tank_rotation_if_clear(tank as usize, rotation as f64) as u32
 }
 
-/// World-direction input shared with PPO: 128 headings at 2.8125° + STOP.
-/// Turning and forward motion are resolved by the deterministic controller.
+/// PPO `Discrete(130)` input: 128 instant-turn wheel directions + FIRE + STOP.
 #[no_mangle]
-pub unsafe extern "C" fn kf_set_direction_input(
-    h: *mut Handle,
-    tank: u32,
-    movement: u32,
-    fire: u32,
-) {
-    apply_direction(
-        &mut (*h).game,
-        tank as usize,
-        movement.min(128) as u16,
-        fire.min(1) as u8,
-    );
+pub unsafe extern "C" fn kf_set_rl_action(h: *mut Handle, tank: u32, action: u32) {
+    apply_joystick_action(&mut (*h).game, tank as usize, action.min(129) as u16);
 }
 
-/// World-direction input for the human browser wheel. This intentionally has
-/// different low-level motion from PPO: it aligns the nearer hull end and may
-/// reverse, while the policy action contract remains forward-only.
+/// World-direction input for the human browser wheel. PPO direction actions
+/// reuse this motion contract and add the wheel's collision-safe instant snap.
 #[no_mangle]
 pub unsafe extern "C" fn kf_set_human_direction_input(
     h: *mut Handle,
@@ -573,8 +561,8 @@ pub unsafe extern "C" fn kf_reward_info(h: *mut Handle, out: *mut f32) {
     out.copy_from_slice(&values);
 }
 
-/// Encode schema-5 observation for a browser-hosted learned policy.
-/// The packed action is movement*2+fire, or -1 at a round boundary.
+/// Encode schema-6 observation for a browser-hosted learned policy.
+/// `last_action` is the previous Discrete(130) action, or -1 at a boundary.
 #[no_mangle]
 pub unsafe extern "C" fn kf_semantic_observation(
     h: *mut Handle,
@@ -583,9 +571,8 @@ pub unsafe extern "C" fn kf_semantic_observation(
 ) -> *const f32 {
     let h = &mut *h;
     let mut state = h.semantic_state.clone();
-    if (0..258).contains(&last_action) {
-        let action = last_action as u16;
-        state.push_action(action / 2, (action % 2) as u8);
+    if (0..ACTION_COUNT as i32).contains(&last_action) {
+        state.push_action(last_action as u16);
     }
     encode_semantic(&h.game, tank as usize, &state, &mut h.semantic);
     h.semantic_buffer[..OBS_DIM].copy_from_slice(&h.semantic.values);

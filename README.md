@@ -1,9 +1,10 @@
 # Killfield
 
 > 当前分支：`rl`。这里的 Viewer 只用于 **PPO 模型 vs 固定 Laika** 的行为 review；
-> GitHub Pages 的 MPC 观看/对战版本位于 `main`。当前模型是
-> `ppo-paint-v1-directional128-nomem-s11`；5,013,504 步后对固定 Laika 恰好测试 100 局，
-> 取得 1 胜 / 90 负 / 9 双亡 / 0 超时，胜率 1%。本结果不作为部署 gate。
+> GitHub Pages 的 MPC 观看/对战版本位于 `main`。当前训练协议已升级为 schema-6
+> `Discrete(130)`：128 个人类轮盘方向 + 原地开火 + 停止，方向操作无转速限制。新模型
+> `ppo-paint-v1-joystick130-nomem-s11` 尚未正式训练；旧 schema-5 checkpoint 不兼容，
+> 不会在 Viewer 中冒充新模型。
 
 首次运行先执行 `python3 -m venv .venv` 和
 `.venv/bin/pip install -r training/requirements.txt`。之后用 `bash viewer/serve.sh` 启动，
