@@ -9,7 +9,9 @@
 //! trainer run byte-identical physics. That is the whole reason for compiling
 //! to wasm rather than keeping a second engine in JS.
 
-use crate::directional::{apply_human_direction, apply_joystick_action, ACTION_COUNT};
+use crate::directional::{
+    apply_human_direction, apply_joystick_action, ACTION_COUNT, FIRE_ACTION, STOP_ACTION,
+};
 use crate::game::{Event, Game};
 use crate::reward::{
     RewardConfig, RewardTracker, CH_STYLE, CH_TERMINAL, REWARD_CHANNELS, REWARD_INFO_LEN,
@@ -54,6 +56,8 @@ pub struct Handle {
     semantic_state: SemanticObsState,
     semantic: SemanticObservation,
     semantic_buffer: Vec<f32>,
+    walking_curriculum: bool,
+    last_rl_action: [u16; 2],
 }
 
 fn build_render(h: &mut Handle) {
@@ -122,9 +126,23 @@ pub extern "C" fn kf_new(seed: u32, laika_mask: u32) -> *mut Handle {
         semantic_state: SemanticObsState::default(),
         semantic: SemanticObservation::default(),
         semantic_buffer: vec![0.0; OBS_DIM + BULLET_SLOTS],
+        walking_curriculum: false,
+        last_rl_action: [STOP_ACTION; 2],
     });
     build_render(&mut h);
     Box::into_raw(h)
+}
+
+/// Fixed one-corridor locomotion curriculum with an inert target at the end.
+#[no_mangle]
+pub extern "C" fn kf_new_walking_v1() -> *mut Handle {
+    let handle = kf_new(20_260_825, 0);
+    unsafe {
+        (*handle).game = Game::walking_curriculum(20_260_825);
+        (*handle).walking_curriculum = true;
+        build_render(&mut *handle);
+    }
+    handle
 }
 
 /// # Safety
@@ -276,7 +294,11 @@ pub unsafe extern "C" fn kf_set_rotation_if_clear(h: *mut Handle, tank: u32, rot
 /// PPO `Discrete(130)` input: 128 instant-turn wheel directions + FIRE + STOP.
 #[no_mangle]
 pub unsafe extern "C" fn kf_set_rl_action(h: *mut Handle, tank: u32, action: u32) {
-    apply_joystick_action(&mut (*h).game, tank as usize, action.min(129) as u16);
+    let h = &mut *h;
+    let tank = tank as usize;
+    let action = action.min(129) as u16;
+    h.last_rl_action[tank] = action;
+    apply_joystick_action(&mut h.game, tank, action);
 }
 
 /// World-direction input for the human browser wheel. PPO direction actions
@@ -303,6 +325,7 @@ pub unsafe extern "C" fn kf_set_human_direction_input(
 #[no_mangle]
 pub unsafe extern "C" fn kf_step(h: *mut Handle) -> u32 {
     let h = &mut *h;
+    let before = (h.game.tanks[0].x, h.game.tanks[0].y);
     for i in 0..2usize {
         if h.agent_enabled[i] {
             if let Some(mut a) = h.agents[i].take() {
@@ -322,6 +345,8 @@ pub unsafe extern "C" fn kf_step(h: *mut Handle) -> u32 {
             tank.turn_right_amount = None;
         }
     }
+    let invalid_stationary_action = h.walking_curriculum
+        && matches!(h.last_rl_action[0], FIRE_ACTION | STOP_ACTION);
     let events = h.game.step();
     h.paint_step.fill(0.0);
     let mut flags = 0u32;
@@ -352,6 +377,27 @@ pub unsafe extern "C" fn kf_step(h: *mut Handle) -> u32 {
                 }
             }
         }
+    }
+    if h.walking_curriculum && h.game.tanks[0].alive {
+        let tank = h.game.tanks[0];
+        let dx = tank.x - before.0;
+        let dy = tank.y - before.1;
+        let distance = dx.hypot(dy);
+        let facing = (tank.rotation - 90.0) * crate::constants::DEG;
+        let aligned = distance > 1e-9
+            && (dx * facing.cos() + dy * facing.sin()) / distance >= 0.995;
+        if invalid_stationary_action || tank.hit_something || tank.wall_sliding || !aligned {
+            h.game.tanks[0].alive = false;
+            h.game.alive_count = 1;
+            h.last_winner = 1.0;
+            flags |= 16 | 64;
+        }
+    }
+    if h.walking_curriculum && new_round {
+        h.game = Game::walking_curriculum(20_260_825);
+        h.semantic_state.reset();
+        h.last_rl_action = [STOP_ACTION; 2];
+        h.last_winner = -1.0;
     }
     if h.paint_profile {
         if new_round {

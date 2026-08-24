@@ -143,7 +143,7 @@ const OBS_DIM = 1170;
 const BULLET_SLOTS = 10;
 const RL_FIRE_ACTION = 128;
 const RL_STOP_ACTION = 129;
-const STATIC_TARGET_SEED = 20260824;
+const STATIC_TARGET_SEED = 20260825;
 let selectedModel = "";
 let modelHistory = [];
 let lastModelAction = -1;
@@ -705,7 +705,7 @@ function newGame() {
 
   if (handle !== null) wasm.kf_free(handle);
   const laikaMask = mode === "watch" ? 2 : 0;
-  handle = wasm.kf_new(seed, laikaMask);
+  handle = mode === "target" ? wasm.kf_new_walking_v1() : wasm.kf_new(seed, laikaMask);
 
   // RL branch contract: tank 0 is driven only by /api/act; tank 1 is Laika.
   // Never attach the MPC planner here, even while no checkpoint is available.
@@ -761,10 +761,10 @@ function updateScenarioCopy() {
       : "PPO behavior evaluation: the selected model plays fixed Laika at 25 Hz.";
   note.textContent = lang === "zh"
     ? target
-      ? "训练环境复现：seed 20260824；右侧坦克没有控制器，不能移动也不能开枪。"
+      ? "走路课程：seed 20260825；单条曲折道路，无位移、撞墙、倒车/侧滑或开火即失败，终点是不动靶。"
       : "评估环境：左侧为 schema-7 PPO，右侧由固定 Laika 控制。"
     : target
-      ? "Training environment: seed 20260824; the right tank has no controller and cannot move or fire."
+      ? "Walking lesson: seed 20260825; one winding corridor. No displacement, wall contact, reverse/sideways motion, or firing fails; the inert target marks the finish."
       : "Evaluation environment: schema-7 PPO on the left, fixed Laika on the right.";
 }
 
@@ -855,6 +855,10 @@ function requestModelAction() {
 }
 
 function tick() {
+  if (mode === "target" && lastModelAction < 0) {
+    requestModelAction();
+    return;
+  }
   if (killfieldDelayFrames > 0) {
     killfieldDelayFrames -= 1;
     wasm.kf_set_rl_action(handle, 0, RL_STOP_ACTION);

@@ -12,15 +12,26 @@ import torch
 from ppo_models import BULLET_SLOTS, OBS_DIM, make_actor_critic
 
 
-# Older checkpoints use retired action/observation contracts and are not
-# exposed as schema-7 static-target joystick130 policies. This entry becomes available
-# automatically once the compatible checkpoint exists under --models.
+# Only schema-7 joystick130 checkpoints are exposed. Completed runs remain
+# selectable so behavior review never silently replaces an earlier handoff.
 SOURCES = {
-    "nomem-s11": {
+    "walking-v2-s11": {
+        "display": "ppo-walking-v2-no-stop-serpentine-joystick130-nomem-s11",
+        "architecture": "nomem",
+        "history": 1,
+        "checkpoint": "outputs/ppo_walking_v2_no_stop_joystick130/nomem/s11/final.pt",
+    },
+    "walking-v1-s11": {
+        "display": "ppo-walking-v1-serpentine-joystick130-nomem-s11",
+        "architecture": "nomem",
+        "history": 1,
+        "checkpoint": "outputs/ppo_walking_v1_joystick130/nomem/s11/final.pt",
+    },
+    "static-kill-v1-s11": {
         "display": "ppo-static-target-fixed-v1-joystick130-nomem-s11",
         "architecture": "nomem",
         "history": 1,
-        "checkpoint": "nomem/s11/final.pt",
+        "checkpoint": "outputs/ppo_static_target_fixed_v1_joystick130/nomem/s11/final.pt",
     },
 }
 
@@ -93,7 +104,7 @@ class Models:
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--port", type=int, default=8000)
-    parser.add_argument("--models", type=Path, default=Path("outputs/ppo_static_target_fixed_v1_joystick130"))
+    parser.add_argument("--models", type=Path, default=Path("."))
     parser.add_argument("--device", choices=("auto", "cpu", "mps"), default="auto")
     args = parser.parse_args()
     if args.device == "auto":

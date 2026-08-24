@@ -20,6 +20,14 @@ use std::sync::Arc;
 
 const DEG: f64 = C::DEG;
 
+/// A six-by-three, one-cell-wide serpentine corridor used by the first
+/// locomotion curriculum. Every reachable cell has at most two neighbours.
+pub const WALKING_CURRICULUM_PATH: [(usize, usize); 18] = [
+    (0, 2), (1, 2), (2, 2), (3, 2), (4, 2), (5, 2),
+    (5, 1), (4, 1), (3, 1), (2, 1), (1, 1), (0, 1),
+    (0, 0), (1, 0), (2, 0), (3, 0), (4, 0), (5, 0),
+];
+
 /// Normalise an angle to (-180, 180], matching the source engine's setter.
 #[inline]
 pub fn norm_rot(deg: f64) -> f64 {
@@ -551,6 +559,70 @@ impl Game {
         g
     }
 
+    /// Deterministic walking lesson: one serpentine corridor, the learner at
+    /// one end and an inert Laika-shaped goal at the other.
+    pub fn walking_curriculum(seed: u32) -> Self {
+        let mut g = Game::with_ai(seed, 2, &[]);
+        let (w, h) = (6usize, 3usize);
+        let mut cells = vec![[1u8, 1u8, 1u8]; w * h];
+        for pair in WALKING_CURRICULUM_PATH.windows(2) {
+            let (x, y) = pair[0];
+            let (nx, ny) = pair[1];
+            if nx == x + 1 {
+                cells[nx * h + ny][2] = 0;
+            } else if x == nx + 1 {
+                cells[x * h + y][2] = 0;
+            } else if ny == y + 1 {
+                cells[x * h + y][1] = 0;
+            } else if y == ny + 1 {
+                cells[nx * h + ny][1] = 0;
+            }
+        }
+        g.maze = Arc::new(Maze { w, h, cells });
+        g.scale = f64::min(
+            (C::MOVIEHEIGHT - C::HEIGHTTOBOTTOM) / (h as f64 + 0.125),
+            C::MOVIEWIDTH / (w as f64 + 0.125),
+        );
+        let reachable = calc_reachable(&g.maze, 0, 2);
+        g.reachable = Arc::new(reachable.cells);
+        g.reachable_index = Arc::new(reachable.index);
+        g.walls = Arc::new(build_wall_segments(&g.maze, g.scale));
+        g.wall_half_t = (g.scale / 16.0).floor();
+        g.wall_grid = Arc::new(WallGrid::new(&g.walls, g.wall_half_t, g.scale));
+
+        let spawns = [WALKING_CURRICULUM_PATH[0], *WALKING_CURRICULUM_PATH.last().unwrap()];
+        g.tanks = spawns
+            .iter()
+            .enumerate()
+            .map(|(number, &cell)| Tank::new(number, cell, g.scale, &mut g.rng))
+            .collect();
+        // rotation 90 faces right in the engine's coordinate convention.
+        g.tanks[0].rotation = 90.0;
+        g.tanks[1].rotation = -90.0;
+        g.tank_fields = spawns.iter().map(|&(x, y)| (x as i64, y as i64)).collect();
+        g.bullets.clear();
+        g.bullet_depth = 0;
+        g.round_shots_fired = vec![0; 2];
+        g.alive_count = 2;
+        g.end_count = -1;
+        g.reset_count = -1;
+        g.frozen = false;
+        g.ais = vec![None, None];
+        g.ai_enabled = vec![false, false];
+
+        let mut distances = vec![None; w * h];
+        for &(x, y) in g.reachable.iter() {
+            distances[x * h + y] = Some(calc_distances(&g.maze, x, y));
+        }
+        g.distances_for_maze = Arc::new(distances);
+        g.dead_ends = Arc::new(find_dead_ends(
+            &g.maze,
+            &g.reachable,
+            C::MAXDEADENDPENALTY,
+        ));
+        g
+    }
+
     pub fn setup_battle(&mut self) {
         self.round_number += 1;
         self.round_start_frame = self.frame;
@@ -951,6 +1023,34 @@ pub fn tank_update(g: &mut Game, idx: usize) {
         g.fire_weapon(idx);
     } else if !wants_fire {
         g.tanks[idx].trigger_released = true;
+    }
+}
+
+#[cfg(test)]
+mod walking_curriculum_tests {
+    use super::*;
+
+    #[test]
+    fn walking_map_is_one_unbranched_path_with_inert_goal() {
+        let game = Game::walking_curriculum(20_260_825);
+        assert_eq!(game.maze.w, 6);
+        assert_eq!(game.maze.h, 3);
+        assert_eq!(game.reachable.len(), WALKING_CURRICULUM_PATH.len());
+        assert!(game.ais.iter().all(Option::is_none));
+        for (index, &(x, y)) in WALKING_CURRICULUM_PATH.iter().enumerate() {
+            let mut neighbours = 0;
+            neighbours += (x > 0 && game.maze.v_open(x as i64, y as i64)) as usize;
+            neighbours += (x + 1 < game.maze.w
+                && game.maze.v_open(x as i64 + 1, y as i64)) as usize;
+            neighbours += (y > 0 && game.maze.h_open(x as i64, y as i64 - 1)) as usize;
+            neighbours += (y + 1 < game.maze.h
+                && game.maze.h_open(x as i64, y as i64)) as usize;
+            assert_eq!(neighbours, if index == 0 || index + 1 == WALKING_CURRICULUM_PATH.len() {
+                1
+            } else {
+                2
+            });
+        }
     }
 }
 

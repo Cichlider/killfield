@@ -8,7 +8,7 @@ use crate::ballistics::{check_bullet_path, ShotOutcome};
 use crate::constants as C;
 use crate::directional::apply_joystick_action;
 use crate::game::Tank;
-use crate::game::{Event, Game};
+use crate::game::{Event, Game, WALKING_CURRICULUM_PATH};
 use crate::laika::LaikaAI;
 use crate::reward::{
     RewardConfig, RewardTracker, CH_EXAMPLE, CH_STYLE, CH_TERMINAL, REWARD_CHANNELS,
@@ -26,6 +26,12 @@ const STATIC_TARGET_SEED: u32 = 20_260_824;
 const STATIC_NAV_TOTAL: f64 = 0.5;
 const STATIC_SHOT_ATTEMPT: f64 = 0.10;
 const STATIC_SHOT_BONUS_CAP: f64 = 0.50;
+const WALKING_SEED: u32 = 20_260_825;
+const WALKING_FRAMES: u32 = 300;
+const WALKING_PROGRESS_TOTAL: f64 = 5.0;
+const WALKING_SUCCESS: f64 = 10.0;
+const WALKING_FAILURE: f64 = -10.0;
+const WALKING_STEP_COST: f64 = -0.002;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum LabelMode {
@@ -48,13 +54,18 @@ struct Slot {
 }
 
 impl Slot {
-    fn new(seed: u32, reward_enabled: bool, static_target: bool) -> Self {
-        let game = Game::with_ai(seed, 2, if static_target { &[] } else { &[1] });
+    fn new(seed: u32, reward_enabled: bool, static_target: bool, walking: bool) -> Self {
+        let game = if walking {
+            Game::walking_curriculum(seed)
+        } else {
+            Game::with_ai(seed, 2, if static_target { &[] } else { &[1] })
+        };
         let scale = game.scale;
         let mut mpc_teacher = KillFieldAgent::new(0, seed ^ 0x5bd1_e995);
         mpc_teacher.ray_count = 512;
         mpc_teacher.commit_move = 0;
         mpc_teacher.commit_turn = 0;
+        let best_path = if walking { walking_progress(&game) as f32 } else { f32::INFINITY };
         Self {
             game,
             reward: reward_enabled.then(|| RewardTracker::new(0)),
@@ -63,11 +74,36 @@ impl Slot {
             obs_state: SemanticObsState::default(),
             decisions: 0,
             done: false,
-            best_path: f32::INFINITY,
+            best_path,
             provisional_success: None,
             shot_bonus_total: 0.0,
         }
     }
+}
+
+fn walking_progress(game: &Game) -> f64 {
+    let tank = game.tanks[0];
+    let mut best_distance = f64::INFINITY;
+    let mut best_progress = 0.0;
+    for (index, pair) in WALKING_CURRICULUM_PATH.windows(2).enumerate() {
+        let ax = (pair[0].0 as f64 + 0.5) * game.scale;
+        let ay = (pair[0].1 as f64 + 0.5) * game.scale;
+        let bx = (pair[1].0 as f64 + 0.5) * game.scale;
+        let by = (pair[1].1 as f64 + 0.5) * game.scale;
+        let dx = bx - ax;
+        let dy = by - ay;
+        let length_sq = dx * dx + dy * dy;
+        let projection = (((tank.x - ax) * dx + (tank.y - ay) * dy) / length_sq)
+            .clamp(0.0, 1.0);
+        let px = ax + projection * dx;
+        let py = ay + projection * dy;
+        let distance = (tank.x - px).powi(2) + (tank.y - py).powi(2);
+        if distance < best_distance {
+            best_distance = distance;
+            best_progress = index as f64 + projection;
+        }
+    }
+    best_progress / (WALKING_CURRICULUM_PATH.len() - 1) as f64
 }
 
 pub struct VecEnv {
@@ -77,6 +113,7 @@ pub struct VecEnv {
     reward_r1: bool,
     reward_paint: bool,
     static_target: bool,
+    walking_curriculum: bool,
     fixed_seed: Option<u32>,
     next_seed: u32,
     obs: Vec<f32>,
@@ -96,6 +133,7 @@ pub struct VecEnv {
     episode_ids: Vec<u32>,
     decision_ids: Vec<i32>,
     winners: Vec<i8>,
+    walking_failure_reasons: Vec<i8>,
     label_mode: LabelMode,
     mpc_scores: Vec<f32>,
     mpc_valid: Vec<u8>,
@@ -111,14 +149,19 @@ impl VecEnv {
         reward_paint: bool,
         label_mode: LabelMode,
         static_target: bool,
+        walking_curriculum: bool,
     ) -> Self {
-        let fixed_seed = static_target.then_some(STATIC_TARGET_SEED);
+        let fixed_seed = if walking_curriculum {
+            Some(WALKING_SEED)
+        } else {
+            static_target.then_some(STATIC_TARGET_SEED)
+        };
         let mut result = Self {
             slots: (0..count)
                 .map(|i| {
                     let seed = fixed_seed.unwrap_or_else(|| base_seed.wrapping_add(i as u32));
-                    let mut slot = Slot::new(seed, reward_enabled, static_target);
-                    if static_target || reward_paint {
+                    let mut slot = Slot::new(seed, reward_enabled, static_target, walking_curriculum);
+                    if static_target || walking_curriculum || reward_paint {
                         slot.reward = None;
                     } else if reward_r1 {
                         slot.reward = Some(RewardTracker::new_r1(0));
@@ -131,6 +174,7 @@ impl VecEnv {
             reward_r1,
             reward_paint,
             static_target,
+            walking_curriculum,
             fixed_seed,
             next_seed: base_seed.wrapping_add(count as u32),
             obs: vec![0.0; count * OBS_DIM],
@@ -150,6 +194,7 @@ impl VecEnv {
             episode_ids: vec![0; count],
             decision_ids: vec![0; count],
             winners: vec![-2; count],
+            walking_failure_reasons: vec![0; count],
             label_mode,
             mpc_scores: vec![0.0; count * CANDIDATES.len()],
             mpc_valid: vec![0; count * CANDIDATES.len()],
@@ -239,6 +284,7 @@ impl VecEnv {
         self.retro_frames.fill(0);
         self.retro_values.fill(0.0);
         self.winners.fill(-2);
+        self.walking_failure_reasons.fill(0);
 
         for (index, &action) in actions.iter().enumerate().take(self.slots.len()) {
             let slot = &mut self.slots[index];
@@ -249,12 +295,55 @@ impl VecEnv {
             apply_joystick_action(&mut slot.game, 0, action);
             slot.obs_state.push_action(action);
             slot.decisions += 1;
+            if self.walking_curriculum
+                && (action == crate::directional::FIRE_ACTION
+                    || action == crate::directional::STOP_ACTION)
+            {
+                self.rewards[index] = WALKING_FAILURE as f32;
+                self.reward_channels[index * REWARD_CHANNELS + CH_TERMINAL] =
+                    WALKING_FAILURE as f32;
+                self.winners[index] = 1;
+                self.walking_failure_reasons[index] =
+                    if action == crate::directional::FIRE_ACTION { 3 } else { 5 };
+                slot.done = true;
+                self.dones[index] = 1;
+                self.terminals[index] = 1;
+                self.encode_slot(index);
+                continue;
+            }
             let mut reward = 0.0f64;
             let mut terminal = false;
             let mut retro_count = 0usize;
             for _ in 0..self.frame_skip {
+                let before = (slot.game.tanks[0].x, slot.game.tanks[0].y);
                 let events = slot.game.step();
-                if self.static_target {
+                if self.walking_curriculum {
+                    let tank = slot.game.tanks[0];
+                    reward += WALKING_STEP_COST;
+                    let dx = tank.x - before.0;
+                    let dy = tank.y - before.1;
+                    let distance = dx.hypot(dy);
+                    let facing = (tank.rotation - 90.0) * C::DEG;
+                    let stopped = distance <= 1e-9;
+                    let aligned = !stopped
+                        && (dx * facing.cos() + dy * facing.sin()) / distance >= 0.995;
+                    if tank.hit_something || tank.wall_sliding || stopped || !aligned {
+                        reward += WALKING_FAILURE;
+                        self.reward_channels[index * REWARD_CHANNELS + CH_TERMINAL] +=
+                            WALKING_FAILURE as f32;
+                        self.winners[index] = 1;
+                        self.walking_failure_reasons[index] = if tank.hit_something
+                            || tank.wall_sliding
+                        {
+                            1
+                        } else if stopped {
+                            5
+                        } else {
+                            2
+                        };
+                        terminal = true;
+                    }
+                } else if self.static_target {
                     for event in &events {
                         if matches!(event, Event::Fire(0))
                             && slot.shot_bonus_total < STATIC_SHOT_BONUS_CAP
@@ -336,6 +425,22 @@ impl VecEnv {
                     break;
                 }
             }
+            if self.walking_curriculum && !terminal {
+                let progress = walking_progress(&slot.game) as f32;
+                if progress > slot.best_path {
+                    let value = WALKING_PROGRESS_TOTAL * (progress - slot.best_path) as f64;
+                    reward += value;
+                    self.reward_channels[index * REWARD_CHANNELS + CH_STYLE] += value as f32;
+                    slot.best_path = progress;
+                }
+                if progress >= 0.98 {
+                    reward += WALKING_SUCCESS;
+                    self.reward_channels[index * REWARD_CHANNELS + CH_TERMINAL] +=
+                        WALKING_SUCCESS as f32;
+                    self.winners[index] = 0;
+                    terminal = true;
+                }
+            }
             if self.static_target && !terminal && slot.game.tanks[0].alive && slot.game.tanks[1].alive {
                 let mut observation = SemanticObservation::default();
                 encode(&slot.game, 0, &slot.obs_state, &mut observation);
@@ -348,14 +453,21 @@ impl VecEnv {
                     slot.best_path = path;
                 }
             }
-            let timed_out = self.static_target
-                && !terminal
-                && slot.decisions >= STATIC_TARGET_FRAMES;
+            let timed_out = !terminal && ((self.static_target
+                && slot.decisions >= STATIC_TARGET_FRAMES)
+                || (self.walking_curriculum && slot.decisions >= WALKING_FRAMES));
             if timed_out {
-                let value = -(slot.shot_bonus_total + 10.0);
+                let value = if self.walking_curriculum {
+                    WALKING_FAILURE
+                } else {
+                    -(slot.shot_bonus_total + 10.0)
+                };
                 reward += value;
                 self.reward_channels[index * REWARD_CHANNELS + CH_TERMINAL] += value as f32;
                 self.winners[index] = -2;
+                if self.walking_curriculum {
+                    self.walking_failure_reasons[index] = 4;
+                }
             }
             self.rewards[index] = reward as f32;
             self.transition_frames[index] = slot.game.frame;
@@ -376,8 +488,13 @@ impl VecEnv {
                 if self.fixed_seed.is_none() {
                     self.next_seed = self.next_seed.wrapping_add(1);
                 }
-                let mut slot = Slot::new(seed, self.reward_enabled, self.static_target);
-                if self.static_target || self.reward_paint {
+                let mut slot = Slot::new(
+                    seed,
+                    self.reward_enabled,
+                    self.static_target,
+                    self.walking_curriculum,
+                );
+                if self.static_target || self.walking_curriculum || self.reward_paint {
                     slot.reward = None;
                 } else if self.reward_r1 {
                     slot.reward = Some(RewardTracker::new_r1(0));
@@ -400,6 +517,7 @@ pub extern "C" fn kf_vec_new(count: u32, base_seed: u32) -> *mut VecEnv {
         false,
         LabelMode::Laika,
         false,
+        false,
     )))
 }
 
@@ -413,6 +531,7 @@ pub extern "C" fn kf_vec_new_dagger(count: u32, base_seed: u32) -> *mut VecEnv {
         false,
         false,
         LabelMode::Laika,
+        false,
         false,
     )))
 }
@@ -428,6 +547,7 @@ pub extern "C" fn kf_vec_new_mpc_dagger(count: u32, base_seed: u32) -> *mut VecE
         false,
         LabelMode::Mpc,
         false,
+        false,
     )))
 }
 
@@ -441,6 +561,7 @@ pub extern "C" fn kf_vec_new_ppo_r1(count: u32, base_seed: u32) -> *mut VecEnv {
         true,
         false,
         LabelMode::None,
+        false,
         false,
     )))
 }
@@ -456,6 +577,7 @@ pub extern "C" fn kf_vec_new_ppo_paint_v1(count: u32, base_seed: u32) -> *mut Ve
         true,
         LabelMode::None,
         false,
+        false,
     )))
 }
 
@@ -470,6 +592,22 @@ pub extern "C" fn kf_vec_new_static_target_v1(count: u32) -> *mut VecEnv {
         false,
         LabelMode::None,
         true,
+        false,
+    )))
+}
+
+#[no_mangle]
+pub extern "C" fn kf_vec_new_walking_v1(count: u32) -> *mut VecEnv {
+    Box::into_raw(Box::new(VecEnv::new(
+        count.max(1) as usize,
+        WALKING_SEED,
+        1,
+        true,
+        false,
+        false,
+        LabelMode::None,
+        false,
+        true,
     )))
 }
 
@@ -483,6 +621,7 @@ pub extern "C" fn kf_vec_new_ppo_eval(count: u32, base_seed: u32) -> *mut VecEnv
         false,
         false,
         LabelMode::None,
+        false,
         false,
     )))
 }
@@ -531,6 +670,7 @@ pointer_export!(kf_vec_aim, aim, f32);
 pointer_export!(kf_vec_episode_ids, episode_ids, u32);
 pointer_export!(kf_vec_decision_ids, decision_ids, i32);
 pointer_export!(kf_vec_winners, winners, i8);
+pointer_export!(kf_vec_walking_failure_reasons, walking_failure_reasons, i8);
 pointer_export!(kf_vec_mpc_scores, mpc_scores, f32);
 pointer_export!(kf_vec_mpc_valid, mpc_valid, u8);
 

@@ -8,7 +8,7 @@ import json
 import math
 import os
 import time
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 
 import numpy as np
@@ -53,6 +53,9 @@ class Config:
     failure_reward: float = -10.0
     shot_attempt_reward: float = 0.10
     shot_attempt_cap: float = 0.50
+    map_name: str = "static-target-fixed-seed-20260824"
+    step_cost: float = 0.0
+    failure_rules: str = "self-death,double-death,timeout=-10"
     envs: int = 64
     rollout_steps: int = 256
     total_steps: int = 5_000_000
@@ -74,17 +77,19 @@ class Config:
 
 
 class PpoVec:
-    def __init__(self, count: int, seed: int, static_target=False, eval_laika=False,
+    def __init__(self, count: int, seed: int, static_target=False, walking=False,
+                 eval_laika=False,
                  library=Path("engine/target/release/libkf_engine.dylib")):
         self.count = count
         self.lib = ctypes.CDLL(str(library.resolve()))
         constructor_name = (
+            "kf_vec_new_walking_v1" if walking else
             "kf_vec_new_static_target_v1" if static_target else
             "kf_vec_new_ppo_eval" if eval_laika else
             "kf_vec_new_ppo_paint_v1"
         )
         constructor = getattr(self.lib, constructor_name)
-        constructor.argtypes = [ctypes.c_uint32] if static_target else [ctypes.c_uint32, ctypes.c_uint32]
+        constructor.argtypes = [ctypes.c_uint32] if (static_target or walking) else [ctypes.c_uint32, ctypes.c_uint32]
         constructor.restype = ctypes.c_void_p
         self.lib.kf_vec_obs_dim.restype = ctypes.c_uint32
         self.lib.kf_vec_bullet_slots.restype = ctypes.c_uint32
@@ -96,7 +101,7 @@ class PpoVec:
         expected = (OBS_DIM, BULLET_SLOTS, len(CHANNEL_NAMES))
         if native != expected:
             raise RuntimeError(f"native/Python schema mismatch: {native} != {expected}")
-        self.handle = constructor(count) if static_target else constructor(count, seed)
+        self.handle = constructor(count) if (static_target or walking) else constructor(count, seed)
         if not self.handle:
             raise RuntimeError("kf_vec_new_ppo_paint_v1 failed")
         self.lib.kf_vec_step.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_uint16)]
@@ -112,6 +117,9 @@ class PpoVec:
         self.dones = self._view("kf_vec_dones", ctypes.c_uint8, (count,))
         self.terminals = self._view("kf_vec_terminals", ctypes.c_uint8, (count,))
         self.winners = self._view("kf_vec_winners", ctypes.c_int8, (count,))
+        self.walking_failure_reasons = self._view(
+            "kf_vec_walking_failure_reasons", ctypes.c_int8, (count,)
+        )
 
     def _view(self, name, ctype, shape):
         function = getattr(self.lib, name)
@@ -408,6 +416,60 @@ def evaluate(model, kind, config, device):
     }
 
 
+@torch.inference_mode()
+def evaluate_walking(model, kind, config, device):
+    """Exactly 100 deterministic episodes on the curriculum acceptance map."""
+    env = PpoVec(config.eval_envs, 0, walking=True)
+    hidden = model.initial_hidden(config.eval_envs, device)
+    starts = np.ones(config.eval_envs, bool)
+    decisions = np.zeros(config.eval_envs, np.int64)
+    fired = np.zeros(config.eval_envs, bool)
+    episodes = []
+    try:
+        while len(episodes) < config.eval_episodes:
+            obs = env.obs.copy()
+            masks = env.masks.astype(bool, copy=True)
+            if kind == "gru":
+                hidden = hidden * torch.as_tensor(
+                    ~starts, device=device, dtype=torch.float32
+                ).view(1, config.eval_envs, 1)
+            logits, _value, hidden = model.step(*tensors(obs, masks, device), hidden)
+            action = logits.argmax(-1).cpu().numpy().astype(np.uint16)
+            fired |= action == FIRE_ACTION
+            decisions += 1
+            env.step(action)
+            done = env.dones.astype(bool).copy()
+            for index in np.flatnonzero(done):
+                winner = int(env.winners[index])
+                reason = int(env.walking_failure_reasons[index])
+                episodes.append({
+                    "outcome": "arrived" if winner == 0 else "failed" if winner == 1 else "timeout",
+                    "failure_reason": {1: "wall", 2: "heading", 3: "fire", 4: "timeout", 5: "stop"}.get(reason, "none"),
+                    "decisions": int(decisions[index]),
+                    "fired": bool(fired[index]),
+                })
+                decisions[index] = 0
+                fired[index] = False
+            env.reset_done()
+            starts = done
+    finally:
+        env.close()
+    episodes = episodes[:config.eval_episodes]
+    outcomes = {key: sum(row["outcome"] == key for row in episodes)
+                for key in ("arrived", "failed", "timeout")}
+    failure_reasons = {key: sum(row["failure_reason"] == key for row in episodes)
+                       for key in ("wall", "heading", "fire", "stop", "timeout")}
+    return {
+        "episodes": len(episodes),
+        "map": "walking-v1-six-by-three-serpentine-seed-20260825",
+        "outcomes": outcomes,
+        "failure_reasons": failure_reasons,
+        "arrival_rate": outcomes["arrived"] / len(episodes),
+        "fire_rate": float(np.mean([row["fired"] for row in episodes])),
+        "decisions_mean": float(np.mean([row["decisions"] for row in episodes])),
+    }
+
+
 def append_jsonl(path, value):
     with path.open("a") as stream:
         stream.write(json.dumps(value, ensure_ascii=False) + "\n")
@@ -433,7 +495,8 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", required=True, choices=("nomem", "gru"))
     parser.add_argument("--seed", required=True, type=int, choices=TRAIN_SEEDS)
-    parser.add_argument("--output", type=Path, default=Path("outputs/ppo_static_target_fixed_v1_joystick130"))
+    parser.add_argument("--curriculum", choices=("static-target", "walking"), default="static-target")
+    parser.add_argument("--output", type=Path)
     parser.add_argument("--device", choices=("auto", "cpu", "mps"), default="auto")
     parser.add_argument("--smoke", action="store_true")
     parser.add_argument("--reevaluate", action="store_true")
@@ -443,16 +506,39 @@ def main():
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)
     config = Config()
-    if args.smoke:
+    walking = args.curriculum == "walking"
+    if walking:
         config = Config(
+            stage="walking-v2-no-stop-serpentine-joystick130",
+            training_opponent="inert-walking-goal-seed-20260825",
+            episode_frames=300,
+            navigation_total=5.0,
+            success_base=10.0,
+            speed_bonus_max=0.0,
+            failure_reward=-10.0,
+            shot_attempt_reward=0.0,
+            shot_attempt_cap=0.0,
+            map_name="walking-v1-six-by-three-serpentine-seed-20260825",
+            step_cost=-0.002,
+            failure_rules="wall-or-slide,no-displacement,displacement-heading-mismatch,fire=-10;timeout=-10",
+            total_steps=500_000,
+        )
+    if args.smoke:
+        config = replace(
+            config,
             total_steps=config.envs * config.rollout_steps * 2,
             eval_every_updates=0, eval_episodes=100,
         )
-    output = args.output / args.model / f"s{args.seed}"
+    output_root = args.output or Path(
+        "outputs/ppo_walking_v2_no_stop_joystick130" if walking
+        else "outputs/ppo_static_target_fixed_v1_joystick130"
+    )
+    output = output_root / args.model / f"s{args.seed}"
     output.mkdir(parents=True, exist_ok=True)
     config_dict = asdict(config) | {"model": args.model, "seed": args.seed, "device": str(device)}
     config_path = output / "config.json"
-    if config_path.exists() and json.loads(config_path.read_text()) != config_dict:
+    if (config_path.exists() and json.loads(config_path.read_text()) != config_dict
+            and not args.reevaluate):
         raise RuntimeError(f"refusing incompatible resume at {output}")
     config_path.write_text(json.dumps(config_dict, indent=2, ensure_ascii=False))
     if args.reevaluate:
@@ -462,7 +548,12 @@ def main():
         model.load_state_dict(saved["model"])
         model.eval()
         result = saved["result"]
+        result["config"] = config_dict
         result["evaluation"] = evaluate(model, args.model, config, device)
+        if walking:
+            result["curriculum_evaluation"] = evaluate_walking(
+                model, args.model, config, device
+            )
         (output / "complete.json").write_text(json.dumps(result, indent=2, ensure_ascii=False))
         atomic_torch_save({"model": model.state_dict(), "result": result}, final_path)
         print(json.dumps(result["evaluation"], ensure_ascii=False), flush=True)
@@ -472,6 +563,9 @@ def main():
         return
 
     model = make_actor_critic(args.model).to(device)
+    if walking:
+        with torch.no_grad():
+            model.actor.bias[FIRE_ACTION] = -4.0
     optimiser = torch.optim.Adam(model.parameters(), lr=config.learning_rate, eps=1e-5)
     start_update = 0
     total_steps = 0
@@ -489,7 +583,7 @@ def main():
     steps_per_update = config.envs * config.rollout_steps
     updates = math.ceil(config.total_steps / steps_per_update)
     env_seed = TRAIN_ENV_BASE + args.seed * 10_000 + start_update * config.envs * 100
-    env = PpoVec(config.envs, env_seed, static_target=True)
+    env = PpoVec(config.envs, env_seed, static_target=not walking, walking=walking)
     starts = np.ones(config.envs, bool)
     hidden = model.initial_hidden(config.envs, device)
     started = time.perf_counter()
@@ -538,11 +632,15 @@ def main():
     model.eval()
     final_eval = evaluate(model, args.model, config, device)
     result = {
-        "name": f"ppo-static-target-fixed-v1-joystick130-{args.model}-s{args.seed}",
+        "name": f"ppo-{'walking-v2-no-stop-serpentine' if walking else 'static-target-fixed-v1'}-joystick130-{args.model}-s{args.seed}",
         "model": args.model, "seed": args.seed, "total_steps": total_steps,
         "seconds_this_run": time.perf_counter() - started,
         "evaluation": final_eval, "config": config_dict,
     }
+    if walking:
+        result["curriculum_evaluation"] = evaluate_walking(
+            model, args.model, config, device
+        )
     (output / "complete.json").write_text(json.dumps(result, indent=2, ensure_ascii=False))
     atomic_torch_save({"model": model.state_dict(), "result": result}, output / "final.pt")
 

@@ -2,11 +2,11 @@
 
 > 当前分支：`rl`。Viewer 默认复现 **固定地图 + 不动且不开火的训练靶子**；也可切换到
 > **PPO 模型 vs 固定 Laika** 做行为 review；
-> GitHub Pages 的 MPC 观看/对战版本位于 `main`。当前模型
-> `ppo-static-target-fixed-v1-joystick130-nomem-s11` 使用 schema-7 `Discrete(130)`：
-> 128 个人类轮盘方向 + 原地开火 + 停止，方向操作无转速限制。固定地图静止靶训练
-> 5,013,504 步后，对固定 Laika 恰好 100 局为 7 胜 / 85 负 / 8 双亡 / 0 超时，胜率 7%；
-> 本结果不作为部署 gate。
+> GitHub Pages 的 MPC 观看/对战版本位于 `main`。当前走路课程模型
+> `ppo-walking-v2-no-stop-serpentine-joystick130-nomem-s11` 使用冻结的 schema-7
+> `Discrete(130)`，训练 507,904 步。固定曲折道路恰好 100 局全部在第 33 帧撞墙；旁路
+> 固定 Laika 恰好 100 局为 5 胜 / 87 负 / 8 双亡，胜率 5%。所有结果直接进入 Viewer，
+> 不设 gate。
 
 首次运行先执行 `python3 -m venv .venv` 和
 `.venv/bin/pip install -r training/requirements.txt`。之后用 `bash viewer/serve.sh` 启动，
