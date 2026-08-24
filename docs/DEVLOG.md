@@ -1,6 +1,6 @@
 # 开发日志
 
-本文只记录 `main` 最终保留的工作。已废弃的 PPO checkpoint、旧动作协议和中间试验不再
+本文记录各分支最终保留的工作。已废弃的 PPO checkpoint、旧动作协议和中间试验不再
 逐项展开；实现原理见 `README.md`，网页运行细节见 `docs/WEB-RUNTIME.md`。
 
 ## 2026-08-25 — RL pursuit-v10 房间巡游课程
@@ -13,6 +13,18 @@
 - `ppo-pursuit-v10-room-exp-bfs-joystick722-nomem-s22` 方向预训练 200 epochs 后进行
   16,384 PPO 步。训练图恰好 100 局均无违规存活满 300 帧；固定 Laika 恰好 100 局
   9 胜、82 负、9 双亡，胜率 9%。完成 checkpoint 已直接接入 Viewer，不设 gate。
+
+### 今日结论与下次起点
+
+- 方向监督和 PPO 必须使用独立 Adam：方向监督使用 lr `1e-4`，完成后清空优化器状态，
+  PPO 使用 lr `1e-9`、entropy `0`。二者共用低学习率时方向准确率只有约 68%；共用较高
+  学习率时，一次 PPO 更新就会破坏安全行走策略并导致 100/100 撞墙。
+- 当前阶段解决的是“在严格不能停、不能撞墙的规则下走入房间并持续贴近二维移动目标”，
+  不是击杀课程。模型在该课程中不会开火，固定 Laika 胜率只作为规定的旁路报告。
+- 下次从 v10 checkpoint 和 Viewer 行为 review 继续；优先观察房间内追踪是否自然，再决定
+  是否扩大地图、增加 Laika 活动范围，或进入允许开火与避免自杀的击杀课程。
+- Review URL：`http://127.0.0.1:8000/?scenario=room-pursuit&model=pursuit-v10-s22&v=10`。
+- 本次收尾提交：`fd5953c Train PPO pursuit in upper-right patrol room`。
 
 ## 2026-08-24 — Main 版本收尾
 
