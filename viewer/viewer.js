@@ -144,7 +144,7 @@ let immediateFirePressed = false;
 
 let wasm = null;
 let scratchPtr = null;
-const OBS_DIM = 1054;
+const OBS_DIM = 1646;
 const BULLET_SLOTS = 10;
 const RL_FIRE_ACTION = 720;
 const RL_STOP_ACTION = 721;
@@ -1146,6 +1146,12 @@ async function boot() {
   const { instance } = await WebAssembly.instantiate(await res.arrayBuffer(), {});
   wasm = instance.exports;
   scratchPtr = wasm.kf_scratch_ptr();
+  const semanticObservationLength = wasm.kf_semantic_observation_len();
+  if (semanticObservationLength !== OBS_DIM + BULLET_SLOTS) {
+    throw new Error(
+      `Semantic observation mismatch: wasm=${semanticObservationLength}, viewer=${OBS_DIM + BULLET_SLOTS}`,
+    );
+  }
   await loadModelCatalogue();
   const paramCount = wasm.kf_tuning_param_count();
   if (paramCount !== TUNING_SCHEMA.length) {
