@@ -69,6 +69,7 @@ pub fn make_sandbox(g: &Game, me: usize, opp_model: OppModel, rng_seed: u32) -> 
         scores,
         round_number: g.round_number,
         frame: g.frame,
+        round_start_frame: g.round_start_frame,
         events: Vec::new(),
         hit_records: Vec::new(),
         tank_fields,

@@ -1,12 +1,13 @@
-# Paint-v1 PPO 训练与交付
+# 固定地图静止靶 PPO 训练与交付
 
 ## 固定配置
 
 | 项目 | 配置 |
 |---|---|
-| 下一模型名 | `ppo-paint-v1-joystick130-nomem-s11` |
-| 对手 | 固定 Laika |
-| 网络 | schema-6 frame encoder + MLP-256 Actor-Critic，无记忆；单一 `Discrete(130)` head |
+| 模型名 | `ppo-static-target-fixed-v1-joystick130-nomem-s11` |
+| 训练对手 | 固定 seed `20260824`，静止且不能开火 |
+| 最终评估 | 固定 Laika，恰好 100 局 |
+| 网络 | schema-7 frame encoder + MLP-256 Actor-Critic，无记忆；单一 `Discrete(130)` head |
 | Action | `0..127` 轮盘方向、`128` 原地开火、`129` 停止；方向瞬转，支持轮盘倒车分区 |
 | 动作频率 | 25 Hz，每引擎帧一次 |
 | 并行环境 | 64 |
@@ -17,8 +18,12 @@
 
 ## Reward
 
-进入不同格子时切换染色。`n` 个当前染色格的状态分数为 `S(n)=2^n-1`，每次奖励
-`S(n_next)-S(n)`。胜利 `+20`，双亡和超时 `0`，失败 `-20`。没有其他 reward。
+- 新最短路径纪录：累计最多 `+0.5`；
+- 实际发弹：即时 `+0.1`，每局最多 `+0.5`，失败时全部扣回；
+- 干净击杀：`10 + 2 × (1 - t_kill/750)`；
+- 自杀、双亡、超时：最终严格 `-10`；
+- 保留击杀后 75 帧残弹结算，击杀后自杀仍为失败；
+- 无 paint、LOS、瞄准答案或 MPC 未来信息。
 
 ## 命令
 
@@ -40,8 +45,9 @@ zsh training/run_ppo_paint_v1.sh train
 
 ## 当前训练结果
 
-- schema-6 `ppo-paint-v1-joystick130-nomem-s11`：动作协议和训练链路已实现并通过集成测试，
-  尚未开始正式训练；完成后仍将对固定 Laika 只评估恰好 100 局并直接接入 Viewer；
+- schema-7 `ppo-static-target-fixed-v1-joystick130-nomem-s11`：5,013,504 步；固定 Laika
+  恰好 100 局为 7 胜、85 负、8 双亡、0 超时，胜率 7%。训练完成后直接接入 Viewer，
+  本结果不作为部署 gate；
 - 历史 schema-5 `ppo-paint-v1-directional128-nomem-s11`：5,013,504 步；固定 Laika 恰好
   100 局为 1 胜、90 负、9 双亡、0 超时，胜率 1%。因旧双 head 动作协议已取消，不再
   出现在 Viewer 模型列表；

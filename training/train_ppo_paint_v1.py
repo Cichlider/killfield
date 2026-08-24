@@ -1,4 +1,4 @@
-"""PPO paint-v1: geometric toggle-paint reward plus ±20 terminal reward."""
+"""PPO fixed-map curriculum: seek and kill an inert target without self-killing."""
 
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ from ppo_models import (
 
 
 CHANNEL_NAMES = (
-    "initiative", "paint_toggle", "terminal", "kill_quality", "example",
+    "initiative", "navigation", "terminal", "kill_quality", "shot_attempt",
     "precision", "knife", "dodge", "repeated_wall",
 )
 TRAIN_SEEDS = (11, 22, 33)
@@ -41,10 +41,18 @@ def atomic_torch_save(value, path):
 
 @dataclass(frozen=True)
 class Config:
-    stage: str = "paint-v1-joystick130"
+    stage: str = "static-target-fixed-v1-joystick130"
     observation_schema: int = OBS_SCHEMA_VERSION
     action_count: int = ACTION_COUNT
     opponent: str = "Laika"
+    training_opponent: str = "inert-fixed-seed-20260824"
+    episode_frames: int = 750
+    navigation_total: float = 0.5
+    success_base: float = 10.0
+    speed_bonus_max: float = 2.0
+    failure_reward: float = -10.0
+    shot_attempt_reward: float = 0.10
+    shot_attempt_cap: float = 0.50
     envs: int = 64
     rollout_steps: int = 256
     total_steps: int = 5_000_000
@@ -66,11 +74,18 @@ class Config:
 
 
 class PpoVec:
-    def __init__(self, count: int, seed: int, library=Path("engine/target/release/libkf_engine.dylib")):
+    def __init__(self, count: int, seed: int, static_target=False, eval_laika=False,
+                 library=Path("engine/target/release/libkf_engine.dylib")):
         self.count = count
         self.lib = ctypes.CDLL(str(library.resolve()))
-        self.lib.kf_vec_new_ppo_paint_v1.argtypes = [ctypes.c_uint32, ctypes.c_uint32]
-        self.lib.kf_vec_new_ppo_paint_v1.restype = ctypes.c_void_p
+        constructor_name = (
+            "kf_vec_new_static_target_v1" if static_target else
+            "kf_vec_new_ppo_eval" if eval_laika else
+            "kf_vec_new_ppo_paint_v1"
+        )
+        constructor = getattr(self.lib, constructor_name)
+        constructor.argtypes = [ctypes.c_uint32] if static_target else [ctypes.c_uint32, ctypes.c_uint32]
+        constructor.restype = ctypes.c_void_p
         self.lib.kf_vec_obs_dim.restype = ctypes.c_uint32
         self.lib.kf_vec_bullet_slots.restype = ctypes.c_uint32
         self.lib.kf_vec_reward_channel_count.restype = ctypes.c_uint32
@@ -81,7 +96,7 @@ class PpoVec:
         expected = (OBS_DIM, BULLET_SLOTS, len(CHANNEL_NAMES))
         if native != expected:
             raise RuntimeError(f"native/Python schema mismatch: {native} != {expected}")
-        self.handle = self.lib.kf_vec_new_ppo_paint_v1(count, seed)
+        self.handle = constructor(count) if static_target else constructor(count, seed)
         if not self.handle:
             raise RuntimeError("kf_vec_new_ppo_paint_v1 failed")
         self.lib.kf_vec_step.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_uint16)]
@@ -324,7 +339,7 @@ def update_policy(model, optimiser, batch, kind, config, device, rng):
 
 @torch.inference_mode()
 def evaluate(model, kind, config, device):
-    env = PpoVec(config.eval_envs, EVAL_ENV_BASE)
+    env = PpoVec(config.eval_envs, EVAL_ENV_BASE, eval_laika=True)
     hidden = model.initial_hidden(config.eval_envs, device)
     starts = np.ones(config.eval_envs, bool)
     channel_total = np.zeros((config.eval_envs, len(CHANNEL_NAMES)), np.float64)
@@ -418,9 +433,10 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", required=True, choices=("nomem", "gru"))
     parser.add_argument("--seed", required=True, type=int, choices=TRAIN_SEEDS)
-    parser.add_argument("--output", type=Path, default=Path("outputs/ppo_paint_v1_joystick130"))
+    parser.add_argument("--output", type=Path, default=Path("outputs/ppo_static_target_fixed_v1_joystick130"))
     parser.add_argument("--device", choices=("auto", "cpu", "mps"), default="auto")
     parser.add_argument("--smoke", action="store_true")
+    parser.add_argument("--reevaluate", action="store_true")
     args = parser.parse_args()
     device = select_device(args.device)
     torch.set_num_threads(4)
@@ -439,6 +455,18 @@ def main():
     if config_path.exists() and json.loads(config_path.read_text()) != config_dict:
         raise RuntimeError(f"refusing incompatible resume at {output}")
     config_path.write_text(json.dumps(config_dict, indent=2, ensure_ascii=False))
+    if args.reevaluate:
+        final_path = output / "final.pt"
+        saved = torch.load(final_path, map_location=device, weights_only=False)
+        model = make_actor_critic(args.model).to(device)
+        model.load_state_dict(saved["model"])
+        model.eval()
+        result = saved["result"]
+        result["evaluation"] = evaluate(model, args.model, config, device)
+        (output / "complete.json").write_text(json.dumps(result, indent=2, ensure_ascii=False))
+        atomic_torch_save({"model": model.state_dict(), "result": result}, final_path)
+        print(json.dumps(result["evaluation"], ensure_ascii=False), flush=True)
+        return
     if (output / "complete.json").exists():
         print(f"已完成，跳过 {output}")
         return
@@ -461,7 +489,7 @@ def main():
     steps_per_update = config.envs * config.rollout_steps
     updates = math.ceil(config.total_steps / steps_per_update)
     env_seed = TRAIN_ENV_BASE + args.seed * 10_000 + start_update * config.envs * 100
-    env = PpoVec(config.envs, env_seed)
+    env = PpoVec(config.envs, env_seed, static_target=True)
     starts = np.ones(config.envs, bool)
     hidden = model.initial_hidden(config.envs, device)
     started = time.perf_counter()
@@ -510,7 +538,7 @@ def main():
     model.eval()
     final_eval = evaluate(model, args.model, config, device)
     result = {
-        "name": f"ppo-paint-v1-joystick130-{args.model}-s{args.seed}",
+        "name": f"ppo-static-target-fixed-v1-joystick130-{args.model}-s{args.seed}",
         "model": args.model, "seed": args.seed, "total_steps": total_steps,
         "seconds_this_run": time.perf_counter() - started,
         "evaluation": final_eval, "config": config_dict,

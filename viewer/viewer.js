@@ -137,7 +137,7 @@ let immediateFirePressed = false;
 
 let wasm = null;
 let scratchPtr = null;
-const OBS_DIM = 1289;
+const OBS_DIM = 1170;
 const BULLET_SLOTS = 10;
 const RL_FIRE_ACTION = 128;
 const RL_STOP_ACTION = 129;
@@ -164,7 +164,7 @@ async function loadModelCatalogue() {
     if (!selectedModel) {
       const option = document.createElement("option");
       option.value = "";
-      option.textContent = "no compatible schema-6 joystick130 checkpoint";
+      option.textContent = "no compatible schema-7 static-target joystick130 checkpoint";
       rlModelSelect.append(option);
       rlStatus.textContent = "模型尚未训练；运行训练后刷新。本页不会用 MPC 冒充 PPO。";
     } else {
@@ -637,8 +637,8 @@ function applyLanguage() {
     ? "PPO 行为 review：所选模型以 25 Hz 对战固定 Laika。"
     : "PPO behavior review: the selected model plays fixed Laika at 25 Hz.";
   note.textContent = lang === "zh"
-    ? "左侧只接受 schema-6 joystick130 PPO：128 个轮盘方向 + 开火 + 停止；右侧始终由固定 Laika 脚本控制。"
-    : "The left tank accepts schema-6 joystick130 PPO: 128 wheel directions + fire + stop; fixed Laika drives the right tank.";
+    ? "左侧使用 schema-7 static-target joystick130 PPO：128 个轮盘方向 + 开火 + 停止；右侧由固定 Laika 控制。"
+    : "The left tank uses schema-7 static-target joystick130 PPO: 128 wheel directions + fire + stop; fixed Laika drives the right tank.";
   updateScoreboard();
 }
 

@@ -1,4 +1,4 @@
-//! Human-equivalent semantic observation (DESIGN.md, schema 6).
+//! Human-equivalent semantic observation (DESIGN.md, schema 7).
 //!
 //! The flat payload is useful for storage and ABI transport.  The ten bullet
 //! rows must still go through a shared bullet encoder followed by masked
@@ -10,17 +10,19 @@ use std::collections::VecDeque;
 
 pub const MAX_MAP_W: usize = 12;
 pub const MAX_MAP_H: usize = 10;
-pub const MAP_CHANNELS: usize = 9;
+pub const MAP_CHANNELS: usize = 8;
 pub const MAP_DIM: usize = MAX_MAP_W * MAX_MAP_H * MAP_CHANNELS;
 pub const SELF_DIM: usize = 9;
 pub const OPPONENT_DIM: usize = 6;
 pub const BULLET_SLOTS: usize = 10;
 pub const BULLET_DIM: usize = 6;
 pub const PHASE_DIM: usize = 3;
+pub const TIME_DIM: usize = 1;
 pub const ACTION_DIM: usize = crate::directional::ACTION_COUNT;
 pub const OBS_DIM: usize =
-    MAP_DIM + 1 + SELF_DIM + OPPONENT_DIM + BULLET_SLOTS * BULLET_DIM + PHASE_DIM + ACTION_DIM;
-pub const OBS_SCHEMA_VERSION: u32 = 6;
+    MAP_DIM + 1 + SELF_DIM + OPPONENT_DIM + BULLET_SLOTS * BULLET_DIM + PHASE_DIM + TIME_DIM
+        + ACTION_DIM;
+pub const OBS_SCHEMA_VERSION: u32 = 7;
 
 pub const MAP_OFFSET: usize = 0;
 pub const PATH_LENGTH_OFFSET: usize = MAP_OFFSET + MAP_DIM;
@@ -28,7 +30,8 @@ pub const SELF_OFFSET: usize = PATH_LENGTH_OFFSET + 1;
 pub const OPPONENT_OFFSET: usize = SELF_OFFSET + SELF_DIM;
 pub const BULLET_OFFSET: usize = OPPONENT_OFFSET + OPPONENT_DIM;
 pub const PHASE_OFFSET: usize = BULLET_OFFSET + BULLET_SLOTS * BULLET_DIM;
-pub const ACTION_OFFSET: usize = PHASE_OFFSET + PHASE_DIM;
+pub const TIME_OFFSET: usize = PHASE_OFFSET + PHASE_DIM;
+pub const ACTION_OFFSET: usize = TIME_OFFSET + TIME_DIM;
 
 #[derive(Clone, Debug)]
 pub struct SemanticObsState {
@@ -230,7 +233,6 @@ pub fn encode(g: &Game, me: usize, state: &SemanticObsState, out: &mut SemanticO
                 && from_opp[i] >= 0
                 && from_me[i] + from_opp[i] == path) as u8
                 as f32;
-            out.values[map_at(x, y, 8)] = state.painted(x, y) as u8 as f32;
         }
     }
     out.values[PATH_LENGTH_OFFSET] = path as f32 / (MAX_MAP_W + MAX_MAP_H) as f32;
@@ -291,6 +293,8 @@ pub fn encode(g: &Game, me: usize, state: &SemanticObsState, out: &mut SemanticO
         0
     };
     out.values[PHASE_OFFSET + phase] = 1.0;
+    out.values[TIME_OFFSET] =
+        ((g.frame - g.round_start_frame).max(0) as f32 / (30 * C::FPS) as f32).min(1.0);
     if let Some(action) = state.last_action {
         out.values[ACTION_OFFSET + action as usize] = 1.0;
     }
@@ -303,8 +307,9 @@ mod tests {
     use crate::game::Game;
 
     #[test]
-    fn schema_6_uses_discrete_130_previous_action() {
-        assert_eq!(OBS_DIM, 1289);
+    fn schema_7_removes_paint_and_adds_time() {
+        assert_eq!(MAP_CHANNELS, 8);
+        assert_eq!(OBS_DIM, 1170);
         assert_eq!(ACTION_DIM, 130);
         assert_eq!(ACTION_OFFSET + ACTION_DIM, OBS_DIM);
     }

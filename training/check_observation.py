@@ -10,7 +10,7 @@ import numpy as np
 
 from ppo_models import (
     ACTION_COUNT, ACTION_OFFSET, BULLET_DIM, BULLET_OFFSET, BULLET_SLOTS, MAP_DIM, OBS_DIM,
-    OBS_SCHEMA_VERSION, OPPONENT_OFFSET, PHASE_OFFSET, SELF_OFFSET,
+    OBS_SCHEMA_VERSION, OPPONENT_OFFSET, PHASE_OFFSET, SELF_OFFSET, TIME_OFFSET,
 )
 
 
@@ -77,6 +77,10 @@ def main():
         "phase_one_hot", np.allclose(obs[:, PHASE_OFFSET:PHASE_OFFSET + 3].sum(1), 1.0),
         "phase is not exactly one-hot",
     )
+    require(
+        "time_range", ((obs[:, TIME_OFFSET] >= 0.0) & (obs[:, TIME_OFFSET] <= 1.0)).all(),
+        "elapsed time is outside [0,1]",
+    )
     action_sum = obs[:, ACTION_OFFSET:].sum(1)
     require(
         "previous_action",
@@ -102,7 +106,8 @@ def main():
         "self": obs[:, SELF_OFFSET:OPPONENT_OFFSET],
         "opponent": obs[:, OPPONENT_OFFSET:BULLET_OFFSET],
         "bullets_active": bullets[masks] if masks.any() else np.zeros((1, BULLET_DIM), np.float32),
-        "phase": obs[:, PHASE_OFFSET:ACTION_OFFSET],
+        "phase": obs[:, PHASE_OFFSET:TIME_OFFSET],
+        "time": obs[:, TIME_OFFSET:ACTION_OFFSET],
         "previous_action": obs[:, ACTION_OFFSET:],
     }
     report = {

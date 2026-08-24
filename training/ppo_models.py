@@ -8,16 +8,17 @@ import torch
 import torch.nn as nn
 
 
-OBS_SCHEMA_VERSION = 6
-OBS_DIM = 1289
-MAP_DIM = 1080
-SELF_OFFSET = 1081
-OPPONENT_OFFSET = 1090
-BULLET_OFFSET = 1096
+OBS_SCHEMA_VERSION = 7
+OBS_DIM = 1170
+MAP_DIM = 960
+SELF_OFFSET = 961
+OPPONENT_OFFSET = 970
+BULLET_OFFSET = 976
 BULLET_SLOTS = 10
 BULLET_DIM = 6
-PHASE_OFFSET = 1156
-ACTION_OFFSET = 1159
+PHASE_OFFSET = 1036
+TIME_OFFSET = 1039
+ACTION_OFFSET = 1040
 ACTION_COUNT = 130
 FIRE_ACTION = 128
 STOP_ACTION = 129
@@ -30,7 +31,7 @@ class FrameEncoder(nn.Module):
     def __init__(self) -> None:
         super().__init__()
         self.map_encoder = nn.Sequential(
-            nn.Conv2d(9, 16, 3, padding=1), nn.ReLU(),
+            nn.Conv2d(8, 16, 3, padding=1), nn.ReLU(),
             nn.Conv2d(16, 32, 3, stride=2, padding=1), nn.ReLU(),
             nn.Flatten(), nn.Linear(32 * 6 * 5, 128), nn.Tanh(),
         )
@@ -45,7 +46,7 @@ class FrameEncoder(nn.Module):
         original = obs.shape[:-1]
         obs = obs.reshape(-1, OBS_DIM)
         bullet_mask = bullet_mask.reshape(-1, BULLET_SLOTS)
-        maps = obs[:, :MAP_DIM].reshape(-1, 12, 10, 9).permute(0, 3, 1, 2)
+        maps = obs[:, :MAP_DIM].reshape(-1, 12, 10, 8).permute(0, 3, 1, 2)
         map_features = self.map_encoder(maps)
         bullets = obs[:, BULLET_OFFSET:PHASE_OFFSET].reshape(
             -1, BULLET_SLOTS, BULLET_DIM
@@ -98,6 +99,7 @@ class ActorCritic(nn.Module):
                     else:
                         nn.init.zeros_(parameter)
         nn.init.orthogonal_(self.actor.weight, gain=0.01)
+        self.actor.bias.data[FIRE_ACTION] = 2.0
         nn.init.orthogonal_(self.critic.weight, gain=1.0)
 
     def initial_hidden(self, batch: int, device):

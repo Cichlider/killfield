@@ -10,13 +10,22 @@ use crate::directional::apply_joystick_action;
 use crate::game::Tank;
 use crate::game::{Event, Game};
 use crate::laika::LaikaAI;
-use crate::reward::{RewardConfig, RewardTracker, CH_STYLE, CH_TERMINAL, REWARD_CHANNELS};
+use crate::reward::{
+    RewardConfig, RewardTracker, CH_EXAMPLE, CH_STYLE, CH_TERMINAL, REWARD_CHANNELS,
+};
 use crate::score::{action_index, CANDIDATES};
-use crate::semantic_obs::{encode, SemanticObsState, SemanticObservation, BULLET_SLOTS, OBS_DIM};
+use crate::semantic_obs::{
+    encode, SemanticObsState, SemanticObservation, BULLET_SLOTS, OBS_DIM, PATH_LENGTH_OFFSET,
+};
 use crate::teacher::KillFieldAgent;
 
 const AIM_DIM: usize = 5;
 pub const MAX_RETRO: usize = 128;
+const STATIC_TARGET_FRAMES: u32 = 30 * C::FPS as u32;
+const STATIC_TARGET_SEED: u32 = 20_260_824;
+const STATIC_NAV_TOTAL: f64 = 0.5;
+const STATIC_SHOT_ATTEMPT: f64 = 0.10;
+const STATIC_SHOT_BONUS_CAP: f64 = 0.50;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum LabelMode {
@@ -33,11 +42,14 @@ struct Slot {
     obs_state: SemanticObsState,
     decisions: u32,
     done: bool,
+    best_path: f32,
+    provisional_success: Option<f64>,
+    shot_bonus_total: f64,
 }
 
 impl Slot {
-    fn new(seed: u32, reward_enabled: bool) -> Self {
-        let game = Game::with_ai(seed, 2, &[1]);
+    fn new(seed: u32, reward_enabled: bool, static_target: bool) -> Self {
+        let game = Game::with_ai(seed, 2, if static_target { &[] } else { &[1] });
         let scale = game.scale;
         let mut mpc_teacher = KillFieldAgent::new(0, seed ^ 0x5bd1_e995);
         mpc_teacher.ray_count = 512;
@@ -51,6 +63,9 @@ impl Slot {
             obs_state: SemanticObsState::default(),
             decisions: 0,
             done: false,
+            best_path: f32::INFINITY,
+            provisional_success: None,
+            shot_bonus_total: 0.0,
         }
     }
 }
@@ -61,6 +76,8 @@ pub struct VecEnv {
     reward_enabled: bool,
     reward_r1: bool,
     reward_paint: bool,
+    static_target: bool,
+    fixed_seed: Option<u32>,
     next_seed: u32,
     obs: Vec<f32>,
     masks: Vec<u8>,
@@ -93,12 +110,15 @@ impl VecEnv {
         reward_r1: bool,
         reward_paint: bool,
         label_mode: LabelMode,
+        static_target: bool,
     ) -> Self {
+        let fixed_seed = static_target.then_some(STATIC_TARGET_SEED);
         let mut result = Self {
             slots: (0..count)
                 .map(|i| {
-                    let mut slot = Slot::new(base_seed.wrapping_add(i as u32), reward_enabled);
-                    if reward_paint {
+                    let seed = fixed_seed.unwrap_or_else(|| base_seed.wrapping_add(i as u32));
+                    let mut slot = Slot::new(seed, reward_enabled, static_target);
+                    if static_target || reward_paint {
                         slot.reward = None;
                     } else if reward_r1 {
                         slot.reward = Some(RewardTracker::new_r1(0));
@@ -110,6 +130,8 @@ impl VecEnv {
             reward_enabled,
             reward_r1,
             reward_paint,
+            static_target,
+            fixed_seed,
             next_seed: base_seed.wrapping_add(count as u32),
             obs: vec![0.0; count * OBS_DIM],
             masks: vec![0; count * BULLET_SLOTS],
@@ -184,6 +206,9 @@ impl VecEnv {
             )
         };
         self.obs[index * OBS_DIM..(index + 1) * OBS_DIM].copy_from_slice(&observation.values);
+        if self.static_target && self.slots[index].best_path.is_infinite() {
+            self.slots[index].best_path = observation.values[PATH_LENGTH_OFFSET];
+        }
         for (out, value) in self.masks[index * BULLET_SLOTS..(index + 1) * BULLET_SLOTS]
             .iter_mut()
             .zip(observation.bullet_mask)
@@ -229,7 +254,42 @@ impl VecEnv {
             let mut retro_count = 0usize;
             for _ in 0..self.frame_skip {
                 let events = slot.game.step();
-                if self.reward_paint {
+                if self.static_target {
+                    for event in &events {
+                        if matches!(event, Event::Fire(0))
+                            && slot.shot_bonus_total < STATIC_SHOT_BONUS_CAP
+                        {
+                            let value = STATIC_SHOT_ATTEMPT
+                                .min(STATIC_SHOT_BONUS_CAP - slot.shot_bonus_total);
+                            slot.shot_bonus_total += value;
+                            reward += value;
+                            self.reward_channels[index * REWARD_CHANNELS + CH_EXAMPLE] +=
+                                value as f32;
+                        }
+                    }
+                    let me_alive = slot.game.tanks[0].alive;
+                    let opponent_alive = slot.game.tanks[1].alive;
+                    if !opponent_alive && me_alive && slot.provisional_success.is_none() {
+                        let speed = 2.0
+                            * (1.0 - slot.decisions as f64 / STATIC_TARGET_FRAMES as f64)
+                                .clamp(0.0, 1.0);
+                        let value = 10.0 + speed;
+                        slot.provisional_success = Some(value);
+                        reward += value;
+                        self.reward_channels[index * REWARD_CHANNELS + CH_TERMINAL] += value as f32;
+                    }
+                    if !me_alive {
+                        let value = if let Some(provisional) = slot.provisional_success.take() {
+                            -(provisional + slot.shot_bonus_total + 10.0)
+                        } else {
+                            -(slot.shot_bonus_total + 10.0)
+                        };
+                        reward += value;
+                        self.reward_channels[index * REWARD_CHANNELS + CH_TERMINAL] += value as f32;
+                        self.winners[index] = if opponent_alive { 1 } else { -1 };
+                        terminal = true;
+                    }
+                } else if self.reward_paint {
                     let paint = slot.obs_state.update_paint(&slot.game, 0);
                     reward += paint;
                     self.reward_channels[index * REWARD_CHANNELS + CH_STYLE] += paint as f32;
@@ -276,10 +336,33 @@ impl VecEnv {
                     break;
                 }
             }
+            if self.static_target && !terminal && slot.game.tanks[0].alive && slot.game.tanks[1].alive {
+                let mut observation = SemanticObservation::default();
+                encode(&slot.game, 0, &slot.obs_state, &mut observation);
+                let path = observation.values[PATH_LENGTH_OFFSET];
+                if path < slot.best_path {
+                    let max_path = 119.0 / 22.0;
+                    let value = STATIC_NAV_TOTAL * (slot.best_path - path) as f64 / max_path;
+                    reward += value;
+                    self.reward_channels[index * REWARD_CHANNELS + CH_STYLE] += value as f32;
+                    slot.best_path = path;
+                }
+            }
+            let timed_out = self.static_target
+                && !terminal
+                && slot.decisions >= STATIC_TARGET_FRAMES;
+            if timed_out {
+                let value = -(slot.shot_bonus_total + 10.0);
+                reward += value;
+                self.reward_channels[index * REWARD_CHANNELS + CH_TERMINAL] += value as f32;
+                self.winners[index] = -2;
+            }
             self.rewards[index] = reward as f32;
             self.transition_frames[index] = slot.game.frame;
             self.retro_counts[index] = retro_count as u32;
-            slot.done = terminal || slot.decisions >= (1500 / self.frame_skip) as u32;
+            slot.done = terminal
+                || timed_out
+                || (!self.static_target && slot.decisions >= (1500 / self.frame_skip) as u32);
             self.dones[index] = slot.done as u8;
             self.terminals[index] = terminal as u8;
             self.encode_slot(index);
@@ -289,10 +372,12 @@ impl VecEnv {
     fn reset_done(&mut self) {
         for index in 0..self.slots.len() {
             if self.slots[index].done {
-                let seed = self.next_seed;
-                self.next_seed = self.next_seed.wrapping_add(1);
-                let mut slot = Slot::new(seed, self.reward_enabled);
-                if self.reward_paint {
+                let seed = self.fixed_seed.unwrap_or(self.next_seed);
+                if self.fixed_seed.is_none() {
+                    self.next_seed = self.next_seed.wrapping_add(1);
+                }
+                let mut slot = Slot::new(seed, self.reward_enabled, self.static_target);
+                if self.static_target || self.reward_paint {
                     slot.reward = None;
                 } else if self.reward_r1 {
                     slot.reward = Some(RewardTracker::new_r1(0));
@@ -314,6 +399,7 @@ pub extern "C" fn kf_vec_new(count: u32, base_seed: u32) -> *mut VecEnv {
         false,
         false,
         LabelMode::Laika,
+        false,
     )))
 }
 
@@ -327,6 +413,7 @@ pub extern "C" fn kf_vec_new_dagger(count: u32, base_seed: u32) -> *mut VecEnv {
         false,
         false,
         LabelMode::Laika,
+        false,
     )))
 }
 
@@ -340,6 +427,7 @@ pub extern "C" fn kf_vec_new_mpc_dagger(count: u32, base_seed: u32) -> *mut VecE
         false,
         false,
         LabelMode::Mpc,
+        false,
     )))
 }
 
@@ -353,6 +441,7 @@ pub extern "C" fn kf_vec_new_ppo_r1(count: u32, base_seed: u32) -> *mut VecEnv {
         true,
         false,
         LabelMode::None,
+        false,
     )))
 }
 
@@ -366,6 +455,35 @@ pub extern "C" fn kf_vec_new_ppo_paint_v1(count: u32, base_seed: u32) -> *mut Ve
         false,
         true,
         LabelMode::None,
+        false,
+    )))
+}
+
+#[no_mangle]
+pub extern "C" fn kf_vec_new_static_target_v1(count: u32) -> *mut VecEnv {
+    Box::into_raw(Box::new(VecEnv::new(
+        count.max(1) as usize,
+        STATIC_TARGET_SEED,
+        1,
+        true,
+        false,
+        false,
+        LabelMode::None,
+        true,
+    )))
+}
+
+#[no_mangle]
+pub extern "C" fn kf_vec_new_ppo_eval(count: u32, base_seed: u32) -> *mut VecEnv {
+    Box::into_raw(Box::new(VecEnv::new(
+        count.max(1) as usize,
+        base_seed,
+        1,
+        false,
+        false,
+        false,
+        LabelMode::None,
+        false,
     )))
 }
 

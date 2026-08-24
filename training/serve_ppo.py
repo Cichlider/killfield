@@ -13,11 +13,11 @@ from ppo_models import BULLET_SLOTS, OBS_DIM, make_actor_critic
 
 
 # Older checkpoints use retired action/observation contracts and are not
-# exposed as schema-6 joystick130 policies. This entry becomes available
+# exposed as schema-7 static-target joystick130 policies. This entry becomes available
 # automatically once the compatible checkpoint exists under --models.
 SOURCES = {
     "nomem-s11": {
-        "display": "ppo-paint-v1-joystick130-nomem-s11",
+        "display": "ppo-static-target-fixed-v1-joystick130-nomem-s11",
         "architecture": "nomem",
         "history": 1,
         "checkpoint": "nomem/s11/final.pt",
@@ -93,7 +93,7 @@ class Models:
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--port", type=int, default=8000)
-    parser.add_argument("--models", type=Path, default=Path("outputs/ppo_paint_v1_joystick130"))
+    parser.add_argument("--models", type=Path, default=Path("outputs/ppo_static_target_fixed_v1_joystick130"))
     parser.add_argument("--device", choices=("auto", "cpu", "mps"), default="auto")
     args = parser.parse_args()
     if args.device == "auto":

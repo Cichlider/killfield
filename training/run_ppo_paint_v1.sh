@@ -14,11 +14,11 @@ case "$mode" in
     if command -v caffeinate >/dev/null 2>&1; then
       echo "caffeinate -dimsu 已启用；训练期间阻止常规空闲/系统/磁盘休眠。"
       caffeinate -dimsu .venv/bin/python -u training/train_ppo_paint_v1.py \
-        --model nomem --seed 11 --output outputs/ppo_paint_v1_joystick130
+        --model nomem --seed 11 --output outputs/ppo_static_target_fixed_v1_joystick130
     else
       echo "警告：系统没有 caffeinate，训练将不带防休眠保护。" >&2
       .venv/bin/python -u training/train_ppo_paint_v1.py \
-        --model nomem --seed 11 --output outputs/ppo_paint_v1_joystick130
+        --model nomem --seed 11 --output outputs/ppo_static_target_fixed_v1_joystick130
     fi
     ;;
   *)

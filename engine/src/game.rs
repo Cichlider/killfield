@@ -468,6 +468,7 @@ pub struct Game {
     pub scores: Vec<i32>,
     pub round_number: i32,
     pub frame: i64,
+    pub round_start_frame: i64,
     pub events: Vec<Event>,
     pub hit_records: Vec<HitRecord>,
 
@@ -526,6 +527,7 @@ impl Game {
             scores: vec![0; tanks],
             round_number: 0,
             frame: 0,
+            round_start_frame: 0,
             events: Vec::new(),
             hit_records: Vec::new(),
             maze: Arc::new(empty_maze),
@@ -551,6 +553,7 @@ impl Game {
 
     pub fn setup_battle(&mut self) {
         self.round_number += 1;
+        self.round_start_frame = self.frame;
         let tanks_n = self.tanks_count;
 
         // Reroll the whole maze until the start cell's connected component is

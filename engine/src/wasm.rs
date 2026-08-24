@@ -561,7 +561,7 @@ pub unsafe extern "C" fn kf_reward_info(h: *mut Handle, out: *mut f32) {
     out.copy_from_slice(&values);
 }
 
-/// Encode schema-6 observation for a browser-hosted learned policy.
+/// Encode schema-7 observation for a browser-hosted learned policy.
 /// `last_action` is the previous Discrete(130) action, or -1 at a boundary.
 #[no_mangle]
 pub unsafe extern "C" fn kf_semantic_observation(
