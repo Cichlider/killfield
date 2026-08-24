@@ -18,6 +18,7 @@ import { STRINGS, loadLang, saveLang } from "./src/i18n.js";
 import { Keyboard, TouchControls } from "./src/input.js";
 import { SoundEffects } from "./src/audio.js";
 import { Rng } from "./src/rng.js";
+import { predictLocalTank, simulationBudget } from "./src/low-latency.js";
 import {
   TUNING_SCHEMA, applyTuning, resetTuning, setTuning, tuning, tuningSnapshot,
 } from "./src/tuning.js";
@@ -297,7 +298,7 @@ function drawTank(ctx, x, y, rotation, s, colors) {
   ctx.stroke();
 }
 
-function draw(buf, colors, previous, alpha) {
+function draw(buf, colors, previous, alpha, localPlayer = null) {
   renderer.syncSize();
   const ctx = renderer.ctx;
   const w = buf[0];
@@ -376,10 +377,12 @@ function draw(buf, colors, previous, alpha) {
   for (let i = 0; i < nTanks; i++) {
     const o = tankBase + i * 6;
     if (buf[o + 3] < 0.5) continue;
-    const old = sameRound ? previous.tanks[i] : null;
-    const x = old ? old.x + (buf[o] - old.x) * alpha : buf[o];
-    const y = old ? old.y + (buf[o + 1] - old.y) * alpha : buf[o + 1];
-    const rotation = old ? interpolateAngle(old.rotation, buf[o + 2], alpha) : buf[o + 2];
+    const predicted = localPlayer?.tank === i ? localPlayer.pose : null;
+    const old = !predicted && sameRound ? previous.tanks[i] : null;
+    const x = predicted?.x ?? (old ? old.x + (buf[o] - old.x) * alpha : buf[o]);
+    const y = predicted?.y ?? (old ? old.y + (buf[o + 1] - old.y) * alpha : buf[o + 1]);
+    const rotation = predicted?.rotation
+      ?? (old ? interpolateAngle(old.rotation, buf[o + 2], alpha) : buf[o + 2]);
     const number = buf[o + 4] | 0;
     drawTank(ctx, ox + x, oy + y, rotation, buf[o + 5], colors[number % colors.length]);
   }
@@ -803,21 +806,36 @@ function tick() {
 let last = performance.now();
 let accumulator = 0;
 
+function predictHumanForRender(buf, alpha) {
+  const human = MODES[mode].humanTank;
+  if (human === null || paused || frozen || buf[14] > 0.5) return null;
+  const nWalls = buf[5] | 0;
+  const o = HEADER + nWalls * 4 + human * 6;
+  if (buf[o + 3] < 0.5) return null;
+  const pose = { x: buf[o], y: buf[o + 1], rotation: buf[o + 2] };
+  const input = touchControls.resolveMovement(keyboard.sampleStrengths(), pose.rotation);
+  return { tank: human, pose: predictLocalTank(pose, input, buf[2], alpha) };
+}
+
 function frame(now) {
-  accumulator = Math.min(accumulator + (now - last), MAX_CATCHUP_MS);
+  const budget = simulationBudget(
+    accumulator, now - last, STEP_MS, MAX_CATCHUP_MS, mode === "play",
+  );
   last = now;
   if (paused) {
     // Don't let the gap pile up while paused, or unpausing would fast-forward.
     accumulator = 0;
   } else {
-    while (accumulator >= STEP_MS) {
+    for (let i = 0; i < budget.steps; i++) {
       previousRenderState = captureRenderState(renderBuffer());
       tick();
-      accumulator -= STEP_MS;
     }
+    accumulator = budget.remainder;
   }
   const renderAlpha = paused ? 1 : Math.min(1, accumulator / STEP_MS);
-  draw(renderBuffer(), activeTankColors(), previousRenderState, renderAlpha);
+  const buf = renderBuffer();
+  const localPlayer = predictHumanForRender(buf, renderAlpha);
+  draw(buf, activeTankColors(), previousRenderState, renderAlpha, localPlayer);
   updateScoreboard();
   updateTelemetry();
   requestAnimationFrame(frame);

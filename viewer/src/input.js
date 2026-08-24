@@ -214,9 +214,14 @@ export class TouchControls {
       this.joystick.classList.add("active");
       this.updateJoystick(event);
     });
-    this.joystick.addEventListener("pointermove", (event) => {
+    const updateActiveJoystick = (event) => {
       if (event.pointerId === this.joystickPointer) this.updateJoystick(event);
-    });
+    };
+    this.joystick.addEventListener("pointermove", updateActiveJoystick);
+    // Chromium exposes pointerrawupdate before its display-rate-coalesced
+    // pointermove. Using both is harmless and gives high-polling touchscreens
+    // and pens the freshest direction available for prediction and physics.
+    this.joystick.addEventListener("pointerrawupdate", updateActiveJoystick);
     const releaseJoystick = (event) => {
       if (event.pointerId !== this.joystickPointer) return;
       this.joystickPointer = null;
@@ -330,13 +335,10 @@ export class TouchControls {
   }
 
   /**
-   * Resolve this frame's movement (touch style, falling back to keyboard
-   * strengths) and push it straight to the wasm tank.
-   *
-   * `rotation` is the tank's current heading in degrees, needed by the
-   * joystick's world-heading math (see joystickButtons above).
+   * Resolve movement without mutating the engine. Rendering calls this too,
+   * so local prediction and the next authoritative tick use identical input.
    */
-  applyTo(wasm, handle, tank, keyboardStrengths, rotation, instantTurn = false) {
+  resolveMovement(keyboardStrengths, rotation) {
     let movement = {
       forward: keyboardStrengths.forward,
       backup: keyboardStrengths.backup,
@@ -344,19 +346,32 @@ export class TouchControls {
       turnRight: keyboardStrengths.turnRight,
       targetRotation: null,
     };
-    let snappedRotation = null;
     if (this.style === "joystick" && this.joystickPointer !== null) {
       movement = joystickButtons(
         this.joystickVector.x, this.joystickVector.y, rotation, this.forwardAlignmentDegrees,
       );
-      if (instantTurn && movement.targetRotation !== null
-          && wasm.kf_set_rotation_if_clear(handle, tank, movement.targetRotation)) {
-        movement.turnLeft = 0;
-        movement.turnRight = 0;
-        snappedRotation = movement.targetRotation;
-      }
     } else if (this.style === "dpad") {
       for (const control of this.dpadPointers.values()) movement[control] = 1;
+    }
+    return movement;
+  }
+
+  /**
+   * Resolve this frame's movement (touch style, falling back to keyboard
+   * strengths) and push it straight to the wasm tank.
+   *
+   * `rotation` is the tank's current heading in degrees, needed by the
+   * joystick's world-heading math (see joystickButtons above).
+   */
+  applyTo(wasm, handle, tank, keyboardStrengths, rotation, instantTurn = false) {
+    const movement = this.resolveMovement(keyboardStrengths, rotation);
+    let snappedRotation = null;
+    if (instantTurn && this.style === "joystick" && this.joystickPointer !== null
+        && movement.targetRotation !== null
+        && wasm.kf_set_rotation_if_clear(handle, tank, movement.targetRotation)) {
+      movement.turnLeft = 0;
+      movement.turnRight = 0;
+      snappedRotation = movement.targetRotation;
     }
     const fire = (keyboardStrengths.fire > 0 || this.firePointers.size > 0) ? 1 : 0;
     wasm.kf_set_input(handle, tank, movement.forward, movement.backup,

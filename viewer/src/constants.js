@@ -18,6 +18,9 @@ export const BULLETSPEED = 4.5; // px/frame at SCALE=50
 
 // ---- tank steering (used by input.js's 128-direction joystick math) ----
 export const TANK_TURN_SPEED = 10; // deg/frame
+export const TANK_FORWARD_SPEED_BASE = 4.0; // px/frame at SCALE=50
+export const TANK_BACKUP_SPEED_BASE = 2.5; // px/frame at SCALE=50
+export const TANK_MOVE_STEPS = 5;
 
 // ---- tank geometry, in local sprite units (render-only) ----
 // Rotation 0 points UP (−y). The barrel fires along (rotation − 90)°.
