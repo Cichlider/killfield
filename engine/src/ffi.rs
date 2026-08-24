@@ -30,6 +30,11 @@ const STATIC_SHOT_BONUS_CAP: f64 = 0.50;
 const WALKING_SEED: u32 = 20_260_825;
 const WALKING_SEED_V2: u32 = 20_260_826;
 const WALKING_FRAMES: u32 = 300;
+const PURSUIT_SEED: u32 = 20_260_827;
+const PURSUIT_FRAMES: u32 = 300;
+const PURSUIT_ARRIVAL_DISTANCE_CELLS: f64 = 0.70;
+const PURSUIT_PROXIMITY_TOTAL: f64 = 5.0;
+const PURSUIT_SPEED_BONUS_MAX: f64 = 5.0;
 const WALKING_PROGRESS_TOTAL: f64 = 5.0;
 const WALKING_SUCCESS: f64 = 10.0;
 const WALKING_FAILURE: f64 = -10.0;
@@ -53,16 +58,26 @@ struct Slot {
     best_path: f32,
     provisional_success: Option<f64>,
     shot_bonus_total: f64,
+    pursuit_initial_bfs: f64,
+    pursuit_last_bfs: f64,
 }
 
 impl Slot {
-    fn new(seed: u32, reward_enabled: bool, static_target: bool, walking: bool) -> Self {
+    fn new(
+        seed: u32,
+        reward_enabled: bool,
+        static_target: bool,
+        walking: bool,
+        pursuit: bool,
+    ) -> Self {
         let walking_start = if walking && seed != WALKING_SEED && seed != WALKING_SEED_V2 {
             seed as usize % 13
         } else {
             0
         };
-        let game = if walking && seed == WALKING_SEED_V2 {
+        let game = if pursuit {
+            Game::walking_curriculum(seed)
+        } else if walking && seed == WALKING_SEED_V2 {
             Game::walking_curriculum_v2(seed)
         } else if walking {
             Game::walking_curriculum_at(seed, walking_start)
@@ -85,6 +100,13 @@ impl Slot {
                 (game.tanks[0].rotation.rem_euclid(360.0) / (360.0 / 128.0)).round() as u16 % 128;
             obs_state.push_action(incoming_action);
         }
+        let pursuit_initial_bfs = if pursuit {
+            let mut observation = SemanticObservation::default();
+            encode(&game, 0, &obs_state, &mut observation);
+            (observation.values[PATH_LENGTH_OFFSET] as f64 * 22.0).max(1.0)
+        } else {
+            0.0
+        };
         Self {
             game,
             reward: reward_enabled.then(|| RewardTracker::new(0)),
@@ -96,6 +118,8 @@ impl Slot {
             best_path,
             provisional_success: None,
             shot_bonus_total: 0.0,
+            pursuit_initial_bfs,
+            pursuit_last_bfs: pursuit_initial_bfs,
         }
     }
 }
@@ -108,6 +132,7 @@ pub struct VecEnv {
     reward_paint: bool,
     static_target: bool,
     walking_curriculum: bool,
+    pursuit_curriculum: bool,
     fixed_seed: Option<u32>,
     next_seed: u32,
     obs: Vec<f32>,
@@ -144,8 +169,12 @@ impl VecEnv {
         label_mode: LabelMode,
         static_target: bool,
         walking_curriculum: bool,
+        pursuit_curriculum: bool,
     ) -> Self {
-        let fixed_seed = if walking_curriculum {
+        let locomotion_curriculum = walking_curriculum || pursuit_curriculum;
+        let fixed_seed = if pursuit_curriculum {
+            Some(PURSUIT_SEED)
+        } else if walking_curriculum {
             Some(WALKING_SEED)
         } else {
             static_target.then_some(STATIC_TARGET_SEED)
@@ -154,9 +183,14 @@ impl VecEnv {
             slots: (0..count)
                 .map(|i| {
                     let seed = fixed_seed.unwrap_or_else(|| base_seed.wrapping_add(i as u32));
-                    let mut slot =
-                        Slot::new(seed, reward_enabled, static_target, walking_curriculum);
-                    if static_target || walking_curriculum || reward_paint {
+                    let mut slot = Slot::new(
+                        seed,
+                        reward_enabled,
+                        static_target,
+                        walking_curriculum,
+                        pursuit_curriculum,
+                    );
+                    if static_target || locomotion_curriculum || reward_paint {
                         slot.reward = None;
                     } else if reward_r1 {
                         slot.reward = Some(RewardTracker::new_r1(0));
@@ -169,7 +203,8 @@ impl VecEnv {
             reward_r1,
             reward_paint,
             static_target,
-            walking_curriculum,
+            walking_curriculum: locomotion_curriculum,
+            pursuit_curriculum,
             fixed_seed,
             next_seed: base_seed.wrapping_add(count as u32),
             obs: vec![0.0; count * OBS_DIM],
@@ -330,6 +365,21 @@ impl VecEnv {
             let mut retro_count = 0usize;
             for _ in 0..self.frame_skip {
                 let before = (slot.game.tanks[0].x, slot.game.tanks[0].y);
+                if self.pursuit_curriculum {
+                    let target = slot.game.tanks[1];
+                    let left = 4.5 * slot.game.scale;
+                    let right = 5.5 * slot.game.scale;
+                    let action = if target.x <= left {
+                        32
+                    } else if target.x >= right {
+                        96
+                    } else if target.rotation >= 0.0 {
+                        32
+                    } else {
+                        96
+                    };
+                    apply_joystick_action(&mut slot.game, 1, action);
+                }
                 let events = slot.game.step();
                 if self.walking_curriculum {
                     let tank = slot.game.tanks[0];
@@ -439,17 +489,45 @@ impl VecEnv {
                 }
             }
             if self.walking_curriculum && !terminal {
-                let progress = walking_curriculum_progress(&slot.game) as f32;
-                if progress > slot.best_path {
-                    let value = WALKING_PROGRESS_TOTAL * (progress - slot.best_path) as f64;
+                let arrived = if self.pursuit_curriculum {
+                    let me = slot.game.tanks[0];
+                    let opponent = slot.game.tanks[1];
+                    slot.game.tank_fields[0] == slot.game.tank_fields[1]
+                        && (me.x - opponent.x).hypot(me.y - opponent.y)
+                            <= PURSUIT_ARRIVAL_DISTANCE_CELLS * slot.game.scale
+                } else {
+                    walking_curriculum_progress(&slot.game) >= 0.98
+                };
+                if self.pursuit_curriculum && slot.decisions % 4 == 0 {
+                    let mut observation = SemanticObservation::default();
+                    encode(&slot.game, 0, &slot.obs_state, &mut observation);
+                    let bfs = observation.values[PATH_LENGTH_OFFSET] as f64 * 22.0;
+                    let value = PURSUIT_PROXIMITY_TOTAL
+                        * (slot.pursuit_last_bfs - bfs)
+                        / slot.pursuit_initial_bfs;
                     reward += value;
                     self.reward_channels[index * REWARD_CHANNELS + CH_STYLE] += value as f32;
-                    slot.best_path = progress;
+                    slot.pursuit_last_bfs = bfs;
+                } else if !self.pursuit_curriculum {
+                    let progress = walking_curriculum_progress(&slot.game) as f32;
+                    if progress > slot.best_path {
+                        let value = WALKING_PROGRESS_TOTAL * (progress - slot.best_path) as f64;
+                        reward += value;
+                        self.reward_channels[index * REWARD_CHANNELS + CH_STYLE] += value as f32;
+                        slot.best_path = progress;
+                    }
                 }
-                if progress >= 0.98 {
-                    reward += WALKING_SUCCESS;
+                if arrived {
+                    let speed_bonus = if self.pursuit_curriculum {
+                        PURSUIT_SPEED_BONUS_MAX
+                            * (1.0 - slot.decisions as f64 / PURSUIT_FRAMES as f64)
+                                .clamp(0.0, 1.0)
+                    } else {
+                        0.0
+                    };
+                    reward += WALKING_SUCCESS + speed_bonus;
                     self.reward_channels[index * REWARD_CHANNELS + CH_TERMINAL] +=
-                        WALKING_SUCCESS as f32;
+                        (WALKING_SUCCESS + speed_bonus) as f32;
                     self.winners[index] = 0;
                     terminal = true;
                 }
@@ -472,7 +550,13 @@ impl VecEnv {
             }
             let timed_out = !terminal
                 && ((self.static_target && slot.decisions >= STATIC_TARGET_FRAMES)
-                    || (self.walking_curriculum && slot.decisions >= WALKING_FRAMES));
+                    || (self.walking_curriculum
+                        && slot.decisions
+                            >= if self.pursuit_curriculum {
+                                PURSUIT_FRAMES
+                            } else {
+                                WALKING_FRAMES
+                            }));
             if timed_out {
                 let value = if self.walking_curriculum {
                     WALKING_FAILURE
@@ -509,7 +593,8 @@ impl VecEnv {
                     seed,
                     self.reward_enabled,
                     self.static_target,
-                    self.walking_curriculum,
+                    self.walking_curriculum && !self.pursuit_curriculum,
+                    self.pursuit_curriculum,
                 );
                 if self.static_target || self.walking_curriculum || self.reward_paint {
                     slot.reward = None;
@@ -535,6 +620,7 @@ pub extern "C" fn kf_vec_new(count: u32, base_seed: u32) -> *mut VecEnv {
         LabelMode::Laika,
         false,
         false,
+        false,
     )))
 }
 
@@ -548,6 +634,7 @@ pub extern "C" fn kf_vec_new_dagger(count: u32, base_seed: u32) -> *mut VecEnv {
         false,
         false,
         LabelMode::Laika,
+        false,
         false,
         false,
     )))
@@ -565,6 +652,7 @@ pub extern "C" fn kf_vec_new_mpc_dagger(count: u32, base_seed: u32) -> *mut VecE
         LabelMode::Mpc,
         false,
         false,
+        false,
     )))
 }
 
@@ -578,6 +666,7 @@ pub extern "C" fn kf_vec_new_ppo_r1(count: u32, base_seed: u32) -> *mut VecEnv {
         true,
         false,
         LabelMode::None,
+        false,
         false,
         false,
     )))
@@ -595,6 +684,7 @@ pub extern "C" fn kf_vec_new_ppo_paint_v1(count: u32, base_seed: u32) -> *mut Ve
         LabelMode::None,
         false,
         false,
+        false,
     )))
 }
 
@@ -609,6 +699,7 @@ pub extern "C" fn kf_vec_new_static_target_v1(count: u32) -> *mut VecEnv {
         false,
         LabelMode::None,
         true,
+        false,
         false,
     )))
 }
@@ -625,6 +716,7 @@ pub extern "C" fn kf_vec_new_walking_v1(count: u32) -> *mut VecEnv {
         LabelMode::None,
         false,
         true,
+        false,
     )))
 }
 
@@ -641,10 +733,11 @@ pub extern "C" fn kf_vec_new_walking_v2(count: u32) -> *mut VecEnv {
         LabelMode::None,
         false,
         true,
+        false,
     );
     env.fixed_seed = Some(WALKING_SEED_V2);
     for index in 0..count {
-        env.slots[index] = Slot::new(WALKING_SEED_V2, true, false, true);
+        env.slots[index] = Slot::new(WALKING_SEED_V2, true, false, true, false);
         env.encode_slot(index);
     }
     Box::into_raw(Box::new(env))
@@ -663,14 +756,32 @@ pub extern "C" fn kf_vec_new_walking_train_v3(count: u32, base_seed: u32) -> *mu
         LabelMode::None,
         false,
         true,
+        false,
     );
     env.fixed_seed = None;
     env.next_seed = base_seed.wrapping_add(count as u32);
     for index in 0..count {
-        env.slots[index] = Slot::new(base_seed.wrapping_add(index as u32), true, false, true);
+        env.slots[index] =
+            Slot::new(base_seed.wrapping_add(index as u32), true, false, true, false);
         env.encode_slot(index);
     }
     Box::into_raw(Box::new(env))
+}
+
+#[no_mangle]
+pub extern "C" fn kf_vec_new_pursuit_v1(count: u32) -> *mut VecEnv {
+    Box::into_raw(Box::new(VecEnv::new(
+        count.max(1) as usize,
+        PURSUIT_SEED,
+        1,
+        true,
+        false,
+        false,
+        LabelMode::None,
+        false,
+        false,
+        true,
+    )))
 }
 
 #[no_mangle]
@@ -683,6 +794,7 @@ pub extern "C" fn kf_vec_new_ppo_eval(count: u32, base_seed: u32) -> *mut VecEnv
         false,
         false,
         LabelMode::None,
+        false,
         false,
         false,
     )))

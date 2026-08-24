@@ -56,7 +56,7 @@ const WATCH_TANK_COLORS = [THEME.tanks[1], THEME.tanks[0]];
 // tank 1, so that presentation swaps the two colours without changing either
 // tank's engine identity. Play and self-play keep the default number palette.
 function tankColorsForMode(mode) {
-  return mode === "watch" || mode === "target" || mode === "inert"
+  return mode === "watch" || mode === "target" || mode === "inert" || mode === "pursuit"
     ? WATCH_TANK_COLORS : THEME.tanks;
 }
 
@@ -68,6 +68,7 @@ const DECISION_NAMES = [
 // laika_mask) drives tank 1; in play mode you do; in self-play a second MPC
 // agent does.
 const MODES = {
+  pursuit: { humanTank: null },
   inert: { humanTank: null },
   target: { humanTank: null },
   watch: { humanTank: null },
@@ -102,6 +103,7 @@ const oppModelSelect = document.getElementById("oppmodel");
 const oppModelHint = document.getElementById("oppmodel-hint");
 const targetButton = document.getElementById("mode-target");
 const inertButton = document.getElementById("mode-inert");
+const pursuitButton = document.getElementById("mode-pursuit");
 const watchButton = document.getElementById("mode-watch");
 const playButton = document.getElementById("mode-play");
 const selfplayButton = document.getElementById("mode-selfplay");
@@ -148,6 +150,7 @@ const RL_FIRE_ACTION = 128;
 const RL_STOP_ACTION = 129;
 const STATIC_TARGET_SEED = 20260826;
 const REAL_INERT_SEED = 20260824;
+const PURSUIT_SEED = 20260827;
 let selectedModel = "";
 let modelHistory = [];
 let lastModelAction = -1;
@@ -617,6 +620,7 @@ function applyLanguage() {
   langToggle.setAttribute("aria-label", s.langToggleAria);
   tagline.textContent = s.tagline;
   watchButton.textContent = s.modeWatch;
+  pursuitButton.textContent = s.modePursuit;
   inertButton.textContent = s.modeInert;
   targetButton.textContent = s.modeTarget;
   playButton.textContent = s.modePlay;
@@ -647,7 +651,7 @@ function applyLanguage() {
   updateScoreboard();
 }
 
-let mode = "inert";
+let mode = "pursuit";
 let instantTurn = false;
 try { instantTurn = localStorage.getItem(INSTANT_TURN_STORAGE_KEY) === "1"; } catch { /* optional */ }
 let handle = null;
@@ -703,15 +707,19 @@ function newGame() {
   const parsed = Number(raw);
   // kf_new always wants a concrete seed; a blank box means "fresh random maze
   // every time" rather than "null", so roll one here without writing it back.
-  const seed = mode === "target" ? STATIC_TARGET_SEED : (raw === "" || !Number.isFinite(parsed))
+  const seed = mode === "pursuit" ? PURSUIT_SEED
+    : mode === "target" ? STATIC_TARGET_SEED : (raw === "" || !Number.isFinite(parsed))
     ? (Math.random() * 0xffffffff) >>> 0
     : (parsed >>> 0);
 
-  if (mode === "target") seedInput.value = String(STATIC_TARGET_SEED);
+  if (mode === "pursuit") seedInput.value = String(PURSUIT_SEED);
+  else if (mode === "target") seedInput.value = String(STATIC_TARGET_SEED);
 
   if (handle !== null) wasm.kf_free(handle);
   const laikaMask = mode === "watch" ? 2 : 0;
-  handle = mode === "target"
+  handle = mode === "pursuit"
+    ? wasm.kf_new_pursuit_v1()
+    : mode === "target"
     ? wasm.kf_new_walking_v2()
     : mode === "inert"
       ? wasm.kf_new_unarmed_laika(seed)
@@ -745,14 +753,15 @@ function setMode(next) {
   touchControls.clear();
   targetButton.classList.toggle("active", next === "target");
   inertButton.classList.toggle("active", next === "inert");
+  pursuitButton.classList.toggle("active", next === "pursuit");
   watchButton.classList.toggle("active", next === "watch");
   playButton.classList.toggle("active", next === "play");
   selfplayButton.classList.toggle("active", next === "selfplay");
   keyhelp.style.display = next === "play" ? "" : "none";
   touchControls.setAvailable(next === "play");
   matchSettingsPanel.hidden = next !== "play";
-  seedInput.disabled = next === "target";
-  rerollButton.disabled = next === "target";
+  seedInput.disabled = next === "target" || next === "pursuit";
+  rerollButton.disabled = next === "target" || next === "pursuit";
   syncInstantTurnButton();
   // A mode switch changes who tank 1 even is, so treat it as a fresh match.
   matchScore = [0, 0];
@@ -763,30 +772,43 @@ function setMode(next) {
 }
 
 function updateScenarioCopy() {
-  const target = mode === "target";
-  const inert = mode === "inert";
-  tagline.textContent = lang === "zh"
-    ? target
-      ? "PPO 训练行为回放：固定地图，对手完全不动且不开枪。"
-      : inert
-        ? "真实迷宫模拟：PPO 对战正常移动、但武器锁死的 Laika。"
-      : "PPO 行为评估：所选模型以 25 Hz 对战固定 Laika。"
-    : target
-      ? "PPO training behavior: fixed map against a completely inert target."
-      : inert
-        ? "Real-maze simulation: PPO faces a normally moving Laika with its weapon locked."
-      : "PPO behavior evaluation: the selected model plays fixed Laika at 25 Hz.";
-  note.textContent = lang === "zh"
-    ? target
-      ? "走路地图 v2：seed 20260826；7×4 单通道、22 格、5 次转弯，无位移、撞墙、倒车/侧滑或开火即失败，终点是不动靶。"
-      : inert
-        ? "真实游戏迷宫与正常物理/击杀规则；Laika 正常寻路移动，但无法开火。这里不使用走路课程的撞墙即死规则。"
-      : "评估环境：左侧为 schema-8 PPO，右侧由固定 Laika 控制。"
-    : target
-      ? "Walking map v2: seed 20260826; a 7×4 single corridor with 22 cells and five turns. No displacement, wall contact, reverse/sideways motion, or firing fails; the inert target marks the finish."
-      : inert
-        ? "Real game maze with normal physics and kill rules; Laika moves normally but cannot fire. Walking-curriculum instant-failure rules are disabled."
-      : "Evaluation environment: schema-8 PPO on the left, fixed Laika on the right.";
+  const copy = lang === "zh" ? {
+    pursuit: [
+      "PPO 动态追逐课程：Laika 在终点附近两个格子之间持续往返。",
+      "seed 20260827；每 4 帧按 BFS 距离结算，越早追上奖励越高；停止、开火、撞墙、侧滑或方向不一致立即失败。",
+    ],
+    target: [
+      "PPO 训练行为回放：固定地图，对手完全不动且不开枪。",
+      "走路地图 v2：seed 20260826；7×4 单通道、22 格、5 次转弯。",
+    ],
+    inert: [
+      "真实迷宫模拟：PPO 对战正常移动、但武器锁死的 Laika。",
+      "真实游戏迷宫与正常物理/击杀规则；Laika 正常寻路移动，但无法开火。",
+    ],
+    other: [
+      "PPO 行为评估：所选模型以 25 Hz 对战固定 Laika。",
+      "评估环境：左侧为 schema-8 PPO，右侧由固定 Laika 控制。",
+    ],
+  } : {
+    pursuit: [
+      "Dynamic PPO pursuit lesson: Laika continuously oscillates between the final two cells.",
+      "Seed 20260827; BFS proximity settles every four frames and earlier arrival scores more. Stop, fire, wall contact, sliding, or direction mismatch fails immediately.",
+    ],
+    target: [
+      "PPO training behavior: fixed map against a completely inert target.",
+      "Walking map v2: seed 20260826; a 7×4 single corridor with 22 cells and five turns.",
+    ],
+    inert: [
+      "Real-maze simulation: PPO faces a normally moving Laika with its weapon locked.",
+      "Real game maze and normal physics; Laika moves normally but cannot fire.",
+    ],
+    other: [
+      "PPO behavior evaluation: the selected model plays fixed Laika at 25 Hz.",
+      "Evaluation environment: schema-8 PPO on the left, fixed Laika on the right.",
+    ],
+  };
+  const selected = copy[mode] || copy.other;
+  [tagline.textContent, note.textContent] = selected;
 }
 
 function syncInstantTurnButton() {
@@ -811,6 +833,7 @@ function updateScoreboard() {
   const selectedName = rlModelSelect.selectedOptions[0]?.textContent || "PPO model";
   const labels = [selectedName, mode === "target"
     ? (lang === "zh" ? "不动靶" : "inert target")
+    : mode === "pursuit" ? (lang === "zh" ? "两格往返 Laika" : "oscillating Laika")
     : mode === "inert" ? (lang === "zh" ? "无武器 Laika" : "unarmed Laika") : "Laika"];
   for (let i = 0; i < 2; i++) {
     if (nameLabels[i].textContent !== labels[i]) nameLabels[i].textContent = labels[i];
@@ -1117,7 +1140,7 @@ function toggleLanguage() {
 // -------------------------------------------------------------------- boot
 
 async function boot() {
-  const res = await fetch("kf_engine.wasm?v=schema8-real-unarmed-laika-v1");
+  const res = await fetch("kf_engine.wasm?v=schema8-pursuit-v7");
   const { instance } = await WebAssembly.instantiate(await res.arrayBuffer(), {});
   wasm = instance.exports;
   scratchPtr = wasm.kf_scratch_ptr();
@@ -1178,6 +1201,7 @@ async function boot() {
   });
   targetButton.addEventListener("click", () => setMode("target"));
   inertButton.addEventListener("click", () => setMode("inert"));
+  pursuitButton.addEventListener("click", () => setMode("pursuit"));
   watchButton.addEventListener("click", () => setMode("watch"));
   playButton.addEventListener("click", () => setMode("play"));
   selfplayButton.addEventListener("click", () => setMode("selfplay"));
@@ -1202,8 +1226,8 @@ async function boot() {
   oppModelSelect.closest("label").hidden = true;
   oppModelHint.hidden = true;
   keyhelp.hidden = true;
-  seedInput.value = String(REAL_INERT_SEED);
-  setMode("inert");
+  seedInput.value = String(PURSUIT_SEED);
+  setMode("pursuit");
   applyLanguage();
   requestAnimationFrame(frame);
 }

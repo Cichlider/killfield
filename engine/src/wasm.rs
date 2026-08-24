@@ -57,7 +57,7 @@ pub struct Handle {
     semantic_state: SemanticObsState,
     semantic: SemanticObservation,
     semantic_buffer: Vec<f32>,
-    /// 0 = ordinary match, 1 = walking map v1, 2 = walking map v2.
+    /// 0 = ordinary, 1/2 = walking maps, 3 = two-cell pursuit curriculum.
     walking_curriculum: u8,
     last_rl_action: [u16; 2],
 }
@@ -165,6 +165,18 @@ pub extern "C" fn kf_new_walking_v2() -> *mut Handle {
     unsafe {
         (*handle).game = Game::walking_curriculum_v2(20_260_826);
         (*handle).walking_curriculum = 2;
+        build_render(&mut *handle);
+    }
+    handle
+}
+
+/// Simple fixed corridor whose unarmed target oscillates between its last two cells.
+#[no_mangle]
+pub extern "C" fn kf_new_pursuit_v1() -> *mut Handle {
+    let handle = kf_new(20_260_827, 0);
+    unsafe {
+        (*handle).game = Game::walking_curriculum(20_260_827);
+        (*handle).walking_curriculum = 3;
         build_render(&mut *handle);
     }
     handle
@@ -385,6 +397,21 @@ pub unsafe extern "C" fn kf_step(h: *mut Handle) -> u32 {
     };
     let invalid_stationary_action =
         h.walking_curriculum != 0 && matches!(h.last_rl_action[0], FIRE_ACTION | STOP_ACTION);
+    if h.walking_curriculum == 3 {
+        let target = h.game.tanks[1];
+        let left = 4.5 * h.game.scale;
+        let right = 5.5 * h.game.scale;
+        let action = if target.x <= left {
+            32
+        } else if target.x >= right {
+            96
+        } else if target.rotation >= 0.0 {
+            32
+        } else {
+            96
+        };
+        apply_joystick_action(&mut h.game, 1, action);
+    }
     let events = h.game.step();
     h.paint_step.fill(0.0);
     let mut flags = 0u32;
@@ -416,9 +443,16 @@ pub unsafe extern "C" fn kf_step(h: *mut Handle) -> u32 {
             }
         }
     }
-    let walking_arrived = h.walking_curriculum != 0
-        && h.game.tanks[0].alive
-        && walking_curriculum_progress(&h.game) >= 0.98;
+    let walking_arrived = h.walking_curriculum != 0 && h.game.tanks[0].alive && {
+        if h.walking_curriculum == 3 {
+            let me = h.game.tanks[0];
+            let opponent = h.game.tanks[1];
+            h.game.tank_fields[0] == h.game.tank_fields[1]
+                && (me.x - opponent.x).hypot(me.y - opponent.y) <= 0.70 * h.game.scale
+        } else {
+            walking_curriculum_progress(&h.game) >= 0.98
+        }
+    };
     if walking_arrived {
         h.game.frozen = true;
         h.last_winner = 0.0;
@@ -445,7 +479,9 @@ pub unsafe extern "C" fn kf_step(h: *mut Handle) -> u32 {
         }
     }
     if h.walking_curriculum != 0 && new_round {
-        h.game = if h.walking_curriculum == 2 {
+        h.game = if h.walking_curriculum == 3 {
+            Game::walking_curriculum(20_260_827)
+        } else if h.walking_curriculum == 2 {
             Game::walking_curriculum_v2(20_260_826)
         } else {
             Game::walking_curriculum(20_260_825)
@@ -759,6 +795,29 @@ mod walking_viewer_tests {
             (h.game.tanks[1].x, h.game.tanks[1].y)
         };
         assert!(start.0 != end.0 || start.1 != end.1);
+        unsafe { kf_free(handle) };
+    }
+
+    #[test]
+    fn viewer_two_cell_pursuit_route_arrives_in_194_frames() {
+        let handle = kf_new_pursuit_v1();
+        let actions = [(32, 62), (0, 12), (96, 62), (0, 13), (32, 45)];
+        let mut frames = 0;
+        for (action, count) in actions {
+            for _ in 0..count {
+                unsafe {
+                    kf_set_rl_action(handle, 0, action);
+                    let flags = kf_step(handle);
+                    frames += 1;
+                    if frames < 194 {
+                        assert_eq!(flags & 64, 0, "viewer ended at frame {frames}");
+                    } else {
+                        assert_ne!(flags & 64, 0);
+                        assert_eq!((*handle).last_winner, 0.0);
+                    }
+                }
+            }
+        }
         unsafe { kf_free(handle) };
     }
 }

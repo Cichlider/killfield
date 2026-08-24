@@ -57,6 +57,7 @@ class Config:
     step_cost: float = 0.0
     failure_rules: str = "self-death,double-death,timeout=-10"
     initial_checkpoint: str = ""
+    actor_logit_scale_on_init: float = 1.0
     envs: int = 64
     rollout_steps: int = 256
     total_steps: int = 5_000_000
@@ -79,12 +80,13 @@ class Config:
 
 class PpoVec:
     def __init__(self, count: int, seed: int, static_target=False, walking=False,
-                 walking_training=False, walking_map=1,
+                 walking_training=False, walking_map=1, pursuit=False,
                  eval_laika=False,
                  library=Path("engine/target/release/libkf_engine.dylib")):
         self.count = count
         self.lib = ctypes.CDLL(str(library.resolve()))
         constructor_name = (
+            "kf_vec_new_pursuit_v1" if pursuit else
             "kf_vec_new_walking_train_v3" if walking_training else
             f"kf_vec_new_walking_v{walking_map}" if walking else
             "kf_vec_new_static_target_v1" if static_target else
@@ -92,7 +94,7 @@ class PpoVec:
             "kf_vec_new_ppo_paint_v1"
         )
         constructor = getattr(self.lib, constructor_name)
-        constructor.argtypes = [ctypes.c_uint32] if (static_target or walking) and not walking_training else [ctypes.c_uint32, ctypes.c_uint32]
+        constructor.argtypes = [ctypes.c_uint32] if (static_target or walking or pursuit) and not walking_training else [ctypes.c_uint32, ctypes.c_uint32]
         constructor.restype = ctypes.c_void_p
         self.lib.kf_vec_obs_dim.restype = ctypes.c_uint32
         self.lib.kf_vec_bullet_slots.restype = ctypes.c_uint32
@@ -104,7 +106,7 @@ class PpoVec:
         expected = (OBS_DIM, BULLET_SLOTS, len(CHANNEL_NAMES))
         if native != expected:
             raise RuntimeError(f"native/Python schema mismatch: {native} != {expected}")
-        self.handle = constructor(count) if (static_target or walking) and not walking_training else constructor(count, seed)
+        self.handle = constructor(count) if (static_target or walking or pursuit) and not walking_training else constructor(count, seed)
         if not self.handle:
             raise RuntimeError("kf_vec_new_ppo_paint_v1 failed")
         self.lib.kf_vec_step.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_uint16)]
@@ -420,9 +422,12 @@ def evaluate(model, kind, config, device):
 
 
 @torch.inference_mode()
-def evaluate_walking(model, kind, config, device, walking_map=1):
+def evaluate_walking(model, kind, config, device, walking_map=1, pursuit=False):
     """Exactly 100 deterministic episodes on the curriculum acceptance map."""
-    env = PpoVec(config.eval_envs, 0, walking=True, walking_map=walking_map)
+    env = PpoVec(
+        config.eval_envs, 0, walking=not pursuit,
+        walking_map=walking_map, pursuit=pursuit,
+    )
     hidden = model.initial_hidden(config.eval_envs, device)
     starts = np.ones(config.eval_envs, bool)
     decisions = np.zeros(config.eval_envs, np.int64)
@@ -465,6 +470,8 @@ def evaluate_walking(model, kind, config, device, walking_map=1):
     return {
         "episodes": len(episodes),
         "map": (
+            "walking-v1-oscillating-laika-last-two-cells-seed-20260827"
+            if pursuit else
             "walking-v2-seven-by-four-five-turn-seed-20260826"
             if walking_map == 2 else
             "walking-v1-six-by-three-serpentine-seed-20260825"
@@ -502,7 +509,10 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", required=True, choices=("nomem", "gru"))
     parser.add_argument("--seed", required=True, type=int, choices=TRAIN_SEEDS)
-    parser.add_argument("--curriculum", choices=("static-target", "walking"), default="static-target")
+    parser.add_argument(
+        "--curriculum", choices=("static-target", "walking", "pursuit"),
+        default="static-target",
+    )
     parser.add_argument("--output", type=Path)
     parser.add_argument("--device", choices=("auto", "cpu", "mps"), default="auto")
     parser.add_argument("--smoke", action="store_true")
@@ -515,6 +525,8 @@ def main():
     np.random.seed(args.seed)
     config = Config()
     walking = args.curriculum == "walking"
+    pursuit = args.curriculum == "pursuit"
+    locomotion = walking or pursuit
     if walking:
         config = Config(
             stage="walking-v6-transition-context-joystick130",
@@ -533,6 +545,25 @@ def main():
             learning_rate=1e-4,
             total_steps=500_000,
         )
+    elif pursuit:
+        config = Config(
+            stage="pursuit-v7-two-cell-oscillating-laika-joystick130",
+            training_opponent="unarmed-laika-oscillating-between-last-two-cells",
+            episode_frames=300,
+            navigation_total=5.0,
+            success_base=10.0,
+            speed_bonus_max=5.0,
+            failure_reward=-10.0,
+            shot_attempt_reward=0.0,
+            shot_attempt_cap=0.0,
+            map_name="walking-v1-six-by-three-serpentine-seed-20260827",
+            step_cost=-0.002,
+            failure_rules="wall-or-slide,no-displacement,route-direction-mismatch,displacement-heading-mismatch,fire=-10,stop=-10;timeout=-10",
+            initial_checkpoint="outputs/ppo_walking_v6_transition_context_joystick130/nomem/s11/final.pt",
+            actor_logit_scale_on_init=0.5,
+            learning_rate=1e-4,
+            total_steps=500_000,
+        )
     if args.smoke:
         config = replace(
             config,
@@ -540,12 +571,22 @@ def main():
             eval_every_updates=0, eval_episodes=100,
         )
     output_root = args.output or Path(
-        "outputs/ppo_walking_v6_transition_context_joystick130" if walking
+        "outputs/ppo_pursuit_v7_two_cell_laika_joystick130" if pursuit
+        else "outputs/ppo_walking_v6_transition_context_joystick130" if walking
         else "outputs/ppo_static_target_fixed_v1_joystick130"
     )
     output = output_root / args.model / f"s{args.seed}"
     output.mkdir(parents=True, exist_ok=True)
-    config_dict = asdict(config) | {"model": args.model, "seed": args.seed, "device": str(device)}
+    config_dict = asdict(config)
+    if config.actor_logit_scale_on_init == 1.0:
+        config_dict.pop("actor_logit_scale_on_init")
+    config_dict |= {"model": args.model, "seed": args.seed, "device": str(device)}
+    if pursuit:
+        config_dict |= {
+            "proximity_reward": "every-4-frames:+5*(previous_bfs-current_bfs)/initial_bfs",
+            "success_reward": "10+5*(1-decisions/300)",
+            "target_motion": "continuous-oscillation-between-path-cells-16-and-17",
+        }
     config_path = output / "config.json"
     if (config_path.exists() and json.loads(config_path.read_text()) != config_dict
             and not args.reevaluate):
@@ -560,9 +601,9 @@ def main():
         result = saved["result"]
         result["config"] = config_dict
         result["evaluation"] = evaluate(model, args.model, config, device)
-        if walking:
+        if locomotion:
             result["curriculum_evaluation"] = evaluate_walking(
-                model, args.model, config, device
+                model, args.model, config, device, pursuit=pursuit
             )
         (output / "complete.json").write_text(json.dumps(result, indent=2, ensure_ascii=False))
         atomic_torch_save({"model": model.state_dict(), "result": result}, final_path)
@@ -573,7 +614,7 @@ def main():
         return
 
     model = make_actor_critic(args.model).to(device)
-    if walking:
+    if locomotion:
         with torch.no_grad():
             model.actor.bias[FIRE_ACTION] = -4.0
     optimiser = torch.optim.Adam(model.parameters(), lr=config.learning_rate, eps=1e-5)
@@ -596,6 +637,12 @@ def main():
         if init_checkpoint is not None:
             saved = torch.load(init_checkpoint, map_location=device, weights_only=False)
             model.load_state_dict(saved["model"])
+            if config.actor_logit_scale_on_init != 1.0:
+                with torch.no_grad():
+                    model.actor.weight.mul_(config.actor_logit_scale_on_init)
+                    model.actor.bias.mul_(config.actor_logit_scale_on_init)
+                    model.actor.bias[FIRE_ACTION] = -8.0
+                    model.actor.bias[STOP_ACTION] = -8.0
 
     steps_per_update = config.envs * config.rollout_steps
     updates = math.ceil(config.total_steps / steps_per_update)
@@ -603,8 +650,9 @@ def main():
     env = PpoVec(
         config.envs,
         env_seed,
-        static_target=not walking,
+        static_target=not locomotion,
         walking_training=walking,
+        pursuit=pursuit,
     )
     starts = np.ones(config.envs, bool)
     hidden = model.initial_hidden(config.envs, device)
@@ -654,14 +702,14 @@ def main():
     model.eval()
     final_eval = evaluate(model, args.model, config, device)
     result = {
-        "name": f"ppo-{'walking-v6-transition-context-serpentine' if walking else 'static-target-fixed-v1'}-joystick130-{args.model}-s{args.seed}",
+        "name": f"ppo-{'pursuit-v7-two-cell-oscillating-laika' if pursuit else 'walking-v6-transition-context-serpentine' if walking else 'static-target-fixed-v1'}-joystick130-{args.model}-s{args.seed}",
         "model": args.model, "seed": args.seed, "total_steps": total_steps,
         "seconds_this_run": time.perf_counter() - started,
         "evaluation": final_eval, "config": config_dict,
     }
-    if walking:
+    if locomotion:
         result["curriculum_evaluation"] = evaluate_walking(
-            model, args.model, config, device
+            model, args.model, config, device, pursuit=pursuit
         )
     (output / "complete.json").write_text(json.dumps(result, indent=2, ensure_ascii=False))
     atomic_torch_save({"model": model.state_dict(), "result": result}, output / "final.pt")

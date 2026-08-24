@@ -1,5 +1,21 @@
 # PPO 训练与交付
 
+## pursuit-v7 两格往返 Laika 课程
+
+- 地图：固定 seed `20260827`，`6×3` 单通道蛇形道路；Laika 无武器，在路径最后两个
+  相邻格之间持续往返；目标是尽快追到距离 Laika 不超过 `0.70` 格；
+- Observation schema 8 不变：地图 840、当前动态 waypoint 方向和 BFS 剩余格数 5、
+  自身 9、对手 6、子弹 60、阶段 3、时间 1、上一动作 130，共 1054 维；
+- Action 仍为 `Discrete(130)`：`0..127` 瞬时朝向并前进、`128` 开火、`129` 停止；
+- STOP、FIRE、撞墙/侧滑、无位移、偏离当前动态路线方向、位移与车头不一致均立即
+  `-10` 并终止；300 帧超时 `-10`；合法帧 `-0.002`；
+- 每 4 帧结算 BFS shaping：`5 × (上次距离 - 当前距离) / 初始距离`；追上时奖励
+  `10 + 5 × (1 - t/300)`，因此越近、越快越高；
+- 从 v6 checkpoint 继续训练；为解除已确认的动作头坍缩，仅在初始化时将 actor logits
+  缩放为 `0.5`，FIRE/STOP bias 设为 `-8`；正式训练 507,904 步；
+- 固定动态图恰好 100 局：100 到达、0 失败、0 超时，平均 194 帧；固定 Laika 旁路
+  恰好 100 局：5 胜、88 负、7 双亡、0 超时，胜率 5%。
+
 ## walking-v6 transition-context 课程
 
 - 地图：固定 seed `20260825`，`6×3` 单通道蛇形道路，终点为不行动、不射击的 Laika；
@@ -60,6 +76,8 @@ zsh training/run_ppo_paint_v1.sh train
 
 ## 当前训练结果
 
+- schema-8 `ppo-pursuit-v7-two-cell-oscillating-laika-joystick130-nomem-s11`：动态图
+  恰好 100 局全部追上，平均 194 帧；固定 Laika 恰好 100 局胜率 5%；
 - schema-8 `ppo-walking-v6-transition-context-serpentine-joystick130-nomem-s11`：固定图
   恰好 100 局全部到达，平均 208 帧；未训练地图 v2 零样本恰好 100 局全部到达，
   平均 257 帧；

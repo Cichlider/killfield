@@ -18,6 +18,11 @@ from ppo_models import (
 # Completed runs remain selectable so behavior review never silently replaces an
 # earlier handoff. Schema-7 inputs are reconstructed by a read-only adapter.
 SOURCES = {
+    "pursuit-v7-s11": {
+        "display": "ppo-pursuit-v7-two-cell-oscillating-laika-joystick130-nomem-s11",
+        "architecture": "nomem", "schema": 8, "history": 1,
+        "checkpoint": "outputs/ppo_pursuit_v7_two_cell_laika_joystick130/nomem/s11/final.pt",
+    },
     "walking-v6-s11": {
         "display": "ppo-walking-v6-transition-context-serpentine-joystick130-nomem-s11",
         "architecture": "nomem", "schema": 8, "history": 1,
