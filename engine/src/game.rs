@@ -70,6 +70,37 @@ pub const WALKING_CURRICULUM_PATH_V2: [(usize, usize); 22] = [
     (6, 0),
 ];
 
+/// Irregular patrol points inside the pursuit curriculum's open 2×2 room.
+/// The first three legs deliberately include diagonal, vertical, and horizontal
+/// travel; the remaining legs keep the loop from looking like a rectangle.
+pub const PURSUIT_ROOM_WAYPOINTS: [(f64, f64); 8] = [
+    (5.5, 0.5),
+    (4.5, 1.5),
+    (4.5, 0.5),
+    (5.5, 0.5),
+    (4.75, 1.5),
+    (5.5, 1.25),
+    (4.5, 0.75),
+    (5.25, 1.5),
+];
+
+/// Advance an unarmed target along its reproducible irregular room patrol and
+/// return the absolute one-degree forward-wheel action for this frame.
+pub fn pursuit_room_target_action(game: &Game, waypoint: &mut usize) -> u16 {
+    let target = game.tanks[1];
+    let mut goal = PURSUIT_ROOM_WAYPOINTS[*waypoint % PURSUIT_ROOM_WAYPOINTS.len()];
+    let mut dx = goal.0 * game.scale - target.x;
+    let mut dy = goal.1 * game.scale - target.y;
+    let switch_distance = (target.forward_speed * 1.25).max(game.scale * 0.02);
+    if dx.hypot(dy) <= switch_distance {
+        *waypoint = (*waypoint + 1) % PURSUIT_ROOM_WAYPOINTS.len();
+        goal = PURSUIT_ROOM_WAYPOINTS[*waypoint];
+        dx = goal.0 * game.scale - target.x;
+        dy = goal.1 * game.scale - target.y;
+    }
+    (dy.atan2(dx) / DEG + 90.0).rem_euclid(360.0).round() as u16 % 360
+}
+
 /// Normalise an angle to (-180, 180], matching the source engine's setter.
 #[inline]
 pub fn norm_rot(deg: f64) -> f64 {
@@ -644,6 +675,33 @@ impl Game {
         Self::walking_curriculum_from_path(seed, 0, 7, 4, &WALKING_CURRICULUM_PATH_V2)
     }
 
+    /// Walking corridor with the upper-right four cells opened into a 2×2
+    /// room so the unarmed target can move horizontally, vertically, and
+    /// diagonally instead of being constrained to one corridor segment.
+    pub fn pursuit_room_curriculum(seed: u32) -> Self {
+        let mut g = Self::walking_curriculum(seed);
+        let mut maze = (*g.maze).clone();
+        maze.cells[4 * maze.h][1] = 0;
+        maze.cells[5 * maze.h][1] = 0;
+        g.maze = Arc::new(maze);
+        let reachable = calc_reachable(
+            &g.maze,
+            WALKING_CURRICULUM_PATH[0].0,
+            WALKING_CURRICULUM_PATH[0].1,
+        );
+        g.reachable = Arc::new(reachable.cells);
+        g.reachable_index = Arc::new(reachable.index);
+        g.walls = Arc::new(build_wall_segments(&g.maze, g.scale));
+        g.wall_grid = Arc::new(WallGrid::new(&g.walls, g.wall_half_t, g.scale));
+        let mut distances = vec![None; g.maze.w * g.maze.h];
+        for &(x, y) in g.reachable.iter() {
+            distances[x * g.maze.h + y] = Some(calc_distances(&g.maze, x, y));
+        }
+        g.distances_for_maze = Arc::new(distances);
+        g.dead_ends = Arc::new(find_dead_ends(&g.maze, &g.reachable, C::MAXDEADENDPENALTY));
+        g
+    }
+
     /// The same fixed corridor with the learner starting later on its unique
     /// path. Used only to expose all three turns during training.
     pub fn walking_curriculum_at(seed: u32, start_index: usize) -> Self {
@@ -1172,6 +1230,19 @@ mod walking_curriculum_tests {
         assert!(game.ais.iter().all(Option::is_none));
         assert!(game.ai_enabled.iter().all(|enabled| !enabled));
         assert_eq!(walking_curriculum_progress(&game), 0.0);
+    }
+
+    #[test]
+    fn pursuit_map_opens_a_two_by_two_room_in_the_upper_right() {
+        let game = Game::pursuit_room_curriculum(20_260_827);
+        assert_eq!((game.maze.w, game.maze.h), (6, 3));
+        assert!(game.maze.h_open(4, 0));
+        assert!(game.maze.h_open(5, 0));
+        assert!(game.maze.v_open(5, 0));
+        assert!(game.maze.v_open(5, 1));
+        assert_eq!(game.reachable.len(), WALKING_CURRICULUM_PATH.len());
+        assert!(game.ais.iter().all(Option::is_none));
+        assert!(game.weapons_disabled.iter().all(|disabled| !disabled));
     }
 }
 

@@ -3,6 +3,17 @@
 本文只记录 `main` 最终保留的工作。已废弃的 PPO checkpoint、旧动作协议和中间试验不再
 逐项展开；实现原理见 `README.md`，网页运行细节见 `docs/WEB-RUNTIME.md`。
 
+## 2026-08-25 — RL pursuit-v10 房间巡游课程
+
+- 在 `rl` 分支把蛇形训练图右上角开放为 `2×2` 房间；无武器 Laika 沿 8 个 waypoint
+  水平、垂直和斜向不规则巡游，不再只在两个格子间左右往返。
+- 保持 schema-9 的 1646 维 Observation 与 `Discrete(722)` 双 360° 轮盘；严格规则仍为
+  STOP、FIRE、撞墙/侧滑或无位移立即 `-10`，每 4 帧结算
+  `-exp(BFS当前 - BFS初始)`，追上不结束，300 帧为无额外惩罚的 truncation。
+- `ppo-pursuit-v10-room-exp-bfs-joystick722-nomem-s22` 方向预训练 200 epochs 后进行
+  16,384 PPO 步。训练图恰好 100 局均无违规存活满 300 帧；固定 Laika 恰好 100 局
+  9 胜、82 负、9 双亡，胜率 9%。完成 checkpoint 已直接接入 Viewer，不设 gate。
+
 ## 2026-08-24 — Main 版本收尾
 
 ### 仓库与定位

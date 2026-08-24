@@ -774,8 +774,8 @@ function setMode(next) {
 function updateScenarioCopy() {
   const copy = lang === "zh" ? {
     pursuit: [
-      "PPO 动态跟踪课程：Laika 从一个格子中心走到相邻格子中心，再完整折返。",
-      "seed 20260827；靠近 Laika 不结束，整局 300 帧；每 4 帧扣 exp(BFS当前−BFS初始)，停止、开火、撞墙、侧滑或方向不一致立即失败。",
+      "PPO 动态跟踪课程：右上角是 2×2 活动房，Laika 会水平、垂直和斜向不规则移动。",
+      "seed 20260827；靠近 Laika 不结束，整局 300 帧；每 4 帧扣 exp(BFS当前−BFS初始)，停止、开火、撞墙或侧滑立即失败。",
     ],
     target: [
       "PPO 训练行为回放：固定地图，对手完全不动且不开枪。",
@@ -791,8 +791,8 @@ function updateScenarioCopy() {
     ],
   } : {
     pursuit: [
-      "Dynamic tracking lesson: Laika travels fully from one cell centre to the adjacent cell centre and back.",
-      "Seed 20260827; proximity never ends the 300-frame episode. Every four frames subtract exp(current BFS − initial BFS); stop, fire, wall contact, sliding, or direction mismatch fails immediately.",
+      "Dynamic tracking lesson: the upper-right 2×2 room lets Laika patrol irregularly across horizontal, vertical, and diagonal legs.",
+      "Seed 20260827; proximity never ends the 300-frame episode. Every four frames subtract exp(current BFS − initial BFS); stop, fire, wall contact, or sliding fails immediately.",
     ],
     target: [
       "PPO training behavior: fixed map against a completely inert target.",
@@ -833,7 +833,7 @@ function updateScoreboard() {
   const selectedName = rlModelSelect.selectedOptions[0]?.textContent || "PPO model";
   const labels = [selectedName, mode === "target"
     ? (lang === "zh" ? "不动靶" : "inert target")
-    : mode === "pursuit" ? (lang === "zh" ? "两格往返 Laika" : "oscillating Laika")
+    : mode === "pursuit" ? (lang === "zh" ? "房间巡游 Laika" : "room-patrol Laika")
     : mode === "inert" ? (lang === "zh" ? "无武器 Laika" : "unarmed Laika") : "Laika"];
   for (let i = 0; i < 2; i++) {
     if (nameLabels[i].textContent !== labels[i]) nameLabels[i].textContent = labels[i];
@@ -1142,7 +1142,7 @@ function toggleLanguage() {
 // -------------------------------------------------------------------- boot
 
 async function boot() {
-  const res = await fetch("kf_engine.wasm?v=schema9-pursuit-v9");
+  const res = await fetch("kf_engine.wasm?v=schema9-pursuit-v10-room");
   const { instance } = await WebAssembly.instantiate(await res.arrayBuffer(), {});
   wasm = instance.exports;
   scratchPtr = wasm.kf_scratch_ptr();

@@ -3,11 +3,12 @@
 > 当前分支：`rl`。Viewer 默认复现 **固定地图 + 不动且不开火的训练靶子**；也可切换到
 > **PPO 模型 vs 固定 Laika** 做行为 review；
 > GitHub Pages 的 MPC 观看/对战版本位于 `main`。当前动态跟踪模型
-> `ppo-pursuit-v9-two-cell-exp-bfs-joystick722-nomem-s22` 使用 schema-9
+> `ppo-pursuit-v10-room-exp-bfs-joystick722-nomem-s22` 使用 schema-9
 > `Discrete(722)`：360 个前进绝对方向 + 360 个倒车绝对方向 + FIRE + STOP。在简单
-> 蛇形图中，无武器 Laika 会完整走到相邻格中心再折返；32,768 步短训后，恰好 100 局
-> 全部严格存活到 300 帧，平均 BFS `5.60`、最小/最终 BFS 均为 `0`。旁路固定 Laika
-> 恰好 100 局为 5 胜 / 89 负 / 6 双亡，胜率 5%。Viewer 默认展示该动态课程，所有
+> 蛇形图的右上 `2×2` 房间中，无武器 Laika 会横向、纵向、斜向不规则巡游；16,384 步
+> 短训后，恰好 100 局全部严格存活到 300 帧，平均 BFS `1.67`、最小 BFS `0`、最终
+> BFS `1.00`。旁路固定 Laika 恰好 100 局为 9 胜 / 82 负 / 9 双亡，胜率 9%。Viewer
+> 默认展示该动态课程，所有
 > 完成结果直接进入 Viewer，不设 gate。
 
 首次运行先执行 `python3 -m venv .venv` 和

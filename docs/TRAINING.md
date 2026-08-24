@@ -1,9 +1,10 @@
 # PPO 训练与交付
 
-## pursuit-v9 双 360° 轮盘、两格往返 Laika 课程
+## pursuit-v10 双 360° 轮盘、右上房间巡游 Laika 课程
 
-- 地图：固定 seed `20260827`，`6×3` 单通道蛇形道路；Laika 无武器，会从路径倒数
-  第二格中心完整走到最后一格中心，再完整折返；靠近或追上 Laika 不结束回合；
+- 地图：固定 seed `20260827`，`6×3` 蛇形道路，并把右上角开放为 `2×2` 房间；Laika
+  无武器，沿房内 8 个 waypoint 做包含水平、垂直与斜线段的不规则巡游；靠近或追上
+  Laika 不结束回合；
 - Observation schema 9：地图 840、当前动态 waypoint 方向和 BFS 剩余格数 5、自身 9、
   对手 6、子弹 60、阶段 3、时间 1、上一动作 722，共 1646 维；
 - Action 为 `Discrete(722)`：`0..359` 是完整 360° 前进轮盘，`360..719` 是完整 360°
@@ -13,10 +14,11 @@
 - 每 4 帧精确结算 `-exp(BFS当前 - BFS初始)`；它等价于给 `e^BFS当前` 乘固定系数
   `e^-BFS初始`，避免十几格初始距离造成数值爆炸；
 - 从 walking-v6 schema-8 checkpoint 迁移地图/导航编码和旧动作头；用精确 300 帧动态
-  路线做 200 epochs 方向预训练，再运行 32,768 PPO 步；无 paint、gate 或 MPC 信息；
-- 固定动态图恰好 100 局：100 局均严格完成 300 帧，0 失败，平均 BFS `5.60`、最小
-  BFS 均值 `0`、最终 BFS 均值 `0`；固定 Laika 旁路恰好 100 局：5 胜、89 负、
-  6 双亡、0 超时，胜率 5%。
+  路线以 lr `1e-4` 做 200 epochs 方向预训练，随后重建 Adam，以 lr `1e-9`、entropy
+  `0` 运行 16,384 PPO 步；无 paint、gate 或 MPC 信息；
+- 固定动态图恰好 100 局：100 局均严格完成 300 帧，0 失败，平均 BFS `1.67`、最小
+  BFS 均值 `0`、最终 BFS 均值 `1.00`；固定 Laika 旁路恰好 100 局：9 胜、82 负、
+  9 双亡、0 超时，胜率 9%。
 
 ## walking-v6 transition-context 课程
 
@@ -78,7 +80,10 @@ zsh training/run_ppo_paint_v1.sh train
 
 ## 当前训练结果
 
-- schema-9 `ppo-pursuit-v9-two-cell-exp-bfs-joystick722-nomem-s22`：32,768 PPO 步；
+- schema-9 `ppo-pursuit-v10-room-exp-bfs-joystick722-nomem-s22`：16,384 PPO 步；
+  右上房间动态图恰好 100 局均完成 300 帧，平均 BFS `1.67`，固定 Laika恰好 100 局
+  胜率 9%；
+- schema-9 `ppo-pursuit-v9-two-cell-exp-bfs-joystick722-nomem-s22`：上一版两格往返对照；
   动态图恰好 100 局均完成 300 帧，平均 BFS `5.60`，固定 Laika 恰好 100 局胜率 5%；
 - schema-8 `ppo-pursuit-v8-two-cell-exp-bfs-joystick130-nomem-s11`：旧 128 方向协议的
   已完成对照，动态图 100 局均在第 211 帧路线翻向失败；仍保留在 Viewer 供行为对照；

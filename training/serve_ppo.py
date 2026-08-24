@@ -19,6 +19,11 @@ from ppo_models import (
 # Completed runs remain selectable so behavior review never silently replaces an
 # earlier handoff. Schema-7/8 inputs are reconstructed by read-only adapters.
 SOURCES = {
+    "pursuit-v10-s22": {
+        "display": "ppo-pursuit-v10-room-exp-bfs-joystick722-nomem-s22",
+        "architecture": "nomem", "schema": 9, "history": 1,
+        "checkpoint": "outputs/ppo_pursuit_v10_room_exp_bfs_joystick722/nomem/s22/final.pt",
+    },
     "pursuit-v9-s22": {
         "display": "ppo-pursuit-v9-two-cell-exp-bfs-joystick722-nomem-s22",
         "architecture": "nomem", "schema": 9, "history": 1,

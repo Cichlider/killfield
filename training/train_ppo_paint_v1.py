@@ -59,6 +59,7 @@ class Config:
     initial_checkpoint: str = ""
     actor_logit_scale_on_init: float = 1.0
     direction_pretrain_epochs: int = 0
+    direction_pretrain_learning_rate: float = 1e-4
     envs: int = 64
     rollout_steps: int = 256
     total_steps: int = 5_000_000
@@ -500,7 +501,7 @@ def evaluate_walking(model, kind, config, device, walking_map=1, pursuit=False):
     result = {
         "episodes": len(episodes),
         "map": (
-            "walking-v1-oscillating-laika-last-two-cells-seed-20260827"
+            "walking-v1-upper-right-room-irregular-laika-seed-20260827"
             if pursuit else
             "walking-v2-seven-by-four-five-turn-seed-20260826"
             if walking_map == 2 else
@@ -674,8 +675,8 @@ def main():
         )
     elif pursuit:
         config = Config(
-            stage="pursuit-v9-two-cell-exp-bfs-joystick722",
-            training_opponent="unarmed-laika-oscillating-between-last-two-cells",
+            stage="pursuit-v10-room-exp-bfs-joystick722",
+            training_opponent="unarmed-laika-irregular-two-dimensional-room-patrol",
             episode_frames=300,
             navigation_total=0.0,
             success_base=0.0,
@@ -683,14 +684,15 @@ def main():
             failure_reward=-10.0,
             shot_attempt_reward=0.0,
             shot_attempt_cap=0.0,
-            map_name="walking-v1-six-by-three-serpentine-seed-20260827",
+            map_name="walking-v1-upper-right-two-by-two-room-seed-20260827",
             step_cost=0.0,
             failure_rules="wall-or-slide,no-displacement,fire=-10,stop=-10;human-wheel-reverse-is-legal;300-frame-horizon=truncation",
             initial_checkpoint="outputs/ppo_walking_v6_transition_context_joystick130/nomem/s11/final.pt",
             actor_logit_scale_on_init=0.5,
             direction_pretrain_epochs=200,
-            learning_rate=1e-4,
-            total_steps=32_768,
+            learning_rate=1e-9,
+            total_steps=16_384,
+            entropy_coefficient=0.0,
         )
     if args.smoke:
         config = replace(
@@ -699,7 +701,7 @@ def main():
             eval_every_updates=0, eval_episodes=100,
         )
     output_root = args.output or Path(
-        "outputs/ppo_pursuit_v9_two_cell_exp_bfs_joystick722" if pursuit
+        "outputs/ppo_pursuit_v10_room_exp_bfs_joystick722" if pursuit
         else "outputs/ppo_walking_v6_transition_context_joystick130" if walking
         else "outputs/ppo_static_target_fixed_v1_joystick130"
     )
@@ -713,7 +715,7 @@ def main():
         config_dict |= {
             "proximity_reward": "every-4-frames:-exp(current_bfs-initial_bfs)",
             "success_reward": "none; reaching Laika never ends the episode",
-            "target_motion": "full-centre-to-centre-traversal-between-path-cells-16-and-17",
+            "target_motion": "irregular-horizontal-vertical-diagonal-patrol-in-upper-right-two-by-two-room",
         }
     config_path = output / "config.json"
     if (config_path.exists() and json.loads(config_path.read_text()) != config_dict
@@ -775,7 +777,18 @@ def main():
                     model.actor.bias[FIRE_ACTION] = -8.0
                     model.actor.bias[STOP_ACTION] = -8.0
         if pursuit and config.direction_pretrain_epochs:
-            pretrain_pursuit_direction(model, args.model, optimiser, config, device)
+            pretrain_optimiser = torch.optim.Adam(
+                model.parameters(),
+                lr=config.direction_pretrain_learning_rate,
+                eps=1e-5,
+            )
+            pretrain_pursuit_direction(
+                model, args.model, pretrain_optimiser, config, device
+            )
+            # The supervised direction stage must not leak Adam moments into PPO.
+            optimiser = torch.optim.Adam(
+                model.parameters(), lr=config.learning_rate, eps=1e-5
+            )
 
     steps_per_update = config.envs * config.rollout_steps
     updates = math.ceil(config.total_steps / steps_per_update)
@@ -835,7 +848,7 @@ def main():
     model.eval()
     final_eval = evaluate(model, args.model, config, device)
     result = {
-        "name": f"ppo-{'pursuit-v9-two-cell-exp-bfs-joystick722' if pursuit else 'walking-v6-transition-context-serpentine-joystick130' if walking else 'static-target-fixed-v1-joystick130'}-{args.model}-s{args.seed}",
+        "name": f"ppo-{'pursuit-v10-room-exp-bfs-joystick722' if pursuit else 'walking-v6-transition-context-serpentine-joystick130' if walking else 'static-target-fixed-v1-joystick130'}-{args.model}-s{args.seed}",
         "model": args.model, "seed": args.seed, "total_steps": total_steps,
         "seconds_this_run": time.perf_counter() - started,
         "evaluation": final_eval, "config": config_dict,

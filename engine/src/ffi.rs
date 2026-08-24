@@ -8,7 +8,7 @@ use crate::ballistics::{check_bullet_path, ShotOutcome};
 use crate::constants as C;
 use crate::directional::apply_joystick_action;
 use crate::game::Tank;
-use crate::game::{walking_curriculum_progress, Event, Game};
+use crate::game::{pursuit_room_target_action, walking_curriculum_progress, Event, Game};
 use crate::laika::LaikaAI;
 use crate::reward::{
     RewardConfig, RewardTracker, CH_EXAMPLE, CH_STYLE, CH_TERMINAL, REWARD_CHANNELS,
@@ -56,7 +56,7 @@ struct Slot {
     provisional_success: Option<f64>,
     shot_bonus_total: f64,
     pursuit_initial_bfs: f64,
-    pursuit_target_right: bool,
+    pursuit_target_waypoint: usize,
 }
 
 impl Slot {
@@ -73,7 +73,7 @@ impl Slot {
             0
         };
         let game = if pursuit {
-            Game::walking_curriculum(seed)
+            Game::pursuit_room_curriculum(seed)
         } else if walking && seed == WALKING_SEED_V2 {
             Game::walking_curriculum_v2(seed)
         } else if walking {
@@ -115,7 +115,7 @@ impl Slot {
             provisional_success: None,
             shot_bonus_total: 0.0,
             pursuit_initial_bfs,
-            pursuit_target_right: false,
+            pursuit_target_waypoint: 1,
         }
     }
 }
@@ -363,15 +363,8 @@ impl VecEnv {
             for _ in 0..self.frame_skip {
                 let before = (slot.game.tanks[0].x, slot.game.tanks[0].y);
                 if self.pursuit_curriculum {
-                    let target = slot.game.tanks[1];
-                    let left = 4.5 * slot.game.scale;
-                    let right = 5.5 * slot.game.scale;
-                    if target.x <= left {
-                        slot.pursuit_target_right = true;
-                    } else if target.x >= right {
-                        slot.pursuit_target_right = false;
-                    }
-                    let action = if slot.pursuit_target_right { 90 } else { 270 };
+                    let action =
+                        pursuit_room_target_action(&slot.game, &mut slot.pursuit_target_waypoint);
                     apply_joystick_action(&mut slot.game, 1, action);
                 }
                 let events = slot.game.step();

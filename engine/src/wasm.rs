@@ -12,7 +12,7 @@
 use crate::directional::{
     apply_human_direction, apply_joystick_action, ACTION_COUNT, FIRE_ACTION, STOP_ACTION,
 };
-use crate::game::{walking_curriculum_progress, Event, Game};
+use crate::game::{pursuit_room_target_action, walking_curriculum_progress, Event, Game};
 use crate::reward::{
     RewardConfig, RewardTracker, CH_STYLE, CH_TERMINAL, REWARD_CHANNELS, REWARD_INFO_LEN,
 };
@@ -57,9 +57,9 @@ pub struct Handle {
     semantic_state: SemanticObsState,
     semantic: SemanticObservation,
     semantic_buffer: Vec<f32>,
-    /// 0 = ordinary, 1/2 = walking maps, 3 = two-cell pursuit curriculum.
+    /// 0 = ordinary, 1/2 = walking maps, 3 = room-patrol pursuit curriculum.
     walking_curriculum: u8,
-    pursuit_target_right: bool,
+    pursuit_target_waypoint: usize,
     last_rl_action: [u16; 2],
 }
 
@@ -130,7 +130,7 @@ pub extern "C" fn kf_new(seed: u32, laika_mask: u32) -> *mut Handle {
         semantic: SemanticObservation::default(),
         semantic_buffer: vec![0.0; OBS_DIM + BULLET_SLOTS],
         walking_curriculum: 0,
-        pursuit_target_right: false,
+        pursuit_target_waypoint: 1,
         last_rl_action: [STOP_ACTION; 2],
     });
     build_render(&mut h);
@@ -172,14 +172,14 @@ pub extern "C" fn kf_new_walking_v2() -> *mut Handle {
     handle
 }
 
-/// Simple fixed corridor whose unarmed target oscillates between its last two cells.
+/// Fixed corridor opening into an upper-right room patrolled by an unarmed target.
 #[no_mangle]
 pub extern "C" fn kf_new_pursuit_v1() -> *mut Handle {
     let handle = kf_new(20_260_827, 0);
     unsafe {
-        (*handle).game = Game::walking_curriculum(20_260_827);
+        (*handle).game = Game::pursuit_room_curriculum(20_260_827);
         (*handle).walking_curriculum = 3;
-        (*handle).pursuit_target_right = false;
+        (*handle).pursuit_target_waypoint = 1;
         build_render(&mut *handle);
     }
     handle
@@ -402,15 +402,7 @@ pub unsafe extern "C" fn kf_step(h: *mut Handle) -> u32 {
     let invalid_stationary_action =
         h.walking_curriculum != 0 && matches!(h.last_rl_action[0], FIRE_ACTION | STOP_ACTION);
     if h.walking_curriculum == 3 {
-        let target = h.game.tanks[1];
-        let left = 4.5 * h.game.scale;
-        let right = 5.5 * h.game.scale;
-        if target.x <= left {
-            h.pursuit_target_right = true;
-        } else if target.x >= right {
-            h.pursuit_target_right = false;
-        }
-        let action = if h.pursuit_target_right { 90 } else { 270 };
+        let action = pursuit_room_target_action(&h.game, &mut h.pursuit_target_waypoint);
         apply_joystick_action(&mut h.game, 1, action);
     }
     let events = h.game.step();
@@ -484,14 +476,14 @@ pub unsafe extern "C" fn kf_step(h: *mut Handle) -> u32 {
     }
     if h.walking_curriculum != 0 && new_round {
         h.game = if h.walking_curriculum == 3 {
-            Game::walking_curriculum(20_260_827)
+            Game::pursuit_room_curriculum(20_260_827)
         } else if h.walking_curriculum == 2 {
             Game::walking_curriculum_v2(20_260_826)
         } else {
             Game::walking_curriculum(20_260_825)
         };
         h.semantic_state.reset();
-        h.pursuit_target_right = false;
+        h.pursuit_target_waypoint = 1;
         h.last_rl_action = [STOP_ACTION; 2];
         h.last_winner = -1.0;
     }
@@ -804,45 +796,39 @@ mod walking_viewer_tests {
     }
 
     #[test]
-    fn viewer_two_cell_target_reaches_both_cell_centres_repeatedly() {
-        let handle = kf_new_pursuit_v1();
-        let scale = unsafe { (*handle).game.scale };
-        let mut minimum = f64::INFINITY;
-        let mut maximum = f64::NEG_INFINITY;
-        let mut reversals = 0;
-        let mut previous_direction = false;
-        for _ in 0..100 {
-            unsafe {
-                let mut observation = SemanticObservation::default();
-                encode_semantic(
-                    &(*handle).game,
-                    0,
-                    &(*handle).semantic_state,
-                    &mut observation,
-                );
-                let direction = observation.values[NAV_OFFSET..NAV_OFFSET + 4]
-                    .iter()
-                    .position(|&value| value > 0.5)
-                    .unwrap();
-                kf_set_rl_action(handle, 0, [0, 90, 180, 270][direction]);
-                kf_step(handle);
-                let h = &*handle;
-                minimum = minimum.min(h.game.tanks[1].x);
-                maximum = maximum.max(h.game.tanks[1].x);
-                if h.pursuit_target_right != previous_direction {
-                    reversals += 1;
-                    previous_direction = h.pursuit_target_right;
-                }
+    fn room_target_moves_horizontally_vertically_and_diagonally() {
+        let mut game = Game::pursuit_room_curriculum(20_260_827);
+        let scale = game.scale;
+        let mut waypoint = 1;
+        let mut horizontal = 0;
+        let mut vertical = 0;
+        let mut diagonal = 0;
+        for _ in 0..220 {
+            let before = game.tanks[1];
+            let action = pursuit_room_target_action(&game, &mut waypoint);
+            apply_joystick_action(&mut game, 1, action);
+            game.step();
+            let target = game.tanks[1];
+            let dx = (target.x - before.x).abs();
+            let dy = (target.y - before.y).abs();
+            if dx > 1e-6 && dy <= dx * 0.15 {
+                horizontal += 1;
+            } else if dy > 1e-6 && dx <= dy * 0.15 {
+                vertical += 1;
+            } else if dx > 1e-6 && dy > 1e-6 {
+                diagonal += 1;
             }
+            assert!(!target.hit_something && !target.wall_sliding);
+            assert!((4.0 * scale..6.0 * scale).contains(&target.x));
+            assert!((0.0..2.0 * scale).contains(&target.y));
         }
-        assert!(minimum <= 4.5 * scale);
-        assert!(maximum >= 5.5 * scale);
-        assert!(reversals >= 4, "only {reversals} completed reversals");
-        unsafe { kf_free(handle) };
+        assert!(horizontal > 5, "only {horizontal} horizontal frames");
+        assert!(vertical > 5, "only {vertical} vertical frames");
+        assert!(diagonal > 20, "only {diagonal} diagonal frames");
     }
 
     #[test]
-    fn viewer_two_cell_pursuit_uses_the_300_frame_training_horizon() {
+    fn viewer_room_pursuit_uses_the_300_frame_training_horizon() {
         let handle = kf_new_pursuit_v1();
         let mut action = 90;
         for frame in 1..=300 {
