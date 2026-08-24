@@ -1,6 +1,7 @@
 # Killfield
 
-> 当前分支：`rl`。这里的 Viewer 只用于 **PPO 模型 vs 固定 Laika** 的行为 review；
+> 当前分支：`rl`。Viewer 默认复现 **固定地图 + 不动且不开火的训练靶子**；也可切换到
+> **PPO 模型 vs 固定 Laika** 做行为 review；
 > GitHub Pages 的 MPC 观看/对战版本位于 `main`。当前模型
 > `ppo-static-target-fixed-v1-joystick130-nomem-s11` 使用 schema-7 `Discrete(130)`：
 > 128 个人类轮盘方向 + 原地开火 + 停止，方向操作无转速限制。固定地图静止靶训练

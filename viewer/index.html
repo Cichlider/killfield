@@ -7,8 +7,8 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>killfield RL — PPO model vs Laika</title>
-<meta name="description" content="Review a PPO policy against the fixed Laika opponent in the Rust/WASM Killfield engine.">
+<title>killfield RL — PPO behavior review</title>
+<meta name="description" content="Review a PPO policy in its fixed-map static-target training environment or against Laika.">
 <link rel="icon" type="image/png" sizes="48x48" href="assets/brand/favicon-48.png">
 <link rel="icon" type="image/png" sizes="192x192" href="assets/brand/icon-192.png">
 <link rel="apple-touch-icon" sizes="180x180" href="assets/brand/apple-touch-icon.png">
@@ -22,7 +22,7 @@
       <h1>killfield</h1>
       <button id="lang-toggle" type="button" class="lang-toggle" aria-label="Switch to Chinese">中文</button>
     </div>
-    <p class="tagline" id="tagline">PPO behavior review: the selected model plays 25 Hz against fixed Laika.</p>
+    <p class="tagline" id="tagline">PPO behavior review: fixed training map against an inert target.</p>
   </header>
 
   <div class="play-layout">
@@ -90,7 +90,8 @@
         <select id="rl-model"><option value="">checking checkpoints…</option></select>
       </label>
       <span id="rl-status" class="hint" role="status">connecting to inference service…</span>
-      <button id="mode-watch" type="button" class="mode active" hidden>Model vs Laika</button>
+      <button id="mode-target" type="button" class="mode active">Fixed inert target</button>
+      <button id="mode-watch" type="button" class="mode">Model vs Laika</button>
       <button id="mode-play" type="button" class="mode" hidden>Play</button>
       <button id="mode-selfplay" type="button" class="mode" hidden>AI vs AI</button>
     </div>

@@ -56,7 +56,7 @@ const WATCH_TANK_COLORS = [THEME.tanks[1], THEME.tanks[0]];
 // tank 1, so that presentation swaps the two colours without changing either
 // tank's engine identity. Play and self-play keep the default number palette.
 function tankColorsForMode(mode) {
-  return mode === "watch" ? WATCH_TANK_COLORS : THEME.tanks;
+  return mode === "watch" || mode === "target" ? WATCH_TANK_COLORS : THEME.tanks;
 }
 
 const DECISION_NAMES = [
@@ -67,6 +67,7 @@ const DECISION_NAMES = [
 // laika_mask) drives tank 1; in play mode you do; in self-play a second MPC
 // agent does.
 const MODES = {
+  target: { humanTank: null },
   watch: { humanTank: null },
   play: { humanTank: 1 },
   selfplay: { humanTank: null },
@@ -97,6 +98,7 @@ const openingDelayValue = document.getElementById("opening-delay-value");
 const openingDelayHint = document.getElementById("opening-delay-hint");
 const oppModelSelect = document.getElementById("oppmodel");
 const oppModelHint = document.getElementById("oppmodel-hint");
+const targetButton = document.getElementById("mode-target");
 const watchButton = document.getElementById("mode-watch");
 const playButton = document.getElementById("mode-play");
 const selfplayButton = document.getElementById("mode-selfplay");
@@ -141,6 +143,7 @@ const OBS_DIM = 1170;
 const BULLET_SLOTS = 10;
 const RL_FIRE_ACTION = 128;
 const RL_STOP_ACTION = 129;
+const STATIC_TARGET_SEED = 20260824;
 let selectedModel = "";
 let modelHistory = [];
 let lastModelAction = -1;
@@ -609,6 +612,7 @@ function applyLanguage() {
   langToggle.setAttribute("aria-label", s.langToggleAria);
   tagline.textContent = s.tagline;
   watchButton.textContent = s.modeWatch;
+  targetButton.textContent = s.modeTarget;
   playButton.textContent = s.modePlay;
   selfplayButton.textContent = s.modeSelfplay;
   rerollButton.textContent = s.reroll;
@@ -633,16 +637,11 @@ function applyLanguage() {
   syncFullscreenButton();
   syncPauseButton();
   syncSoundButton();
-  tagline.textContent = lang === "zh"
-    ? "PPO 行为 review：所选模型以 25 Hz 对战固定 Laika。"
-    : "PPO behavior review: the selected model plays fixed Laika at 25 Hz.";
-  note.textContent = lang === "zh"
-    ? "左侧使用 schema-7 static-target joystick130 PPO：128 个轮盘方向 + 开火 + 停止；右侧由固定 Laika 控制。"
-    : "The left tank uses schema-7 static-target joystick130 PPO: 128 wheel directions + fire + stop; fixed Laika drives the right tank.";
+  updateScenarioCopy();
   updateScoreboard();
 }
 
-let mode = "watch";
+let mode = "target";
 let instantTurn = false;
 try { instantTurn = localStorage.getItem(INSTANT_TURN_STORAGE_KEY) === "1"; } catch { /* optional */ }
 let handle = null;
@@ -698,12 +697,14 @@ function newGame() {
   const parsed = Number(raw);
   // kf_new always wants a concrete seed; a blank box means "fresh random maze
   // every time" rather than "null", so roll one here without writing it back.
-  const seed = (raw === "" || !Number.isFinite(parsed))
+  const seed = mode === "target" ? STATIC_TARGET_SEED : (raw === "" || !Number.isFinite(parsed))
     ? (Math.random() * 0xffffffff) >>> 0
     : (parsed >>> 0);
 
+  if (mode === "target") seedInput.value = String(STATIC_TARGET_SEED);
+
   if (handle !== null) wasm.kf_free(handle);
-  const laikaMask = 2;
+  const laikaMask = mode === "watch" ? 2 : 0;
   handle = wasm.kf_new(seed, laikaMask);
 
   // RL branch contract: tank 0 is driven only by /api/act; tank 1 is Laika.
@@ -727,22 +728,44 @@ function newGame() {
 }
 
 function setMode(next) {
-  mode = "watch";
+  mode = next;
   syncTeamColors();
   keyboard.clear();
   touchControls.clear();
+  targetButton.classList.toggle("active", next === "target");
   watchButton.classList.toggle("active", next === "watch");
   playButton.classList.toggle("active", next === "play");
   selfplayButton.classList.toggle("active", next === "selfplay");
   keyhelp.style.display = next === "play" ? "" : "none";
   touchControls.setAvailable(next === "play");
   matchSettingsPanel.hidden = next !== "play";
+  seedInput.disabled = next === "target";
+  rerollButton.disabled = next === "target";
   syncInstantTurnButton();
   // A mode switch changes who tank 1 even is, so treat it as a fresh match.
   matchScore = [0, 0];
   streak.current = 0;
   saveStreak();
   newGame();
+  updateScenarioCopy();
+}
+
+function updateScenarioCopy() {
+  const target = mode === "target";
+  tagline.textContent = lang === "zh"
+    ? target
+      ? "PPO 训练行为回放：固定地图，对手完全不动且不开枪。"
+      : "PPO 行为评估：所选模型以 25 Hz 对战固定 Laika。"
+    : target
+      ? "PPO training behavior: fixed map against a completely inert target."
+      : "PPO behavior evaluation: the selected model plays fixed Laika at 25 Hz.";
+  note.textContent = lang === "zh"
+    ? target
+      ? "训练环境复现：seed 20260824；右侧坦克没有控制器，不能移动也不能开枪。"
+      : "评估环境：左侧为 schema-7 PPO，右侧由固定 Laika 控制。"
+    : target
+      ? "Training environment: seed 20260824; the right tank has no controller and cannot move or fire."
+      : "Evaluation environment: schema-7 PPO on the left, fixed Laika on the right.";
 }
 
 function syncInstantTurnButton() {
@@ -765,7 +788,7 @@ function updateScoreboard() {
   if (handle === null) return;
   const s = t();
   const selectedName = rlModelSelect.selectedOptions[0]?.textContent || "PPO model";
-  const labels = [selectedName, "Laika"];
+  const labels = [selectedName, mode === "target" ? (lang === "zh" ? "不动靶" : "inert target") : "Laika"];
   for (let i = 0; i < 2; i++) {
     if (nameLabels[i].textContent !== labels[i]) nameLabels[i].textContent = labels[i];
     const score = String(matchScore[i]);
@@ -1120,6 +1143,7 @@ async function boot() {
     renderTuningPanel();
     tuningResetButton.blur();
   });
+  targetButton.addEventListener("click", () => setMode("target"));
   watchButton.addEventListener("click", () => setMode("watch"));
   playButton.addEventListener("click", () => setMode("play"));
   selfplayButton.addEventListener("click", () => setMode("selfplay"));
@@ -1144,7 +1168,7 @@ async function boot() {
   oppModelSelect.closest("label").hidden = true;
   oppModelHint.hidden = true;
   keyhelp.hidden = true;
-  setMode("watch");
+  setMode("target");
   applyLanguage();
   requestAnimationFrame(frame);
 }
