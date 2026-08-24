@@ -146,8 +146,8 @@ let wasm = null;
 let scratchPtr = null;
 const OBS_DIM = 1054;
 const BULLET_SLOTS = 10;
-const RL_FIRE_ACTION = 128;
-const RL_STOP_ACTION = 129;
+const RL_FIRE_ACTION = 720;
+const RL_STOP_ACTION = 721;
 const STATIC_TARGET_SEED = 20260826;
 const REAL_INERT_SEED = 20260824;
 const PURSUIT_SEED = 20260827;
@@ -175,7 +175,7 @@ async function loadModelCatalogue() {
     if (!selectedModel) {
       const option = document.createElement("option");
       option.value = "";
-      option.textContent = "no compatible schema-8 joystick130 checkpoint";
+      option.textContent = "no compatible PPO checkpoint";
       rlModelSelect.append(option);
       rlStatus.textContent = "模型尚未训练；运行训练后刷新。本页不会用 MPC 冒充 PPO。";
     } else {
@@ -774,8 +774,8 @@ function setMode(next) {
 function updateScenarioCopy() {
   const copy = lang === "zh" ? {
     pursuit: [
-      "PPO 动态追逐课程：Laika 在终点附近两个格子之间持续往返。",
-      "seed 20260827；每 4 帧按 BFS 距离结算，越早追上奖励越高；停止、开火、撞墙、侧滑或方向不一致立即失败。",
+      "PPO 动态跟踪课程：Laika 从一个格子中心走到相邻格子中心，再完整折返。",
+      "seed 20260827；靠近 Laika 不结束，整局 300 帧；每 4 帧扣 exp(BFS当前−BFS初始)，停止、开火、撞墙、侧滑或方向不一致立即失败。",
     ],
     target: [
       "PPO 训练行为回放：固定地图，对手完全不动且不开枪。",
@@ -791,8 +791,8 @@ function updateScenarioCopy() {
     ],
   } : {
     pursuit: [
-      "Dynamic PPO pursuit lesson: Laika continuously oscillates between the final two cells.",
-      "Seed 20260827; BFS proximity settles every four frames and earlier arrival scores more. Stop, fire, wall contact, sliding, or direction mismatch fails immediately.",
+      "Dynamic tracking lesson: Laika travels fully from one cell centre to the adjacent cell centre and back.",
+      "Seed 20260827; proximity never ends the 300-frame episode. Every four frames subtract exp(current BFS − initial BFS); stop, fire, wall contact, sliding, or direction mismatch fails immediately.",
     ],
     target: [
       "PPO training behavior: fixed map against a completely inert target.",
@@ -888,8 +888,10 @@ function requestModelAction() {
     lastModelAction = result.action;
     wasm.kf_set_rl_action(handle, 0, result.action);
     modelActionReady = true;
-    const actionLabel = result.action < 128
-      ? `direction ${result.action}/128`
+    const actionLabel = result.action < 360
+      ? `forward ${result.action}°`
+      : result.action < 720
+        ? `reverse ${result.action - 360}°`
       : result.action === RL_FIRE_ACTION ? "fire" : "stop";
     inferenceSummary = `${result.model} · ${actionLabel} · ${Math.round(result.confidence * 100)}%`;
   }).catch((error) => {
@@ -1140,7 +1142,7 @@ function toggleLanguage() {
 // -------------------------------------------------------------------- boot
 
 async function boot() {
-  const res = await fetch("kf_engine.wasm?v=schema8-pursuit-v7");
+  const res = await fetch("kf_engine.wasm?v=schema9-pursuit-v9");
   const { instance } = await WebAssembly.instantiate(await res.arrayBuffer(), {});
   wasm = instance.exports;
   scratchPtr = wasm.kf_scratch_ptr();

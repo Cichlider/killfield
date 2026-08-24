@@ -32,9 +32,6 @@ const WALKING_SEED_V2: u32 = 20_260_826;
 const WALKING_FRAMES: u32 = 300;
 const PURSUIT_SEED: u32 = 20_260_827;
 const PURSUIT_FRAMES: u32 = 300;
-const PURSUIT_ARRIVAL_DISTANCE_CELLS: f64 = 0.70;
-const PURSUIT_PROXIMITY_TOTAL: f64 = 5.0;
-const PURSUIT_SPEED_BONUS_MAX: f64 = 5.0;
 const WALKING_PROGRESS_TOTAL: f64 = 5.0;
 const WALKING_SUCCESS: f64 = 10.0;
 const WALKING_FAILURE: f64 = -10.0;
@@ -59,7 +56,7 @@ struct Slot {
     provisional_success: Option<f64>,
     shot_bonus_total: f64,
     pursuit_initial_bfs: f64,
-    pursuit_last_bfs: f64,
+    pursuit_target_right: bool,
 }
 
 impl Slot {
@@ -96,8 +93,7 @@ impl Slot {
         };
         let mut obs_state = SemanticObsState::default();
         if walking_start > 0 {
-            let incoming_action =
-                (game.tanks[0].rotation.rem_euclid(360.0) / (360.0 / 128.0)).round() as u16 % 128;
+            let incoming_action = game.tanks[0].rotation.rem_euclid(360.0).round() as u16 % 360;
             obs_state.push_action(incoming_action);
         }
         let pursuit_initial_bfs = if pursuit {
@@ -119,7 +115,7 @@ impl Slot {
             provisional_success: None,
             shot_bonus_total: 0.0,
             pursuit_initial_bfs,
-            pursuit_last_bfs: pursuit_initial_bfs,
+            pursuit_target_right: false,
         }
     }
 }
@@ -335,9 +331,10 @@ impl VecEnv {
             apply_joystick_action(&mut slot.game, 0, action);
             slot.obs_state.push_action(action);
             slot.decisions += 1;
-            let wrong_route_direction = expected_rotation.is_some_and(|expected| {
-                crate::game::norm_rot(slot.game.tanks[0].rotation - expected).abs() > 1.5
-            });
+            let wrong_route_direction = !self.pursuit_curriculum
+                && expected_rotation.is_some_and(|expected| {
+                    crate::game::norm_rot(slot.game.tanks[0].rotation - expected).abs() > 1.5
+                });
             if self.walking_curriculum
                 && (action == crate::directional::FIRE_ACTION
                     || action == crate::directional::STOP_ACTION
@@ -369,21 +366,20 @@ impl VecEnv {
                     let target = slot.game.tanks[1];
                     let left = 4.5 * slot.game.scale;
                     let right = 5.5 * slot.game.scale;
-                    let action = if target.x <= left {
-                        32
+                    if target.x <= left {
+                        slot.pursuit_target_right = true;
                     } else if target.x >= right {
-                        96
-                    } else if target.rotation >= 0.0 {
-                        32
-                    } else {
-                        96
-                    };
+                        slot.pursuit_target_right = false;
+                    }
+                    let action = if slot.pursuit_target_right { 90 } else { 270 };
                     apply_joystick_action(&mut slot.game, 1, action);
                 }
                 let events = slot.game.step();
                 if self.walking_curriculum {
                     let tank = slot.game.tanks[0];
-                    reward += WALKING_STEP_COST;
+                    if !self.pursuit_curriculum {
+                        reward += WALKING_STEP_COST;
+                    }
                     let dx = tank.x - before.0;
                     let dy = tank.y - before.1;
                     let distance = dx.hypot(dy);
@@ -391,7 +387,11 @@ impl VecEnv {
                     let stopped = distance <= 1e-9;
                     let aligned =
                         !stopped && (dx * facing.cos() + dy * facing.sin()) / distance >= 0.995;
-                    if tank.hit_something || tank.wall_sliding || stopped || !aligned {
+                    if tank.hit_something
+                        || tank.wall_sliding
+                        || stopped
+                        || (!self.pursuit_curriculum && !aligned)
+                    {
                         reward += WALKING_FAILURE;
                         self.reward_channels[index * REWARD_CHANNELS + CH_TERMINAL] +=
                             WALKING_FAILURE as f32;
@@ -401,8 +401,10 @@ impl VecEnv {
                                 1
                             } else if stopped {
                                 5
-                            } else {
+                            } else if !aligned {
                                 2
+                            } else {
+                                5
                             };
                         terminal = true;
                     }
@@ -490,11 +492,7 @@ impl VecEnv {
             }
             if self.walking_curriculum && !terminal {
                 let arrived = if self.pursuit_curriculum {
-                    let me = slot.game.tanks[0];
-                    let opponent = slot.game.tanks[1];
-                    slot.game.tank_fields[0] == slot.game.tank_fields[1]
-                        && (me.x - opponent.x).hypot(me.y - opponent.y)
-                            <= PURSUIT_ARRIVAL_DISTANCE_CELLS * slot.game.scale
+                    false
                 } else {
                     walking_curriculum_progress(&slot.game) >= 0.98
                 };
@@ -502,12 +500,9 @@ impl VecEnv {
                     let mut observation = SemanticObservation::default();
                     encode(&slot.game, 0, &slot.obs_state, &mut observation);
                     let bfs = observation.values[PATH_LENGTH_OFFSET] as f64 * 22.0;
-                    let value = PURSUIT_PROXIMITY_TOTAL
-                        * (slot.pursuit_last_bfs - bfs)
-                        / slot.pursuit_initial_bfs;
+                    let value = -(bfs - slot.pursuit_initial_bfs).exp();
                     reward += value;
                     self.reward_channels[index * REWARD_CHANNELS + CH_STYLE] += value as f32;
-                    slot.pursuit_last_bfs = bfs;
                 } else if !self.pursuit_curriculum {
                     let progress = walking_curriculum_progress(&slot.game) as f32;
                     if progress > slot.best_path {
@@ -518,16 +513,9 @@ impl VecEnv {
                     }
                 }
                 if arrived {
-                    let speed_bonus = if self.pursuit_curriculum {
-                        PURSUIT_SPEED_BONUS_MAX
-                            * (1.0 - slot.decisions as f64 / PURSUIT_FRAMES as f64)
-                                .clamp(0.0, 1.0)
-                    } else {
-                        0.0
-                    };
-                    reward += WALKING_SUCCESS + speed_bonus;
+                    reward += WALKING_SUCCESS;
                     self.reward_channels[index * REWARD_CHANNELS + CH_TERMINAL] +=
-                        (WALKING_SUCCESS + speed_bonus) as f32;
+                        WALKING_SUCCESS as f32;
                     self.winners[index] = 0;
                     terminal = true;
                 }
@@ -558,7 +546,9 @@ impl VecEnv {
                                 WALKING_FRAMES
                             }));
             if timed_out {
-                let value = if self.walking_curriculum {
+                let value = if self.pursuit_curriculum {
+                    0.0
+                } else if self.walking_curriculum {
                     WALKING_FAILURE
                 } else {
                     -(slot.shot_bonus_total + 10.0)
@@ -566,7 +556,7 @@ impl VecEnv {
                 reward += value;
                 self.reward_channels[index * REWARD_CHANNELS + CH_TERMINAL] += value as f32;
                 self.winners[index] = -2;
-                if self.walking_curriculum {
+                if self.walking_curriculum && !self.pursuit_curriculum {
                     self.walking_failure_reasons[index] = 4;
                 }
             }
@@ -761,8 +751,13 @@ pub extern "C" fn kf_vec_new_walking_train_v3(count: u32, base_seed: u32) -> *mu
     env.fixed_seed = None;
     env.next_seed = base_seed.wrapping_add(count as u32);
     for index in 0..count {
-        env.slots[index] =
-            Slot::new(base_seed.wrapping_add(index as u32), true, false, true, false);
+        env.slots[index] = Slot::new(
+            base_seed.wrapping_add(index as u32),
+            true,
+            false,
+            true,
+            false,
+        );
         env.encode_slot(index);
     }
     Box::into_raw(Box::new(env))

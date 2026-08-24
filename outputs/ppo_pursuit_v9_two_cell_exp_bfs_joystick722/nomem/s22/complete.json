@@ -1,23 +1,23 @@
 {
-  "name": "ppo-pursuit-v7-two-cell-oscillating-laika-joystick130-nomem-s11",
+  "name": "ppo-pursuit-v9-two-cell-exp-bfs-joystick722-nomem-s22",
   "model": "nomem",
-  "seed": 11,
-  "total_steps": 507904,
-  "seconds_this_run": 250.11653374996968,
+  "seed": 22,
+  "total_steps": 32768,
+  "seconds_this_run": 18.015920958016068,
   "evaluation": {
     "episodes": 100,
     "outcomes": {
       "win": 5,
-      "loss": 88,
-      "double": 7,
+      "loss": 89,
+      "double": 6,
       "timeout": 0
     },
     "win_rate": 0.05,
     "initiative_gain_mean": 0.0,
     "initiative_gain_positive_rate": 0.0,
-    "close_contact_rate": 0.98,
+    "close_contact_rate": 0.97,
     "episode_fire_rate": 0.0,
-    "decisions_mean": 216.07,
+    "decisions_mean": 204.78,
     "channel_episode_mean": {
       "initiative": 0.0,
       "navigation": 0.0,
@@ -31,26 +31,27 @@
     }
   },
   "config": {
-    "stage": "pursuit-v7-two-cell-oscillating-laika-joystick130",
-    "observation_schema": 8,
-    "action_count": 130,
+    "stage": "pursuit-v9-two-cell-exp-bfs-joystick722",
+    "observation_schema": 9,
+    "action_count": 722,
     "opponent": "Laika",
     "training_opponent": "unarmed-laika-oscillating-between-last-two-cells",
     "episode_frames": 300,
-    "navigation_total": 5.0,
-    "success_base": 10.0,
-    "speed_bonus_max": 5.0,
+    "navigation_total": 0.0,
+    "success_base": 0.0,
+    "speed_bonus_max": 0.0,
     "failure_reward": -10.0,
     "shot_attempt_reward": 0.0,
     "shot_attempt_cap": 0.0,
     "map_name": "walking-v1-six-by-three-serpentine-seed-20260827",
-    "step_cost": -0.002,
-    "failure_rules": "wall-or-slide,no-displacement,route-direction-mismatch,displacement-heading-mismatch,fire=-10,stop=-10;timeout=-10",
+    "step_cost": 0.0,
+    "failure_rules": "wall-or-slide,no-displacement,fire=-10,stop=-10;human-wheel-reverse-is-legal;300-frame-horizon=truncation",
     "initial_checkpoint": "outputs/ppo_walking_v6_transition_context_joystick130/nomem/s11/final.pt",
     "actor_logit_scale_on_init": 0.5,
+    "direction_pretrain_epochs": 200,
     "envs": 64,
     "rollout_steps": 256,
-    "total_steps": 500000,
+    "total_steps": 32768,
     "epochs": 4,
     "minibatch_steps": 1024,
     "sequence_length": 64,
@@ -67,19 +68,18 @@
     "eval_episodes": 100,
     "eval_envs": 32,
     "model": "nomem",
-    "seed": 11,
+    "seed": 22,
     "device": "cpu",
-    "proximity_reward": "every-4-frames:+5*(previous_bfs-current_bfs)/initial_bfs",
-    "success_reward": "10+5*(1-decisions/300)",
-    "target_motion": "continuous-oscillation-between-path-cells-16-and-17"
+    "proximity_reward": "every-4-frames:-exp(current_bfs-initial_bfs)",
+    "success_reward": "none; reaching Laika never ends the episode",
+    "target_motion": "full-centre-to-centre-traversal-between-path-cells-16-and-17"
   },
   "curriculum_evaluation": {
     "episodes": 100,
     "map": "walking-v1-oscillating-laika-last-two-cells-seed-20260827",
     "outcomes": {
-      "arrived": 100,
-      "failed": 0,
-      "timeout": 0
+      "completed": 100,
+      "failed": 0
     },
     "failure_reasons": {
       "wall": 0,
@@ -89,8 +89,11 @@
       "route_direction": 0,
       "timeout": 0
     },
-    "arrival_rate": 1.0,
     "fire_rate": 0.0,
-    "decisions_mean": 194.0
+    "decisions_mean": 300.0,
+    "completion_rate": 1.0,
+    "bfs_mean": 5.5999999876817075,
+    "bfs_min_mean": 0.0,
+    "bfs_final_mean": 0.0
   }
 }

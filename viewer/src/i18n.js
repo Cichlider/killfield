@@ -15,7 +15,7 @@ export const STRINGS = {
     round: (n) => `round ${n}`,
     roundOver: (n) => `round ${n} · round over`,
     modeWatch: "Watch it play",
-    modePursuit: "Two-cell moving Laika",
+    modePursuit: "Two-cell tracking Laika",
     modeInert: "Real maze · unarmed Laika",
     modeTarget: "Walking map v2",
     modePlay: "Play against it",
@@ -66,7 +66,7 @@ export const STRINGS = {
     touchControls: {
       joystick: "Joystick",
       dpad: "Forward / turn",
-      joystickAria: "128-direction movement joystick with configurable forward and reverse sectors",
+      joystickAria: "360-degree movement joystick with configurable forward and reverse sectors",
       dpadAria: "Forward, reverse, turn left and turn right controls",
       fire: "FIRE",
       hide: "Hide touch controls",

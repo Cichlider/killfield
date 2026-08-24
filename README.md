@@ -2,12 +2,13 @@
 
 > 当前分支：`rl`。Viewer 默认复现 **固定地图 + 不动且不开火的训练靶子**；也可切换到
 > **PPO 模型 vs 固定 Laika** 做行为 review；
-> GitHub Pages 的 MPC 观看/对战版本位于 `main`。当前动态追逐模型
-> `ppo-pursuit-v7-two-cell-oscillating-laika-joystick130-nomem-s11` 使用 schema-8
-> `Discrete(130)`，从 v6 继续训练 507,904 步。在简单蛇形图中，无武器 Laika 在终点
-> 相邻两格持续往返；恰好 100 局全部追上、0 失败、0 超时，平均 194 帧。旁路固定
-> Laika 恰好 100 局为 5 胜 / 88 负 / 7 双亡，胜率 5%。Viewer 默认展示该动态课程，
-> 所有完成结果直接进入 Viewer，不设 gate。
+> GitHub Pages 的 MPC 观看/对战版本位于 `main`。当前动态跟踪模型
+> `ppo-pursuit-v9-two-cell-exp-bfs-joystick722-nomem-s22` 使用 schema-9
+> `Discrete(722)`：360 个前进绝对方向 + 360 个倒车绝对方向 + FIRE + STOP。在简单
+> 蛇形图中，无武器 Laika 会完整走到相邻格中心再折返；32,768 步短训后，恰好 100 局
+> 全部严格存活到 300 帧，平均 BFS `5.60`、最小/最终 BFS 均为 `0`。旁路固定 Laika
+> 恰好 100 局为 5 胜 / 89 负 / 6 双亡，胜率 5%。Viewer 默认展示该动态课程，所有
+> 完成结果直接进入 Viewer，不设 gate。
 
 首次运行先执行 `python3 -m venv .venv` 和
 `.venv/bin/pip install -r training/requirements.txt`。之后用 `bash viewer/serve.sh` 启动，
@@ -39,7 +40,8 @@ Page 当前提供三种模式：
 开火。游戏物理以 25 Hz（每帧 40 ms）运行，页面按显示器
 刷新率绘制并在相邻物理状态之间插值。
 
-子弹会反弹，并在十秒内持续致命，包括威胁开火者自己。坦克被击毁后世界仍会继续运行三秒，
+真实子弹的反弹次数没有硬上限；寿命上限是 `250` 个物理帧（25 Hz 下 `10` 秒），期间持续
+致命，包括威胁开火者自己。坦克被击毁后世界仍会继续运行三秒，
 因此已经飞出的子弹仍可能把一次胜利变成平局。
 
 ## Killfield 原理

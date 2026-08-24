@@ -59,6 +59,7 @@ pub struct Handle {
     semantic_buffer: Vec<f32>,
     /// 0 = ordinary, 1/2 = walking maps, 3 = two-cell pursuit curriculum.
     walking_curriculum: u8,
+    pursuit_target_right: bool,
     last_rl_action: [u16; 2],
 }
 
@@ -129,6 +130,7 @@ pub extern "C" fn kf_new(seed: u32, laika_mask: u32) -> *mut Handle {
         semantic: SemanticObservation::default(),
         semantic_buffer: vec![0.0; OBS_DIM + BULLET_SLOTS],
         walking_curriculum: 0,
+        pursuit_target_right: false,
         last_rl_action: [STOP_ACTION; 2],
     });
     build_render(&mut h);
@@ -177,6 +179,7 @@ pub extern "C" fn kf_new_pursuit_v1() -> *mut Handle {
     unsafe {
         (*handle).game = Game::walking_curriculum(20_260_827);
         (*handle).walking_curriculum = 3;
+        (*handle).pursuit_target_right = false;
         build_render(&mut *handle);
     }
     handle
@@ -328,12 +331,13 @@ pub unsafe extern "C" fn kf_set_rotation_if_clear(h: *mut Handle, tank: u32, rot
         .set_tank_rotation_if_clear(tank as usize, rotation as f64) as u32
 }
 
-/// PPO `Discrete(130)` input: 128 instant-turn wheel directions + FIRE + STOP.
+/// PPO `Discrete(722)` input: 360 forward directions + 360 reverse directions
+/// + FIRE + STOP.
 #[no_mangle]
 pub unsafe extern "C" fn kf_set_rl_action(h: *mut Handle, tank: u32, action: u32) {
     let h = &mut *h;
     let tank = tank as usize;
-    let action = action.min(129) as u16;
+    let action = action.min(STOP_ACTION as u32) as u16;
     h.last_rl_action[tank] = action;
     apply_joystick_action(&mut h.game, tank, action);
 }
@@ -350,7 +354,7 @@ pub unsafe extern "C" fn kf_set_human_direction_input(
     apply_human_direction(
         &mut (*h).game,
         tank as usize,
-        movement.min(128) as u16,
+        movement.min(360) as u16,
         fire.min(1) as u8,
     );
 }
@@ -382,7 +386,7 @@ pub unsafe extern "C" fn kf_step(h: *mut Handle) -> u32 {
             tank.turn_right_amount = None;
         }
     }
-    let route_direction_mismatch = if h.walking_curriculum != 0 {
+    let route_direction_mismatch = if h.walking_curriculum != 0 && h.walking_curriculum != 3 {
         let mut observation = SemanticObservation::default();
         encode_semantic(&h.game, 0, &h.semantic_state, &mut observation);
         observation.values[NAV_OFFSET..NAV_OFFSET + 4]
@@ -401,15 +405,12 @@ pub unsafe extern "C" fn kf_step(h: *mut Handle) -> u32 {
         let target = h.game.tanks[1];
         let left = 4.5 * h.game.scale;
         let right = 5.5 * h.game.scale;
-        let action = if target.x <= left {
-            32
+        if target.x <= left {
+            h.pursuit_target_right = true;
         } else if target.x >= right {
-            96
-        } else if target.rotation >= 0.0 {
-            32
-        } else {
-            96
-        };
+            h.pursuit_target_right = false;
+        }
+        let action = if h.pursuit_target_right { 90 } else { 270 };
         apply_joystick_action(&mut h.game, 1, action);
     }
     let events = h.game.step();
@@ -445,10 +446,7 @@ pub unsafe extern "C" fn kf_step(h: *mut Handle) -> u32 {
     }
     let walking_arrived = h.walking_curriculum != 0 && h.game.tanks[0].alive && {
         if h.walking_curriculum == 3 {
-            let me = h.game.tanks[0];
-            let opponent = h.game.tanks[1];
-            h.game.tank_fields[0] == h.game.tank_fields[1]
-                && (me.x - opponent.x).hypot(me.y - opponent.y) <= 0.70 * h.game.scale
+            false
         } else {
             walking_curriculum_progress(&h.game) >= 0.98
         }
@@ -469,7 +467,7 @@ pub unsafe extern "C" fn kf_step(h: *mut Handle) -> u32 {
             || route_direction_mismatch
             || tank.hit_something
             || tank.wall_sliding
-            || !aligned
+            || (h.walking_curriculum != 3 && !aligned)
         {
             h.game.tanks[0].alive = false;
             h.game.alive_count = 1;
@@ -477,6 +475,12 @@ pub unsafe extern "C" fn kf_step(h: *mut Handle) -> u32 {
             h.last_winner = 1.0;
             flags |= 16 | 64;
         }
+    }
+    if h.walking_curriculum == 3 && !h.game.frozen && h.game.frame - h.game.round_start_frame >= 300
+    {
+        h.game.frozen = true;
+        h.last_winner = -1.0;
+        flags |= 64;
     }
     if h.walking_curriculum != 0 && new_round {
         h.game = if h.walking_curriculum == 3 {
@@ -487,6 +491,7 @@ pub unsafe extern "C" fn kf_step(h: *mut Handle) -> u32 {
             Game::walking_curriculum(20_260_825)
         };
         h.semantic_state.reset();
+        h.pursuit_target_right = false;
         h.last_rl_action = [STOP_ACTION; 2];
         h.last_winner = -1.0;
     }
@@ -699,7 +704,7 @@ pub unsafe extern "C" fn kf_reward_info(h: *mut Handle, out: *mut f32) {
 }
 
 /// Encode schema-8 observation for a browser-hosted learned policy.
-/// `last_action` is the previous Discrete(130) action, or -1 at a boundary.
+/// `last_action` is the previous Discrete(722) action, or -1 at a boundary.
 #[no_mangle]
 pub unsafe extern "C" fn kf_semantic_observation(
     h: *mut Handle,
@@ -729,9 +734,9 @@ mod walking_viewer_tests {
     use super::*;
 
     #[test]
-    fn viewer_accepts_the_schema_8_route_actions_and_marks_arrival() {
+    fn viewer_accepts_the_schema_9_route_actions_and_marks_arrival() {
         let handle = kf_new_walking_v1();
-        let actions = [(32, 62), (0, 12), (96, 62), (0, 13), (32, 19)];
+        let actions = [(90, 62), (0, 12), (270, 62), (0, 13), (90, 19)];
         let mut frames = 0;
         for (action, count) in actions {
             for _ in 0..count {
@@ -754,7 +759,7 @@ mod walking_viewer_tests {
     #[test]
     fn viewer_map_v2_accepts_the_transferred_policy_route() {
         let handle = kf_new_walking_v2();
-        let actions = [(32, 75), (0, 25), (96, 75), (0, 12), (32, 70)];
+        let actions = [(90, 75), (0, 25), (270, 75), (0, 12), (90, 70)];
         let mut frames = 0;
         for (action, count) in actions {
             for _ in 0..count {
@@ -799,23 +804,61 @@ mod walking_viewer_tests {
     }
 
     #[test]
-    fn viewer_two_cell_pursuit_route_arrives_in_194_frames() {
+    fn viewer_two_cell_target_reaches_both_cell_centres_repeatedly() {
         let handle = kf_new_pursuit_v1();
-        let actions = [(32, 62), (0, 12), (96, 62), (0, 13), (32, 45)];
-        let mut frames = 0;
-        for (action, count) in actions {
-            for _ in 0..count {
-                unsafe {
-                    kf_set_rl_action(handle, 0, action);
-                    let flags = kf_step(handle);
-                    frames += 1;
-                    if frames < 194 {
-                        assert_eq!(flags & 64, 0, "viewer ended at frame {frames}");
-                    } else {
-                        assert_ne!(flags & 64, 0);
-                        assert_eq!((*handle).last_winner, 0.0);
-                    }
+        let scale = unsafe { (*handle).game.scale };
+        let mut minimum = f64::INFINITY;
+        let mut maximum = f64::NEG_INFINITY;
+        let mut reversals = 0;
+        let mut previous_direction = false;
+        for _ in 0..100 {
+            unsafe {
+                let mut observation = SemanticObservation::default();
+                encode_semantic(
+                    &(*handle).game,
+                    0,
+                    &(*handle).semantic_state,
+                    &mut observation,
+                );
+                let direction = observation.values[NAV_OFFSET..NAV_OFFSET + 4]
+                    .iter()
+                    .position(|&value| value > 0.5)
+                    .unwrap();
+                kf_set_rl_action(handle, 0, [0, 90, 180, 270][direction]);
+                kf_step(handle);
+                let h = &*handle;
+                minimum = minimum.min(h.game.tanks[1].x);
+                maximum = maximum.max(h.game.tanks[1].x);
+                if h.pursuit_target_right != previous_direction {
+                    reversals += 1;
+                    previous_direction = h.pursuit_target_right;
                 }
+            }
+        }
+        assert!(minimum <= 4.5 * scale);
+        assert!(maximum >= 5.5 * scale);
+        assert!(reversals >= 4, "only {reversals} completed reversals");
+        unsafe { kf_free(handle) };
+    }
+
+    #[test]
+    fn viewer_two_cell_pursuit_uses_the_300_frame_training_horizon() {
+        let handle = kf_new_pursuit_v1();
+        let mut action = 90;
+        for frame in 1..=300 {
+            unsafe {
+                let h = &*handle;
+                let mut observation = SemanticObservation::default();
+                encode_semantic(&h.game, 0, &h.semantic_state, &mut observation);
+                if let Some(direction) = observation.values[NAV_OFFSET..NAV_OFFSET + 4]
+                    .iter()
+                    .position(|&value| value > 0.5)
+                {
+                    action = [0, 90, 180, 270][direction];
+                }
+                kf_set_rl_action(handle, 0, action);
+                let flags = kf_step(handle);
+                assert_eq!(flags & 64 != 0, frame == 300, "unexpected end at {frame}");
             }
         }
         unsafe { kf_free(handle) };

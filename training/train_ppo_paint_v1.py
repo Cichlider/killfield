@@ -1,4 +1,4 @@
-"""PPO fixed-map curriculum: seek and kill an inert target without self-killing."""
+"""PPO curricula for fixed-map locomotion, pursuit, and static-target combat."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ from torch.distributions import Categorical
 
 from ppo_models import (
     ACTION_COUNT, BULLET_SLOTS, FIRE_ACTION, MAP_DIM, OBS_DIM,
-    OBS_SCHEMA_VERSION, STOP_ACTION, make_actor_critic,
+    NAV_OFFSET, OBS_SCHEMA_VERSION, STOP_ACTION, make_actor_critic,
 )
 
 
@@ -58,6 +58,7 @@ class Config:
     failure_rules: str = "self-death,double-death,timeout=-10"
     initial_checkpoint: str = ""
     actor_logit_scale_on_init: float = 1.0
+    direction_pretrain_epochs: int = 0
     envs: int = 64
     rollout_steps: int = 256
     total_steps: int = 5_000_000
@@ -432,6 +433,10 @@ def evaluate_walking(model, kind, config, device, walking_map=1, pursuit=False):
     starts = np.ones(config.eval_envs, bool)
     decisions = np.zeros(config.eval_envs, np.int64)
     fired = np.zeros(config.eval_envs, bool)
+    bfs_sum = np.zeros(config.eval_envs, np.float64)
+    bfs_count = np.zeros(config.eval_envs, np.int64)
+    bfs_min = np.full(config.eval_envs, np.inf, np.float64)
+    bfs_final = np.zeros(config.eval_envs, np.float64)
     episodes = []
     try:
         while len(episodes) < config.eval_episodes:
@@ -446,28 +451,53 @@ def evaluate_walking(model, kind, config, device, walking_map=1, pursuit=False):
             fired |= action == FIRE_ACTION
             decisions += 1
             env.step(action)
+            if pursuit:
+                bfs = env.obs[:, NAV_OFFSET + 4].astype(np.float64) * 22.0
+                settled = decisions % 4 == 0
+                bfs_sum[settled] += bfs[settled]
+                bfs_count[settled] += 1
+                bfs_min[settled] = np.minimum(bfs_min[settled], bfs[settled])
+                bfs_final[:] = bfs
             done = env.dones.astype(bool).copy()
             for index in np.flatnonzero(done):
                 winner = int(env.winners[index])
                 reason = int(env.walking_failure_reasons[index])
-                episodes.append({
-                    "outcome": "arrived" if winner == 0 else "failed" if winner == 1 else "timeout",
+                row = {
+                    "outcome": (
+                        "failed" if pursuit and winner == 1 else
+                        "completed" if pursuit else
+                        "arrived" if winner == 0 else
+                        "failed" if winner == 1 else "timeout"
+                    ),
                     "failure_reason": {1: "wall", 2: "heading", 3: "fire", 4: "timeout", 5: "stop", 6: "route_direction"}.get(reason, "none"),
                     "decisions": int(decisions[index]),
                     "fired": bool(fired[index]),
-                })
+                }
+                if pursuit:
+                    count = max(int(bfs_count[index]), 1)
+                    row.update({
+                        "bfs_mean": float(bfs_sum[index] / count),
+                        "bfs_min": float(bfs_min[index]) if bfs_count[index] else float(bfs_final[index]),
+                        "bfs_final": float(bfs_final[index]),
+                    })
+                episodes.append(row)
                 decisions[index] = 0
                 fired[index] = False
+                bfs_sum[index] = 0.0
+                bfs_count[index] = 0
+                bfs_min[index] = np.inf
+                bfs_final[index] = 0.0
             env.reset_done()
             starts = done
     finally:
         env.close()
     episodes = episodes[:config.eval_episodes]
+    outcome_keys = ("completed", "failed") if pursuit else ("arrived", "failed", "timeout")
     outcomes = {key: sum(row["outcome"] == key for row in episodes)
-                for key in ("arrived", "failed", "timeout")}
+                for key in outcome_keys}
     failure_reasons = {key: sum(row["failure_reason"] == key for row in episodes)
                        for key in ("wall", "heading", "fire", "stop", "route_direction", "timeout")}
-    return {
+    result = {
         "episodes": len(episodes),
         "map": (
             "walking-v1-oscillating-laika-last-two-cells-seed-20260827"
@@ -478,10 +508,19 @@ def evaluate_walking(model, kind, config, device, walking_map=1, pursuit=False):
         ),
         "outcomes": outcomes,
         "failure_reasons": failure_reasons,
-        "arrival_rate": outcomes["arrived"] / len(episodes),
         "fire_rate": float(np.mean([row["fired"] for row in episodes])),
         "decisions_mean": float(np.mean([row["decisions"] for row in episodes])),
     }
+    if pursuit:
+        result.update({
+            "completion_rate": outcomes["completed"] / len(episodes),
+            "bfs_mean": float(np.mean([row["bfs_mean"] for row in episodes])),
+            "bfs_min_mean": float(np.mean([row["bfs_min"] for row in episodes])),
+            "bfs_final_mean": float(np.mean([row["bfs_final"] for row in episodes])),
+        })
+    else:
+        result["arrival_rate"] = outcomes["arrived"] / len(episodes)
+    return result
 
 
 def append_jsonl(path, value):
@@ -503,6 +542,94 @@ def select_device(choice):
                 raise
             print("MPS 报告可用但实际初始化失败；本次回退 CPU", flush=True)
     return torch.device("cpu")
+
+
+def pretrain_pursuit_direction(model, kind, optimiser, config, device):
+    """Teach the frozen route-action mapping on one exact 300-frame oracle trace."""
+    if kind != "nomem":
+        raise ValueError("the pursuit direction warm-up currently requires nomem")
+    env = PpoVec(1, 0, pursuit=True)
+    observations, masks, targets = [], [], []
+    previous_action = 90
+    try:
+        for frame in range(config.episode_frames):
+            observation = env.obs.copy()
+            route = observation[0, NAV_OFFSET:NAV_OFFSET + 4]
+            if route.max() > 0.5:
+                previous_action = int(route.argmax()) * 90
+            observations.append(observation[0])
+            masks.append(env.masks[0].copy())
+            targets.append(previous_action)
+            env.step(np.asarray([previous_action], np.uint16))
+            if env.dones[0] and frame + 1 != config.episode_frames:
+                reason = int(env.walking_failure_reasons[0])
+                raise RuntimeError(f"oracle failed at frame {frame + 1}, reason {reason}")
+    finally:
+        env.close()
+    observations = np.asarray(observations, np.float32)
+    masks = np.asarray(masks, bool)
+    targets = torch.as_tensor(targets, device=device, dtype=torch.long)
+    rng = np.random.default_rng(20_260_827)
+    model.train()
+    for epoch in range(config.direction_pretrain_epochs):
+        order = rng.permutation(len(observations))
+        for start in range(0, len(order), 64):
+            indices = order[start:start + 64]
+            optimiser.zero_grad(set_to_none=True)
+            logits, _value, _hidden = model.step(
+                *tensors(observations[indices], masks[indices], device),
+                model.initial_hidden(len(indices), device),
+            )
+            loss = F.cross_entropy(logits, targets[indices])
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), config.max_grad_norm)
+            optimiser.step()
+    model.eval()
+    with torch.no_grad():
+        logits, _value, _hidden = model.step(
+            *tensors(observations, masks, device),
+            model.initial_hidden(len(observations), device),
+        )
+        accuracy = float((logits.argmax(-1) == targets).float().mean())
+    print(
+        f"pursuit direction pretrain: {len(observations)} frames, "
+        f"{config.direction_pretrain_epochs} epochs, accuracy={accuracy:.3f}",
+        flush=True,
+    )
+
+
+def load_schema8_joystick130(model, legacy_state):
+    """Migrate v6 schema-8 features/actions into schema-9 Discrete(722)."""
+    migrated = model.state_dict()
+    special = {"encoder.scalar_encoder.0.weight", "actor.weight", "actor.bias"}
+    for name, value in legacy_state.items():
+        if name not in special and name in migrated and migrated[name].shape == value.shape:
+            migrated[name].copy_(value)
+
+    old_scalar = legacy_state["encoder.scalar_encoder.0.weight"]
+    new_scalar = migrated["encoder.scalar_encoder.0.weight"]
+    new_scalar[:, :24].copy_(old_scalar[:, :24])
+    for direction in range(360):
+        old_direction = round(direction * 128 / 360) % 128
+        new_scalar[:, 24 + direction].copy_(old_scalar[:, 24 + old_direction])
+        new_scalar[:, 24 + 360 + direction].copy_(old_scalar[:, 24 + old_direction])
+    new_scalar[:, 24 + FIRE_ACTION].copy_(old_scalar[:, 24 + 128])
+    new_scalar[:, 24 + STOP_ACTION].copy_(old_scalar[:, 24 + 129])
+
+    old_weight = legacy_state["actor.weight"]
+    old_bias = legacy_state["actor.bias"]
+    for direction in range(360):
+        old_direction = round(direction * 128 / 360) % 128
+        migrated["actor.weight"][direction].copy_(old_weight[old_direction])
+        migrated["actor.bias"][direction].copy_(old_bias[old_direction])
+        reverse = 360 + direction
+        migrated["actor.weight"][reverse].copy_(old_weight[old_direction])
+        migrated["actor.bias"][reverse].copy_(old_bias[old_direction] - 2.0)
+    migrated["actor.weight"][FIRE_ACTION].copy_(old_weight[128])
+    migrated["actor.bias"][FIRE_ACTION].copy_(old_bias[128])
+    migrated["actor.weight"][STOP_ACTION].copy_(old_weight[129])
+    migrated["actor.bias"][STOP_ACTION].copy_(old_bias[129])
+    model.load_state_dict(migrated)
 
 
 def main():
@@ -547,22 +674,23 @@ def main():
         )
     elif pursuit:
         config = Config(
-            stage="pursuit-v7-two-cell-oscillating-laika-joystick130",
+            stage="pursuit-v9-two-cell-exp-bfs-joystick722",
             training_opponent="unarmed-laika-oscillating-between-last-two-cells",
             episode_frames=300,
-            navigation_total=5.0,
-            success_base=10.0,
-            speed_bonus_max=5.0,
+            navigation_total=0.0,
+            success_base=0.0,
+            speed_bonus_max=0.0,
             failure_reward=-10.0,
             shot_attempt_reward=0.0,
             shot_attempt_cap=0.0,
             map_name="walking-v1-six-by-three-serpentine-seed-20260827",
-            step_cost=-0.002,
-            failure_rules="wall-or-slide,no-displacement,route-direction-mismatch,displacement-heading-mismatch,fire=-10,stop=-10;timeout=-10",
+            step_cost=0.0,
+            failure_rules="wall-or-slide,no-displacement,fire=-10,stop=-10;human-wheel-reverse-is-legal;300-frame-horizon=truncation",
             initial_checkpoint="outputs/ppo_walking_v6_transition_context_joystick130/nomem/s11/final.pt",
             actor_logit_scale_on_init=0.5,
+            direction_pretrain_epochs=200,
             learning_rate=1e-4,
-            total_steps=500_000,
+            total_steps=32_768,
         )
     if args.smoke:
         config = replace(
@@ -571,7 +699,7 @@ def main():
             eval_every_updates=0, eval_episodes=100,
         )
     output_root = args.output or Path(
-        "outputs/ppo_pursuit_v7_two_cell_laika_joystick130" if pursuit
+        "outputs/ppo_pursuit_v9_two_cell_exp_bfs_joystick722" if pursuit
         else "outputs/ppo_walking_v6_transition_context_joystick130" if walking
         else "outputs/ppo_static_target_fixed_v1_joystick130"
     )
@@ -583,9 +711,9 @@ def main():
     config_dict |= {"model": args.model, "seed": args.seed, "device": str(device)}
     if pursuit:
         config_dict |= {
-            "proximity_reward": "every-4-frames:+5*(previous_bfs-current_bfs)/initial_bfs",
-            "success_reward": "10+5*(1-decisions/300)",
-            "target_motion": "continuous-oscillation-between-path-cells-16-and-17",
+            "proximity_reward": "every-4-frames:-exp(current_bfs-initial_bfs)",
+            "success_reward": "none; reaching Laika never ends the episode",
+            "target_motion": "full-centre-to-centre-traversal-between-path-cells-16-and-17",
         }
     config_path = output / "config.json"
     if (config_path.exists() and json.loads(config_path.read_text()) != config_dict
@@ -636,13 +764,18 @@ def main():
         )
         if init_checkpoint is not None:
             saved = torch.load(init_checkpoint, map_location=device, weights_only=False)
-            model.load_state_dict(saved["model"])
+            if saved["model"]["actor.bias"].shape[0] == 130 and ACTION_COUNT == 722:
+                load_schema8_joystick130(model, saved["model"])
+            else:
+                model.load_state_dict(saved["model"])
             if config.actor_logit_scale_on_init != 1.0:
                 with torch.no_grad():
                     model.actor.weight.mul_(config.actor_logit_scale_on_init)
                     model.actor.bias.mul_(config.actor_logit_scale_on_init)
                     model.actor.bias[FIRE_ACTION] = -8.0
                     model.actor.bias[STOP_ACTION] = -8.0
+        if pursuit and config.direction_pretrain_epochs:
+            pretrain_pursuit_direction(model, args.model, optimiser, config, device)
 
     steps_per_update = config.envs * config.rollout_steps
     updates = math.ceil(config.total_steps / steps_per_update)
@@ -702,7 +835,7 @@ def main():
     model.eval()
     final_eval = evaluate(model, args.model, config, device)
     result = {
-        "name": f"ppo-{'pursuit-v7-two-cell-oscillating-laika' if pursuit else 'walking-v6-transition-context-serpentine' if walking else 'static-target-fixed-v1'}-joystick130-{args.model}-s{args.seed}",
+        "name": f"ppo-{'pursuit-v9-two-cell-exp-bfs-joystick722' if pursuit else 'walking-v6-transition-context-serpentine-joystick130' if walking else 'static-target-fixed-v1-joystick130'}-{args.model}-s{args.seed}",
         "model": args.model, "seed": args.seed, "total_steps": total_steps,
         "seconds_this_run": time.perf_counter() - started,
         "evaluation": final_eval, "config": config_dict,

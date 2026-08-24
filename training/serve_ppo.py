@@ -1,4 +1,4 @@
-"""Serve the WASM behavior viewer and completed joystick130 PPO checkpoints."""
+"""Serve the WASM behavior viewer and completed PPO checkpoints."""
 
 from __future__ import annotations
 
@@ -12,16 +12,22 @@ import torch
 
 from ppo_models import (
     BULLET_SLOTS, OBS_DIM, make_actor_critic, make_legacy_schema7_actor_critic,
+    make_legacy_schema8_actor_critic,
 )
 
 
 # Completed runs remain selectable so behavior review never silently replaces an
-# earlier handoff. Schema-7 inputs are reconstructed by a read-only adapter.
+# earlier handoff. Schema-7/8 inputs are reconstructed by read-only adapters.
 SOURCES = {
-    "pursuit-v7-s11": {
-        "display": "ppo-pursuit-v7-two-cell-oscillating-laika-joystick130-nomem-s11",
+    "pursuit-v9-s22": {
+        "display": "ppo-pursuit-v9-two-cell-exp-bfs-joystick722-nomem-s22",
+        "architecture": "nomem", "schema": 9, "history": 1,
+        "checkpoint": "outputs/ppo_pursuit_v9_two_cell_exp_bfs_joystick722/nomem/s22/final.pt",
+    },
+    "pursuit-v8-s11": {
+        "display": "ppo-pursuit-v8-two-cell-exp-bfs-joystick130-nomem-s11",
         "architecture": "nomem", "schema": 8, "history": 1,
-        "checkpoint": "outputs/ppo_pursuit_v7_two_cell_laika_joystick130/nomem/s11/final.pt",
+        "checkpoint": "outputs/ppo_pursuit_v8_two_cell_exp_bfs_joystick130/nomem/s11/final.pt",
     },
     "walking-v6-s11": {
         "display": "ppo-walking-v6-transition-context-serpentine-joystick130-nomem-s11",
@@ -60,6 +66,22 @@ SOURCES = {
         "checkpoint": "outputs/ppo_static_target_fixed_v1_joystick130/nomem/s11/final.pt",
     },
 }
+
+
+def schema9_to_schema8(obs):
+    """Collapse the two 360-degree wheels for completed Discrete(130) models."""
+    old = list(obs[:924]) + [0.0] * 130
+    active = next((i for i, value in enumerate(obs[924:1646]) if value > 0.5), None)
+    if active is not None:
+        if active < 720:
+            direction = active % 360
+            old_action = round(direction * 128 / 360) % 128
+        elif active == 720:
+            old_action = 128
+        else:
+            old_action = 129
+        old[924 + old_action] = 1.0
+    return old
 
 
 def schema8_to_schema7(obs):
@@ -142,8 +164,11 @@ class Models:
             checkpoint = torch.load(
                 checkpoint_path, map_location=self.device, weights_only=False
             )
-            factory = (make_legacy_schema7_actor_critic
-                       if source["schema"] == 7 else make_actor_critic)
+            factory = (
+                make_legacy_schema7_actor_critic if source["schema"] == 7 else
+                make_legacy_schema8_actor_critic if source["schema"] == 8 else
+                make_actor_critic
+            )
             model = factory(source["architecture"]).to(self.device)
             model.load_state_dict(checkpoint["model"])
             model.eval()
@@ -157,6 +182,8 @@ class Models:
         if not history:
             raise ValueError("empty history")
         obs_rows = [item["obs"] for item in history]
+        if source["schema"] < 9:
+            obs_rows = [schema9_to_schema8(row) for row in obs_rows]
         if source["schema"] == 7:
             obs_rows = [schema8_to_schema7(row) for row in obs_rows]
         obs = torch.tensor(
@@ -175,10 +202,18 @@ class Models:
         else:
             logits, _values, _hidden = model.step(obs[:, -1], mask[:, -1])
             probabilities = logits[0].softmax(-1)
-        action = int(probabilities.argmax())
+        raw_action = int(probabilities.argmax())
+        action = raw_action
+        if source["schema"] < 9:
+            if raw_action < 128:
+                action = round(raw_action * 360 / 128) % 360
+            elif raw_action == 128:
+                action = 720
+            else:
+                action = 721
         return {
             "action": action,
-            "confidence": float(probabilities[action]),
+            "confidence": float(probabilities[raw_action]),
             "probabilities": probabilities.cpu().tolist(),
             "history": len(history),
             "model": source["display"],

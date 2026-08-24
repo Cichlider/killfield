@@ -8,8 +8,8 @@ import torch
 import torch.nn as nn
 
 
-OBS_SCHEMA_VERSION = 8
-OBS_DIM = 1054
+OBS_SCHEMA_VERSION = 9
+OBS_DIM = 1646
 MAP_DIM = 840
 NAV_OFFSET = 840
 SELF_OFFSET = 845
@@ -20,9 +20,9 @@ BULLET_DIM = 6
 PHASE_OFFSET = 920
 TIME_OFFSET = 923
 ACTION_OFFSET = 924
-ACTION_COUNT = 130
-FIRE_ACTION = 128
-STOP_ACTION = 129
+ACTION_COUNT = 722
+FIRE_ACTION = 720
+STOP_ACTION = 721
 SCALAR_DIM = (BULLET_OFFSET - MAP_DIM) + (OBS_DIM - PHASE_OFFSET)
 
 
@@ -109,20 +109,58 @@ class LegacySchema7FrameEncoder(nn.Module):
         return encoded.reshape(*original, 128)
 
 
+class LegacySchema8FrameEncoder(nn.Module):
+    """Read-only compatibility encoder for completed Discrete(130) runs."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.map_encoder = nn.Sequential(
+            nn.Conv2d(7, 16, 3, padding=1), nn.ReLU(),
+            nn.Conv2d(16, 32, 3, stride=2, padding=1), nn.ReLU(),
+            nn.Flatten(), nn.Linear(32 * 6 * 5, 128), nn.Tanh(),
+        )
+        self.bullet_encoder = nn.Sequential(
+            nn.Linear(6, 32), nn.ReLU(), nn.Linear(32, 32), nn.ReLU(),
+        )
+        self.scalar_encoder = nn.Sequential(nn.Linear(154, 64), nn.Tanh())
+        self.fusion = nn.Sequential(nn.Linear(256, 128), nn.Tanh())
+
+    def forward(self, obs: torch.Tensor, bullet_mask: torch.Tensor) -> torch.Tensor:
+        original = obs.shape[:-1]
+        obs = obs.reshape(-1, 1054)
+        bullet_mask = bullet_mask.reshape(-1, 10)
+        maps = obs[:, :840].reshape(-1, 12, 10, 7).permute(0, 3, 1, 2)
+        map_features = self.map_encoder(maps)
+        bullets = obs[:, 860:920].reshape(-1, 10, 6)
+        bullet_features = self.bullet_encoder(bullets)
+        mask = bullet_mask.unsqueeze(-1)
+        count = mask.sum(1).clamp(min=1)
+        bullet_mean = (bullet_features * mask).sum(1) / count
+        bullet_max = torch.amax(bullet_features.masked_fill(~mask, -torch.inf), dim=1)
+        bullet_max = torch.where((~bullet_mask.any(1))[:, None], 0.0, bullet_max)
+        scalar = torch.cat((obs[:, 840:860], obs[:, 920:]), 1)
+        scalar_features = self.scalar_encoder(scalar)
+        encoded = self.fusion(
+            torch.cat((map_features, bullet_mean, bullet_max, scalar_features), 1)
+        )
+        return encoded.reshape(*original, 128)
+
+
 class ActorCritic(nn.Module):
-    def __init__(self, recurrent: bool):
+    def __init__(self, recurrent: bool, encoder=None, action_count=ACTION_COUNT,
+                 fire_action=FIRE_ACTION):
         super().__init__()
         self.recurrent = recurrent
-        self.encoder = FrameEncoder()
+        self.encoder = encoder or FrameEncoder()
         if recurrent:
             self.memory = nn.GRU(128, 256, batch_first=True)
         else:
             self.memory = nn.Sequential(nn.Linear(128, 256), nn.Tanh())
-        self.actor = nn.Linear(256, ACTION_COUNT)
+        self.actor = nn.Linear(256, action_count)
         self.critic = nn.Linear(256, 1)
-        self._initialise()
+        self._initialise(fire_action)
 
-    def _initialise(self):
+    def _initialise(self, fire_action):
         for layer in self.modules():
             if isinstance(layer, (nn.Linear, nn.Conv2d)):
                 nn.init.orthogonal_(layer.weight, gain=math.sqrt(2))
@@ -137,7 +175,7 @@ class ActorCritic(nn.Module):
                     else:
                         nn.init.zeros_(parameter)
         nn.init.orthogonal_(self.actor.weight, gain=0.01)
-        self.actor.bias.data[FIRE_ACTION] = 2.0
+        self.actor.bias.data[fire_action] = 2.0
         nn.init.orthogonal_(self.critic.weight, gain=1.0)
 
     def initial_hidden(self, batch: int, device):
@@ -213,6 +251,14 @@ def make_actor_critic(kind: str):
 
 
 def make_legacy_schema7_actor_critic(kind: str):
-    model = make_actor_critic(kind)
-    model.encoder = LegacySchema7FrameEncoder()
-    return model
+    return ActorCritic(
+        recurrent=kind == "gru", encoder=LegacySchema7FrameEncoder(),
+        action_count=130, fire_action=128,
+    )
+
+
+def make_legacy_schema8_actor_critic(kind: str):
+    return ActorCritic(
+        recurrent=kind == "gru", encoder=LegacySchema8FrameEncoder(),
+        action_count=130, fire_action=128,
+    )

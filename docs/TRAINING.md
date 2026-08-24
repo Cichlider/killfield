@@ -1,20 +1,22 @@
 # PPO 训练与交付
 
-## pursuit-v7 两格往返 Laika 课程
+## pursuit-v9 双 360° 轮盘、两格往返 Laika 课程
 
-- 地图：固定 seed `20260827`，`6×3` 单通道蛇形道路；Laika 无武器，在路径最后两个
-  相邻格之间持续往返；目标是尽快追到距离 Laika 不超过 `0.70` 格；
-- Observation schema 8 不变：地图 840、当前动态 waypoint 方向和 BFS 剩余格数 5、
-  自身 9、对手 6、子弹 60、阶段 3、时间 1、上一动作 130，共 1054 维；
-- Action 仍为 `Discrete(130)`：`0..127` 瞬时朝向并前进、`128` 开火、`129` 停止；
-- STOP、FIRE、撞墙/侧滑、无位移、偏离当前动态路线方向、位移与车头不一致均立即
-  `-10` 并终止；300 帧超时 `-10`；合法帧 `-0.002`；
-- 每 4 帧结算 BFS shaping：`5 × (上次距离 - 当前距离) / 初始距离`；追上时奖励
-  `10 + 5 × (1 - t/300)`，因此越近、越快越高；
-- 从 v6 checkpoint 继续训练；为解除已确认的动作头坍缩，仅在初始化时将 actor logits
-  缩放为 `0.5`，FIRE/STOP bias 设为 `-8`；正式训练 507,904 步；
-- 固定动态图恰好 100 局：100 到达、0 失败、0 超时，平均 194 帧；固定 Laika 旁路
-  恰好 100 局：5 胜、88 负、7 双亡、0 超时，胜率 5%。
+- 地图：固定 seed `20260827`，`6×3` 单通道蛇形道路；Laika 无武器，会从路径倒数
+  第二格中心完整走到最后一格中心，再完整折返；靠近或追上 Laika 不结束回合；
+- Observation schema 9：地图 840、当前动态 waypoint 方向和 BFS 剩余格数 5、自身 9、
+  对手 6、子弹 60、阶段 3、时间 1、上一动作 722，共 1646 维；
+- Action 为 `Discrete(722)`：`0..359` 是完整 360° 前进轮盘，`360..719` 是完整 360°
+  倒车轮盘，`720` FIRE，`721` STOP；两套轮盘都瞬时对齐，无转速限制；
+- STOP、FIRE、撞墙/侧滑、无位移立即 `-10` 并终止；前进/倒车均为合法显式挡位；
+  300 帧 horizon 是 truncation，没有追上奖励、到达终止、逐帧成本或超时扣分；
+- 每 4 帧精确结算 `-exp(BFS当前 - BFS初始)`；它等价于给 `e^BFS当前` 乘固定系数
+  `e^-BFS初始`，避免十几格初始距离造成数值爆炸；
+- 从 walking-v6 schema-8 checkpoint 迁移地图/导航编码和旧动作头；用精确 300 帧动态
+  路线做 200 epochs 方向预训练，再运行 32,768 PPO 步；无 paint、gate 或 MPC 信息；
+- 固定动态图恰好 100 局：100 局均严格完成 300 帧，0 失败，平均 BFS `5.60`、最小
+  BFS 均值 `0`、最终 BFS 均值 `0`；固定 Laika 旁路恰好 100 局：5 胜、89 负、
+  6 双亡、0 超时，胜率 5%。
 
 ## walking-v6 transition-context 课程
 
@@ -76,8 +78,10 @@ zsh training/run_ppo_paint_v1.sh train
 
 ## 当前训练结果
 
-- schema-8 `ppo-pursuit-v7-two-cell-oscillating-laika-joystick130-nomem-s11`：动态图
-  恰好 100 局全部追上，平均 194 帧；固定 Laika 恰好 100 局胜率 5%；
+- schema-9 `ppo-pursuit-v9-two-cell-exp-bfs-joystick722-nomem-s22`：32,768 PPO 步；
+  动态图恰好 100 局均完成 300 帧，平均 BFS `5.60`，固定 Laika 恰好 100 局胜率 5%；
+- schema-8 `ppo-pursuit-v8-two-cell-exp-bfs-joystick130-nomem-s11`：旧 128 方向协议的
+  已完成对照，动态图 100 局均在第 211 帧路线翻向失败；仍保留在 Viewer 供行为对照；
 - schema-8 `ppo-walking-v6-transition-context-serpentine-joystick130-nomem-s11`：固定图
   恰好 100 局全部到达，平均 208 帧；未训练地图 v2 零样本恰好 100 局全部到达，
   平均 257 帧；

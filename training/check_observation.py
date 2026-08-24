@@ -82,7 +82,7 @@ def main():
     require(
         "previous_action",
         np.isin(action_sum, (0.0, 1.0)).all(),
-        "previous Discrete(130) action is not empty/one-hot",
+        "previous Discrete(722) action is not empty/one-hot",
     )
 
     bullets = obs[:, BULLET_OFFSET:PHASE_OFFSET].reshape(-1, BULLET_SLOTS, BULLET_DIM)

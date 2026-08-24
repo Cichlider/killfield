@@ -1,4 +1,4 @@
-//! Human-equivalent semantic observation (DESIGN.md, schema 8).
+//! Human-equivalent semantic observation (DESIGN.md, schema 9).
 //!
 //! The flat payload is useful for storage and ABI transport.  The ten bullet
 //! rows must still go through a shared bullet encoder followed by masked
@@ -28,7 +28,7 @@ pub const OBS_DIM: usize = MAP_DIM
     + PHASE_DIM
     + TIME_DIM
     + ACTION_DIM;
-pub const OBS_SCHEMA_VERSION: u32 = 8;
+pub const OBS_SCHEMA_VERSION: u32 = 9;
 
 pub const MAP_OFFSET: usize = 0;
 pub const NAV_OFFSET: usize = MAP_OFFSET + MAP_DIM;
@@ -370,11 +370,11 @@ mod tests {
     use crate::game::Game;
 
     #[test]
-    fn schema_8_replaces_path_mask_with_next_direction_and_cells() {
+    fn schema_9_uses_two_full_direction_wheels() {
         assert_eq!(MAP_CHANNELS, 7);
         assert_eq!(NAV_DIM, 5);
-        assert_eq!(OBS_DIM, 1054);
-        assert_eq!(ACTION_DIM, 130);
+        assert_eq!(OBS_DIM, 1646);
+        assert_eq!(ACTION_DIM, 722);
         assert_eq!(ACTION_OFFSET + ACTION_DIM, OBS_DIM);
     }
 
