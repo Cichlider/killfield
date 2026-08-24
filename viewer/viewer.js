@@ -24,11 +24,12 @@ import {
 
 const STEP_MS = 1000 / C.FPS; // 40 ms
 const MAX_CATCHUP_MS = 250;
-const ROUND_START_DELAY_FRAMES = Math.round(0.5 * C.FPS);
 const SELFPLAY_TIMEOUT_FRAMES = 30 * C.FPS;
 const STREAK_STORAGE_KEY = "killfield-streak";
 const TUNING_STORAGE_KEY = "killfield-ai-tuning";
 const INSTANT_TURN_STORAGE_KEY = "killfield-human-instant-turn";
+const OPENING_DELAY_STORAGE_KEY = "killfield-opening-delay-seconds";
+const DEFAULT_OPENING_DELAY_SECONDS = 0.5;
 
 // Render buffer layout, matching engine/src/wasm.rs's build_render() doc
 // comment: 18 header slots, then 120 paint flags (unused here — killfield has
@@ -87,6 +88,12 @@ const raysSelect = document.getElementById("rays");
 const forwardAlignmentInput = document.getElementById("forward-alignment");
 const forwardAlignmentLabel = document.getElementById("forward-alignment-label");
 const forwardAlignmentValue = document.getElementById("forward-alignment-value");
+const matchSettingsPanel = document.getElementById("match-settings-panel");
+const matchSettingsTitle = document.getElementById("match-settings-title");
+const openingDelayInput = document.getElementById("opening-delay");
+const openingDelayLabel = document.getElementById("opening-delay-label");
+const openingDelayValue = document.getElementById("opening-delay-value");
+const openingDelayHint = document.getElementById("opening-delay-hint");
 const oppModelSelect = document.getElementById("oppmodel");
 const oppModelHint = document.getElementById("oppmodel-hint");
 const watchButton = document.getElementById("mode-watch");
@@ -124,6 +131,23 @@ const sounds = new SoundEffects();
 
 let wasm = null;
 let scratchPtr = null;
+let openingDelaySeconds = DEFAULT_OPENING_DELAY_SECONDS;
+try {
+  openingDelaySeconds = normaliseOpeningDelay(localStorage.getItem(OPENING_DELAY_STORAGE_KEY));
+} catch {
+  // Keep the default when browser storage is unavailable.
+}
+
+function normaliseOpeningDelay(raw) {
+  if (raw === null || raw === "") return DEFAULT_OPENING_DELAY_SECONDS;
+  const value = Number(raw);
+  if (!Number.isFinite(value)) return DEFAULT_OPENING_DELAY_SECONDS;
+  return Math.max(0, Math.min(3, Math.round(value * 10) / 10));
+}
+
+function openingDelayFrameCount() {
+  return Math.round(openingDelaySeconds * C.FPS);
+}
 
 // ------------------------------------------------------------- renderer
 const MAX_DPR = 2;
@@ -519,6 +543,18 @@ function syncForwardAlignmentControl() {
   );
 }
 
+function syncOpeningDelayControl() {
+  const s = t();
+  matchSettingsTitle.textContent = s.matchSettingsTitle;
+  openingDelayLabel.textContent = s.openingDelayLabel;
+  openingDelayValue.textContent = s.openingDelayValue(openingDelaySeconds);
+  openingDelayHint.textContent = s.openingDelayHint;
+  openingDelayInput.value = String(openingDelaySeconds);
+  openingDelayInput.setAttribute(
+    "aria-label", `${s.openingDelayLabel}: ${s.openingDelayValue(openingDelaySeconds)}`,
+  );
+}
+
 function applyLanguage() {
   const s = t();
   document.documentElement.lang = s.htmlLang;
@@ -536,6 +572,7 @@ function applyLanguage() {
   rays512.textContent = s.rays512;
   rays256.textContent = s.rays256;
   syncForwardAlignmentControl();
+  syncOpeningDelayControl();
   oppModelLabel.textContent = s.oppModelLabel;
   oppModelLaikaOption.textContent = s.oppModelLaika;
   oppModelHumanOption.textContent = s.oppModelHuman;
@@ -561,7 +598,7 @@ let currentRound = 1;
 let frozen = false;
 const SELFPLAY_TIMEOUT_MS = SELFPLAY_TIMEOUT_FRAMES; // frames, matches C.FPS-based clock below
 let roundFrames = 0;
-let freezeFrames = 0; // >0 while a round hasn't started moving yet
+let killfieldDelayFrames = 0;
 let previousRenderState = null;
 
 // Match score and win streak are tallied here, outside the engine: rebuilding
@@ -629,10 +666,10 @@ function newGame() {
   }
   pushTuningToEngine();
 
-  // The instant a new round starts reads as relentless when a human is on the
-  // sticks. Play mode only; watch/self-play have no human waiting to catch a
-  // breath.
-  freezeFrames = mode === "play" ? ROUND_START_DELAY_FRAMES : 0;
+  // In human play the world and human controls start immediately. Only tank 0's
+  // MPC waits, giving the player genuine reaction/movement time.
+  killfieldDelayFrames = mode === "play" ? openingDelayFrameCount() : 0;
+  wasm.kf_set_mpc_enabled(handle, 0, killfieldDelayFrames === 0 ? 1 : 0);
   roundFrames = 0;
   previousRenderState = captureRenderState(renderBuffer());
   const buf = renderBuffer();
@@ -650,6 +687,7 @@ function setMode(next) {
   selfplayButton.classList.toggle("active", next === "selfplay");
   keyhelp.style.display = next === "play" ? "" : "none";
   touchControls.setAvailable(next === "play");
+  matchSettingsPanel.hidden = next !== "play";
   syncInstantTurnButton();
   // A mode switch changes who tank 1 even is, so treat it as a fresh match.
   matchScore = [0, 0];
@@ -688,6 +726,9 @@ function updateScoreboard() {
     const left = Math.max(0, SELFPLAY_TIMEOUT_MS - roundFrames) / C.FPS;
     text += ` · ${left.toFixed(0)}s`;
   }
+  if (mode === "play" && killfieldDelayFrames > 0 && !frozen) {
+    text += ` · ${s.openingDelayCountdown(killfieldDelayFrames / C.FPS)}`;
+  }
   if (paused) text += ` · ${s.paused}`;
   if (roundline.textContent !== text) roundline.textContent = text;
   const streakText = s.streakLine(streak.current, streak.longest);
@@ -718,12 +759,6 @@ function updateTelemetry() {
 }
 
 function tick() {
-  if (freezeFrames > 0) {
-    // A true freeze, not slow motion: the round doesn't advance at all during
-    // the breather, it just sits on the frame it opened with.
-    freezeFrames -= 1;
-    return;
-  }
   // kf_step drives any attached MPC agent internally, so unlike killfield's
   // JS loop this only needs to push human input before stepping.
   const human = MODES[mode].humanTank;
@@ -746,7 +781,12 @@ function tick() {
   frozen = buf[14] > 0.5;
   if (flags & 1) { // new_round
     roundFrames = 0;
-    if (mode === "play") freezeFrames = ROUND_START_DELAY_FRAMES;
+    killfieldDelayFrames = mode === "play" ? openingDelayFrameCount() : 0;
+    wasm.kf_set_mpc_enabled(handle, 0, killfieldDelayFrames === 0 ? 1 : 0);
+  }
+  if (mode === "play" && killfieldDelayFrames > 0 && !(flags & 1)) {
+    killfieldDelayFrames -= 1;
+    if (killfieldDelayFrames === 0) wasm.kf_set_mpc_enabled(handle, 0, 1);
   }
   if (flags & 64) { // round_end
     applyRoundEnd(buf[15]);
@@ -929,6 +969,13 @@ async function boot() {
   forwardAlignmentInput.addEventListener("input", () => {
     touchControls.setForwardAlignmentDegrees(forwardAlignmentInput.value);
     syncForwardAlignmentControl();
+  });
+  openingDelayInput.addEventListener("input", () => {
+    openingDelaySeconds = normaliseOpeningDelay(openingDelayInput.value);
+    try {
+      localStorage.setItem(OPENING_DELAY_STORAGE_KEY, String(openingDelaySeconds));
+    } catch { /* optional */ }
+    syncOpeningDelayControl();
   });
   oppModelSelect.addEventListener("change", newGame);
   tuningResetButton.addEventListener("click", () => {

@@ -42,6 +42,7 @@ pub const PAINT_SLOTS: usize = 12 * 10;
 pub struct Handle {
     game: Game,
     agents: Vec<Option<KillFieldAgent>>,
+    agent_enabled: Vec<bool>,
     render: Vec<f32>,
     last_winner: f32,
     reward: RewardTracker,
@@ -109,6 +110,7 @@ pub extern "C" fn kf_new(seed: u32, laika_mask: u32) -> *mut Handle {
     let mut h = Box::new(Handle {
         game: Game::with_ai(seed, 2, &ai),
         agents: vec![None, None],
+        agent_enabled: vec![true, true],
         render: Vec::new(),
         last_winner: -1.0,
         reward: RewardTracker::new(0),
@@ -155,6 +157,20 @@ pub unsafe extern "C" fn kf_attach_mpc(
         a.opp_model = OppModel::L1;
     }
     h.agents[tank as usize] = Some(a);
+    h.agent_enabled[tank as usize] = true;
+}
+
+/// Enable or pause one attached MPC agent without freezing game physics or
+/// human input. Used by the browser's per-round human reaction delay.
+///
+/// # Safety
+/// `h` must come from `kf_new`.
+#[no_mangle]
+pub unsafe extern "C" fn kf_set_mpc_enabled(h: *mut Handle, tank: u32, enabled: u32) {
+    let h = &mut *h;
+    if let Some(value) = h.agent_enabled.get_mut(tank as usize) {
+        *value = enabled != 0;
+    }
 }
 
 /// Continuous 0..1 strengths, matching the engine's human-input path — a
@@ -240,9 +256,22 @@ pub unsafe extern "C" fn kf_set_human_direction_input(
 pub unsafe extern "C" fn kf_step(h: *mut Handle) -> u32 {
     let h = &mut *h;
     for i in 0..2usize {
-        if let Some(mut a) = h.agents[i].take() {
-            a.drive(&mut h.game);
-            h.agents[i] = Some(a);
+        if h.agent_enabled[i] {
+            if let Some(mut a) = h.agents[i].take() {
+                a.drive(&mut h.game);
+                h.agents[i] = Some(a);
+            }
+        } else if let Some(tank) = h.game.tanks.get_mut(i) {
+            // Do not leave the last MPC action latched while the planner is paused.
+            tank.forward = false;
+            tank.backup = false;
+            tank.turn_left = false;
+            tank.turn_right = false;
+            tank.fire = false;
+            tank.forward_amount = None;
+            tank.backup_amount = None;
+            tank.turn_left_amount = None;
+            tank.turn_right_amount = None;
         }
     }
     let events = h.game.step();

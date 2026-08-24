@@ -498,6 +498,58 @@ canvas {
 
 .controls { margin-top: 18px; }
 
+.match-settings-panel[hidden] { display: none !important; }
+
+.match-settings-panel {
+  max-width: 430px;
+  margin: 14px 0 10px;
+  padding: 11px 13px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: rgba(31, 111, 120, 0.05);
+}
+
+.match-settings-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.match-settings-heading h2 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.match-settings-heading output {
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.match-settings-panel label {
+  display: block;
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.match-settings-panel input[type="range"] {
+  width: 100%;
+  margin: 4px 0 0;
+  padding: 0;
+  border: 0;
+  accent-color: var(--accent);
+}
+
+.match-settings-panel p {
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: 10px;
+}
+
 .scoreboard {
   display: flex;
   align-items: center;
