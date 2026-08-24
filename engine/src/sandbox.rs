@@ -58,6 +58,7 @@ pub fn make_sandbox(g: &Game, me: usize, opp_model: OppModel, rng_seed: u32) -> 
         seed: g.seed,
         tanks_count: g.tanks_count,
         settings_max_bullets: g.settings_max_bullets,
+        weapons_disabled: g.weapons_disabled.clone(),
 
         // Mutable state copied.
         alive_count: g.alive_count,

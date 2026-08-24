@@ -505,6 +505,8 @@ pub struct Game {
     pub tanks_count: usize,
 
     pub settings_max_bullets: i32,
+    /// Per-tank weapon lock. Movement controllers still run normally.
+    pub weapons_disabled: Vec<bool>,
 
     pub alive_count: i32,
     pub end_count: i32,
@@ -598,6 +600,7 @@ impl Game {
             seed,
             tanks_count: tanks,
             settings_max_bullets: C::SETTINGS_MAX_BULLETS as i32,
+            weapons_disabled: vec![false; tanks],
             alive_count: 0,
             end_count: -1,
             reset_count: -1,
@@ -830,7 +833,8 @@ impl Game {
 
     #[inline]
     pub fn weapon_ready(&self, tank: usize) -> bool {
-        self.tanks[tank].bullets_fired < self.settings_max_bullets
+        !self.weapons_disabled.get(tank).copied().unwrap_or(false)
+            && self.tanks[tank].bullets_fired < self.settings_max_bullets
     }
 
     pub fn fire_weapon(&mut self, tank: usize) {

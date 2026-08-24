@@ -135,6 +135,17 @@ pub extern "C" fn kf_new(seed: u32, laika_mask: u32) -> *mut Handle {
     Box::into_raw(h)
 }
 
+/// Normal maze with a fully mobile Laika whose weapon is mechanically locked.
+#[no_mangle]
+pub extern "C" fn kf_new_unarmed_laika(seed: u32) -> *mut Handle {
+    let handle = kf_new(seed, 2);
+    unsafe {
+        let h = &mut *handle;
+        h.game.weapons_disabled[1] = true;
+    }
+    handle
+}
+
 /// Fixed one-corridor locomotion curriculum with an inert target at the end.
 #[no_mangle]
 pub extern "C" fn kf_new_walking_v1() -> *mut Handle {
@@ -724,6 +735,30 @@ mod walking_viewer_tests {
                 }
             }
         }
+        unsafe { kf_free(handle) };
+    }
+
+    #[test]
+    fn unarmed_laika_moves_but_never_creates_a_projectile() {
+        let handle = kf_new_unarmed_laika(20_260_824);
+        let start = unsafe {
+            let h = &*handle;
+            (h.game.tanks[1].x, h.game.tanks[1].y)
+        };
+        for _ in 0..300 {
+            unsafe {
+                kf_set_rl_action(handle, 0, STOP_ACTION.into());
+                kf_step(handle);
+                let h = &*handle;
+                assert_eq!(h.game.round_shots_fired[1], 0);
+                assert!(h.game.bullets.iter().all(|bullet| bullet.owner != 1));
+            }
+        }
+        let end = unsafe {
+            let h = &*handle;
+            (h.game.tanks[1].x, h.game.tanks[1].y)
+        };
+        assert!(start.0 != end.0 || start.1 != end.1);
         unsafe { kf_free(handle) };
     }
 }

@@ -56,7 +56,8 @@ const WATCH_TANK_COLORS = [THEME.tanks[1], THEME.tanks[0]];
 // tank 1, so that presentation swaps the two colours without changing either
 // tank's engine identity. Play and self-play keep the default number palette.
 function tankColorsForMode(mode) {
-  return mode === "watch" || mode === "target" ? WATCH_TANK_COLORS : THEME.tanks;
+  return mode === "watch" || mode === "target" || mode === "inert"
+    ? WATCH_TANK_COLORS : THEME.tanks;
 }
 
 const DECISION_NAMES = [
@@ -67,6 +68,7 @@ const DECISION_NAMES = [
 // laika_mask) drives tank 1; in play mode you do; in self-play a second MPC
 // agent does.
 const MODES = {
+  inert: { humanTank: null },
   target: { humanTank: null },
   watch: { humanTank: null },
   play: { humanTank: 1 },
@@ -99,6 +101,7 @@ const openingDelayHint = document.getElementById("opening-delay-hint");
 const oppModelSelect = document.getElementById("oppmodel");
 const oppModelHint = document.getElementById("oppmodel-hint");
 const targetButton = document.getElementById("mode-target");
+const inertButton = document.getElementById("mode-inert");
 const watchButton = document.getElementById("mode-watch");
 const playButton = document.getElementById("mode-play");
 const selfplayButton = document.getElementById("mode-selfplay");
@@ -144,6 +147,7 @@ const BULLET_SLOTS = 10;
 const RL_FIRE_ACTION = 128;
 const RL_STOP_ACTION = 129;
 const STATIC_TARGET_SEED = 20260826;
+const REAL_INERT_SEED = 20260824;
 let selectedModel = "";
 let modelHistory = [];
 let lastModelAction = -1;
@@ -613,6 +617,7 @@ function applyLanguage() {
   langToggle.setAttribute("aria-label", s.langToggleAria);
   tagline.textContent = s.tagline;
   watchButton.textContent = s.modeWatch;
+  inertButton.textContent = s.modeInert;
   targetButton.textContent = s.modeTarget;
   playButton.textContent = s.modePlay;
   selfplayButton.textContent = s.modeSelfplay;
@@ -642,7 +647,7 @@ function applyLanguage() {
   updateScoreboard();
 }
 
-let mode = "target";
+let mode = "inert";
 let instantTurn = false;
 try { instantTurn = localStorage.getItem(INSTANT_TURN_STORAGE_KEY) === "1"; } catch { /* optional */ }
 let handle = null;
@@ -706,7 +711,11 @@ function newGame() {
 
   if (handle !== null) wasm.kf_free(handle);
   const laikaMask = mode === "watch" ? 2 : 0;
-  handle = mode === "target" ? wasm.kf_new_walking_v2() : wasm.kf_new(seed, laikaMask);
+  handle = mode === "target"
+    ? wasm.kf_new_walking_v2()
+    : mode === "inert"
+      ? wasm.kf_new_unarmed_laika(seed)
+      : wasm.kf_new(seed, laikaMask);
 
   // RL branch contract: tank 0 is driven only by /api/act; tank 1 is Laika.
   // Never attach the MPC planner here, even while no checkpoint is available.
@@ -735,6 +744,7 @@ function setMode(next) {
   keyboard.clear();
   touchControls.clear();
   targetButton.classList.toggle("active", next === "target");
+  inertButton.classList.toggle("active", next === "inert");
   watchButton.classList.toggle("active", next === "watch");
   playButton.classList.toggle("active", next === "play");
   selfplayButton.classList.toggle("active", next === "selfplay");
@@ -754,19 +764,28 @@ function setMode(next) {
 
 function updateScenarioCopy() {
   const target = mode === "target";
+  const inert = mode === "inert";
   tagline.textContent = lang === "zh"
     ? target
       ? "PPO 训练行为回放：固定地图，对手完全不动且不开枪。"
+      : inert
+        ? "真实迷宫模拟：PPO 对战正常移动、但武器锁死的 Laika。"
       : "PPO 行为评估：所选模型以 25 Hz 对战固定 Laika。"
     : target
       ? "PPO training behavior: fixed map against a completely inert target."
+      : inert
+        ? "Real-maze simulation: PPO faces a normally moving Laika with its weapon locked."
       : "PPO behavior evaluation: the selected model plays fixed Laika at 25 Hz.";
   note.textContent = lang === "zh"
     ? target
       ? "走路地图 v2：seed 20260826；7×4 单通道、22 格、5 次转弯，无位移、撞墙、倒车/侧滑或开火即失败，终点是不动靶。"
+      : inert
+        ? "真实游戏迷宫与正常物理/击杀规则；Laika 正常寻路移动，但无法开火。这里不使用走路课程的撞墙即死规则。"
       : "评估环境：左侧为 schema-8 PPO，右侧由固定 Laika 控制。"
     : target
       ? "Walking map v2: seed 20260826; a 7×4 single corridor with 22 cells and five turns. No displacement, wall contact, reverse/sideways motion, or firing fails; the inert target marks the finish."
+      : inert
+        ? "Real game maze with normal physics and kill rules; Laika moves normally but cannot fire. Walking-curriculum instant-failure rules are disabled."
       : "Evaluation environment: schema-8 PPO on the left, fixed Laika on the right.";
 }
 
@@ -790,7 +809,9 @@ function updateScoreboard() {
   if (handle === null) return;
   const s = t();
   const selectedName = rlModelSelect.selectedOptions[0]?.textContent || "PPO model";
-  const labels = [selectedName, mode === "target" ? (lang === "zh" ? "不动靶" : "inert target") : "Laika"];
+  const labels = [selectedName, mode === "target"
+    ? (lang === "zh" ? "不动靶" : "inert target")
+    : mode === "inert" ? (lang === "zh" ? "无武器 Laika" : "unarmed Laika") : "Laika"];
   for (let i = 0; i < 2; i++) {
     if (nameLabels[i].textContent !== labels[i]) nameLabels[i].textContent = labels[i];
     const score = String(matchScore[i]);
@@ -1096,7 +1117,7 @@ function toggleLanguage() {
 // -------------------------------------------------------------------- boot
 
 async function boot() {
-  const res = await fetch("kf_engine.wasm?v=schema8-walking-map-v2");
+  const res = await fetch("kf_engine.wasm?v=schema8-real-unarmed-laika-v1");
   const { instance } = await WebAssembly.instantiate(await res.arrayBuffer(), {});
   wasm = instance.exports;
   scratchPtr = wasm.kf_scratch_ptr();
@@ -1156,6 +1177,7 @@ async function boot() {
     tuningResetButton.blur();
   });
   targetButton.addEventListener("click", () => setMode("target"));
+  inertButton.addEventListener("click", () => setMode("inert"));
   watchButton.addEventListener("click", () => setMode("watch"));
   playButton.addEventListener("click", () => setMode("play"));
   selfplayButton.addEventListener("click", () => setMode("selfplay"));
@@ -1180,7 +1202,8 @@ async function boot() {
   oppModelSelect.closest("label").hidden = true;
   oppModelHint.hidden = true;
   keyhelp.hidden = true;
-  setMode("target");
+  seedInput.value = String(REAL_INERT_SEED);
+  setMode("inert");
   applyLanguage();
   requestAnimationFrame(frame);
 }
