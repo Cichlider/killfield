@@ -47,10 +47,12 @@
     </div>
     <div class="canvas-wrap">
       <canvas id="screen" width="712" height="500"></canvas>
-      <button id="sound" type="button" class="sound-toggle" aria-label="Mute sound"></button>
-      <button id="touch-visibility" type="button" class="touch-visibility-toggle" aria-label="Hide touch controls" hidden>CTRL</button>
-      <button id="pause" type="button" class="pause-toggle" aria-label="Pause (P)"></button>
-      <button id="fullscreen" type="button" class="fullscreen-toggle" aria-label="Fullscreen">⛶</button>
+      <div class="stage-toolbar" aria-label="Game controls">
+        <button id="touch-visibility" type="button" class="touch-visibility-toggle" aria-label="Hide touch controls" hidden>CTRL</button>
+        <button id="sound" type="button" class="sound-toggle" aria-label="Mute sound"></button>
+        <button id="pause" type="button" class="pause-toggle" aria-label="Pause (P)"></button>
+        <button id="fullscreen" type="button" class="fullscreen-toggle" aria-label="Fullscreen">⛶</button>
+      </div>
     </div>
     <div id="touch-controls" class="touch-controls" hidden>
       <div class="control-style-switch" role="group" aria-label="Touch control style">
@@ -121,6 +123,15 @@
         </select>
       </label>
     </div>
+    <section class="match-settings-panel" id="match-settings-panel" hidden>
+      <div class="match-settings-heading">
+        <h2 id="match-settings-title">Human vs Killfield</h2>
+        <output id="opening-delay-value" for="opening-delay">0.5 s</output>
+      </div>
+      <label for="opening-delay" id="opening-delay-label">Killfield opening delay</label>
+      <input id="opening-delay" type="range" min="0" max="3" step="0.1" value="0.5">
+      <p id="opening-delay-hint">The human can move immediately; only Killfield waits. Applies next round.</p>
+    </section>
     <p class="hint" id="oppmodel-hint">
       Only changes what the lookahead simulation predicts tank 1 will do — not who is actually
       driving it. Pick “Laika” in watch mode, where that prediction is exact. Pick “human” in

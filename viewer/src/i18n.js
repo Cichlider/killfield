@@ -36,6 +36,11 @@ export const STRINGS = {
     forwardAlignmentValue: (forward, reverse) => reverse === 0
       ? forward + "° / 360° · no reverse"
       : forward + "° / 360° · reverse " + reverse + "°",
+    matchSettingsTitle: "Human vs Killfield",
+    openingDelayLabel: "Killfield opening delay",
+    openingDelayValue: (seconds) => `${seconds.toFixed(1)} s`,
+    openingDelayHint: "The human can move immediately; only Killfield waits. Applies next round.",
+    openingDelayCountdown: (seconds) => `Killfield starts in ${seconds.toFixed(1)}s`,
     oppModelLabel: "planner assumes opponent is",
     oppModelLaika: "Laika (scripted)",
     oppModelHuman: "human (unpredictable)",
@@ -141,6 +146,11 @@ export const STRINGS = {
     forwardAlignmentValue: (forward, reverse) => reverse === 0
       ? forward + "° / 360° · 不后退"
       : forward + "° / 360° · 后退区 " + reverse + "°",
+    matchSettingsTitle: "人类 vs Killfield",
+    openingDelayLabel: "Killfield 开局停顿",
+    openingDelayValue: (seconds) => `${seconds.toFixed(1)} 秒`,
+    openingDelayHint: "人类立即可以行动，只有 Killfield 等待；从下一回合生效。",
+    openingDelayCountdown: (seconds) => `Killfield 将在 ${seconds.toFixed(1)} 秒后行动`,
     oppModelLabel: "规划器假设对手是",
     oppModelLaika: "Laika（脚本）",
     oppModelHuman: "人类（不可预测）",

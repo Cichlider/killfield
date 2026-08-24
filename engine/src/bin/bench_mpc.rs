@@ -15,6 +15,8 @@ fn main() {
     let mut losses = 0usize;
     let mut draws = 0usize;
     let mut timeouts = 0usize;
+    let mut win_streak = 0usize;
+    let mut max_win_streak = 0usize;
     let mut all_plan_ms: Vec<f64> = Vec::new();
     let mut field_ms_total = 0.0f64;
     let mut field_builds_total = 0u64;
@@ -34,8 +36,17 @@ fn main() {
             for e in &ev {
                 if let Event::RoundEnd(w) = e {
                     match w {
-                        Some(0) => wins += 1,
-                        Some(_) => losses += 1,
+                        Some(0) => {
+                            wins += 1;
+                            win_streak += 1;
+                            max_win_streak = max_win_streak.max(win_streak);
+                        }
+                        Some(_) => {
+                            losses += 1;
+                            win_streak = 0;
+                        }
+                        // A double kill is neutral: it neither adds to nor
+                        // interrupts the win streak.
                         None => draws += 1,
                     }
                     done = true;
@@ -46,6 +57,7 @@ fn main() {
             }
             if frames > 25 * 60 {
                 timeouts += 1;
+                win_streak = 0;
                 break;
             }
         }
@@ -65,6 +77,7 @@ fn main() {
     println!("射线 {}  局数 {}", rays, rounds);
     println!("  战绩          {} 胜 / {} 负 / {} 双杀 / {} 超时   胜率 {:.1}%",
         wins, losses, draws, timeouts, 100.0 * wins as f64 / rounds as f64);
+    println!("  最大零封      {} 连胜（双杀/平局不中断、不计入）", max_win_streak);
     println!("  总耗时        {:.2} s  ({:.2} s/局)", elapsed, elapsed / rounds as f64);
     println!("  单帧规划      中位 {:.3} ms   p95 {:.3} ms   p99 {:.3} ms   max {:.3} ms",
         q(0.5), q(0.95), q(0.99), all_plan_ms.last().copied().unwrap_or(0.0));

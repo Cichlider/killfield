@@ -21,7 +21,7 @@
 //! Same result, one fewer indirection. `Tank::number` is copied, not
 //! renumbered, so events still carry real tank identities.
 
-use crate::game::{Bullet, Game, Tank};
+use crate::game::{tank_update, Bullet, Game, Tank};
 use crate::laika::LaikaAI;
 use crate::rng::Rng;
 
@@ -110,4 +110,40 @@ pub fn apply_action(sb: &mut Game, action: [u8; 3]) {
     me.backup_amount = None;
     me.turn_left_amount = None;
     me.turn_right_amount = None;
+}
+
+/// Predict one human tank frame with the real wall/contact solver while
+/// leaving the authoritative game untouched. The large immutable maze data
+/// remains Arc-shared through `make_sandbox`.
+pub fn preview_human_input(g: &Game, me: usize, input: [f64; 4]) -> Tank {
+    let mut preview = make_sandbox(g, me, OppModel::L1, 0);
+    let tank = &mut preview.tanks[0];
+    tank.forward = input[0] > 0.0;
+    tank.backup = input[1] > 0.0;
+    tank.turn_left = input[2] > 0.0;
+    tank.turn_right = input[3] > 0.0;
+    tank.fire = false;
+    tank.forward_amount = Some(input[0].clamp(0.0, 1.0));
+    tank.backup_amount = Some(input[1].clamp(0.0, 1.0));
+    tank.turn_left_amount = Some(input[2].clamp(0.0, 1.0));
+    tank.turn_right_amount = Some(input[3].clamp(0.0, 1.0));
+    tank_update(&mut preview, 0);
+    preview.tanks[0]
+}
+
+#[cfg(test)]
+mod preview_tests {
+    use super::*;
+
+    #[test]
+    fn preview_uses_physics_without_mutating_authoritative_game() {
+        let game = Game::with_ai(1234, 2, &[]);
+        let before = game.tanks[1];
+        let predicted = preview_human_input(&game, 1, [1.0, 0.0, 0.0, 1.0]);
+        assert_eq!(game.tanks[1].x, before.x);
+        assert_eq!(game.tanks[1].y, before.y);
+        assert_eq!(game.tanks[1].rotation, before.rotation);
+        assert!(predicted.x != before.x || predicted.y != before.y);
+        assert_ne!(predicted.rotation, before.rotation);
+    }
 }

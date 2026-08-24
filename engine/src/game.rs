@@ -668,6 +668,37 @@ impl Game {
         self.events.push(Event::Fire(self.tanks[tank].number));
     }
 
+    /// Apply a human trigger edge immediately, between fixed simulation ticks.
+    /// The projectile appears immediately and is eligible to move on the next
+    /// authoritative frame. Returns true only when a shot was actually
+    /// accepted; holding the trigger cannot repeat-fire.
+    pub fn set_human_fire_immediate(&mut self, tank: usize, pressed: bool) -> bool {
+        if tank >= self.tanks.len() {
+            return false;
+        }
+        self.tanks[tank].fire = pressed;
+        if !pressed {
+            self.tanks[tank].trigger_released = true;
+            return false;
+        }
+        if self.frozen
+            || !self.tanks[tank].alive
+            || !self.tanks[tank].trigger_released
+            || !self.weapon_ready(tank)
+        {
+            return false;
+        }
+        self.tanks[tank].trigger_released = false;
+        self.fire_weapon(tank);
+        // This edge happens between simulation frames, unlike fire_weapon()
+        // called from tank_update. The next frame is therefore its first
+        // movement frame rather than the frame in which it was created.
+        if let Some(bullet) = self.bullets.last_mut() {
+            bullet.just_created = false;
+        }
+        true
+    }
+
     pub fn destroy_tank(&mut self, number: usize) {
         self.tanks[number].alive = false;
         self.alive_count -= 1;
@@ -989,4 +1020,25 @@ pub fn bullet_update(g: &mut Game, idx: usize) {
     }
 
     g.bullets[idx] = b;
+}
+
+#[cfg(test)]
+mod immediate_fire_tests {
+    use super::*;
+
+    #[test]
+    fn immediate_fire_is_edge_triggered_and_authoritative() {
+        let mut game = Game::with_ai(4321, 2, &[]);
+        assert!(game.set_human_fire_immediate(1, true));
+        assert_eq!(game.bullets.len(), 1);
+        assert_eq!(game.tanks[1].bullets_fired, 1);
+        assert!(!game.bullets[0].just_created);
+
+        assert!(!game.set_human_fire_immediate(1, true));
+        assert_eq!(game.bullets.len(), 1, "holding must not repeat-fire");
+
+        assert!(!game.set_human_fire_immediate(1, false));
+        assert!(game.set_human_fire_immediate(1, true));
+        assert_eq!(game.bullets.len(), 2, "a new press edge may fire again");
+    }
 }

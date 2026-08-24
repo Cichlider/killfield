@@ -9,12 +9,12 @@
 //! trainer run byte-identical physics. That is the whole reason for compiling
 //! to wasm rather than keeping a second engine in JS.
 
-use crate::game::{Event, Game};
 use crate::directional::{apply_direction, apply_human_direction};
+use crate::game::{Event, Game};
 use crate::reward::{
     RewardConfig, RewardTracker, CH_STYLE, CH_TERMINAL, REWARD_CHANNELS, REWARD_INFO_LEN,
 };
-use crate::sandbox::OppModel;
+use crate::sandbox::{preview_human_input, OppModel};
 use crate::semantic_obs::{
     encode as encode_semantic, SemanticObsState, SemanticObservation, BULLET_SLOTS, OBS_DIM,
 };
@@ -42,6 +42,7 @@ pub const PAINT_SLOTS: usize = 12 * 10;
 pub struct Handle {
     game: Game,
     agents: Vec<Option<KillFieldAgent>>,
+    agent_enabled: Vec<bool>,
     render: Vec<f32>,
     last_winner: f32,
     reward: RewardTracker,
@@ -109,6 +110,7 @@ pub extern "C" fn kf_new(seed: u32, laika_mask: u32) -> *mut Handle {
     let mut h = Box::new(Handle {
         game: Game::with_ai(seed, 2, &ai),
         agents: vec![None, None],
+        agent_enabled: vec![true, true],
         render: Vec::new(),
         last_winner: -1.0,
         reward: RewardTracker::new(0),
@@ -155,6 +157,20 @@ pub unsafe extern "C" fn kf_attach_mpc(
         a.opp_model = OppModel::L1;
     }
     h.agents[tank as usize] = Some(a);
+    h.agent_enabled[tank as usize] = true;
+}
+
+/// Enable or pause one attached MPC agent without freezing game physics or
+/// human input. Used by the browser's per-round human reaction delay.
+///
+/// # Safety
+/// `h` must come from `kf_new`.
+#[no_mangle]
+pub unsafe extern "C" fn kf_set_mpc_enabled(h: *mut Handle, tank: u32, enabled: u32) {
+    let h = &mut *h;
+    if let Some(value) = h.agent_enabled.get_mut(tank as usize) {
+        *value = enabled != 0;
+    }
 }
 
 /// Continuous 0..1 strengths, matching the engine's human-input path — a
@@ -194,6 +210,61 @@ pub unsafe extern "C" fn kf_set_input(
     }
 }
 
+/// Apply the human trigger edge immediately instead of waiting for the next
+/// 25 Hz movement tick. A new bullet is authoritative immediately and becomes
+/// eligible to move on the next tick.
+/// Returns 1 only when a shot was created.
+///
+/// # Safety
+/// `h` must come from `kf_new`.
+#[no_mangle]
+pub unsafe extern "C" fn kf_set_fire_immediate(h: *mut Handle, tank: u32, pressed: u32) -> u32 {
+    let h = &mut *h;
+    let fired = h.game.set_human_fire_immediate(tank as usize, pressed != 0);
+    if fired {
+        build_render(h);
+    }
+    fired as u32
+}
+
+/// Return the next pose for a human input using the authoritative wall/contact
+/// solver without advancing or mutating the live game. Writes x, y, rotation.
+///
+/// # Safety
+/// `h` must come from `kf_new`; `out` must point to at least three f32 values.
+#[no_mangle]
+pub unsafe extern "C" fn kf_predict_human_pose(
+    h: *mut Handle,
+    tank: u32,
+    forward: f32,
+    backup: f32,
+    turn_left: f32,
+    turn_right: f32,
+    out: *mut f32,
+) {
+    let h = &*h;
+    let out = std::slice::from_raw_parts_mut(out, 3);
+    if tank as usize >= h.game.tanks.len() {
+        out.fill(0.0);
+        return;
+    }
+    let predicted = preview_human_input(
+        &h.game,
+        tank as usize,
+        [
+            forward as f64,
+            backup as f64,
+            turn_left as f64,
+            turn_right as f64,
+        ],
+    );
+    out.copy_from_slice(&[
+        predicted.x as f32,
+        predicted.y as f32,
+        predicted.rotation as f32,
+    ]);
+}
+
 /// Instantly set a human tank's absolute heading when the resulting hull pose
 /// is clear of walls. Used only by the optional browser accessibility control.
 #[no_mangle]
@@ -211,7 +282,12 @@ pub unsafe extern "C" fn kf_set_direction_input(
     movement: u32,
     fire: u32,
 ) {
-    apply_direction(&mut (*h).game, tank as usize, movement.min(128) as u16, fire.min(1) as u8);
+    apply_direction(
+        &mut (*h).game,
+        tank as usize,
+        movement.min(128) as u16,
+        fire.min(1) as u8,
+    );
 }
 
 /// World-direction input for the human browser wheel. This intentionally has
@@ -240,9 +316,22 @@ pub unsafe extern "C" fn kf_set_human_direction_input(
 pub unsafe extern "C" fn kf_step(h: *mut Handle) -> u32 {
     let h = &mut *h;
     for i in 0..2usize {
-        if let Some(mut a) = h.agents[i].take() {
-            a.drive(&mut h.game);
-            h.agents[i] = Some(a);
+        if h.agent_enabled[i] {
+            if let Some(mut a) = h.agents[i].take() {
+                a.drive(&mut h.game);
+                h.agents[i] = Some(a);
+            }
+        } else if let Some(tank) = h.game.tanks.get_mut(i) {
+            // Do not leave the last MPC action latched while the planner is paused.
+            tank.forward = false;
+            tank.backup = false;
+            tank.turn_left = false;
+            tank.turn_right = false;
+            tank.fire = false;
+            tank.forward_amount = None;
+            tank.backup_amount = None;
+            tank.turn_left_amount = None;
+            tank.turn_right_amount = None;
         }
     }
     let events = h.game.step();

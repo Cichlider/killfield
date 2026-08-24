@@ -18,17 +18,19 @@ import { STRINGS, loadLang, saveLang } from "./src/i18n.js";
 import { Keyboard, TouchControls } from "./src/input.js";
 import { SoundEffects } from "./src/audio.js";
 import { Rng } from "./src/rng.js";
+import { interpolatePredictedPose, simulationBudget } from "./src/low-latency.js";
 import {
   TUNING_SCHEMA, applyTuning, resetTuning, setTuning, tuning, tuningSnapshot,
 } from "./src/tuning.js";
 
 const STEP_MS = 1000 / C.FPS; // 40 ms
 const MAX_CATCHUP_MS = 250;
-const ROUND_START_DELAY_FRAMES = Math.round(0.5 * C.FPS);
 const SELFPLAY_TIMEOUT_FRAMES = 30 * C.FPS;
 const STREAK_STORAGE_KEY = "killfield-streak";
 const TUNING_STORAGE_KEY = "killfield-ai-tuning";
 const INSTANT_TURN_STORAGE_KEY = "killfield-human-instant-turn";
+const OPENING_DELAY_STORAGE_KEY = "killfield-opening-delay-seconds";
+const DEFAULT_OPENING_DELAY_SECONDS = 0.5;
 
 // Render buffer layout, matching engine/src/wasm.rs's build_render() doc
 // comment: 18 header slots, then 120 paint flags (unused here — killfield has
@@ -87,6 +89,12 @@ const raysSelect = document.getElementById("rays");
 const forwardAlignmentInput = document.getElementById("forward-alignment");
 const forwardAlignmentLabel = document.getElementById("forward-alignment-label");
 const forwardAlignmentValue = document.getElementById("forward-alignment-value");
+const matchSettingsPanel = document.getElementById("match-settings-panel");
+const matchSettingsTitle = document.getElementById("match-settings-title");
+const openingDelayInput = document.getElementById("opening-delay");
+const openingDelayLabel = document.getElementById("opening-delay-label");
+const openingDelayValue = document.getElementById("opening-delay-value");
+const openingDelayHint = document.getElementById("opening-delay-hint");
 const oppModelSelect = document.getElementById("oppmodel");
 const oppModelHint = document.getElementById("oppmodel-hint");
 const watchButton = document.getElementById("mode-watch");
@@ -123,6 +131,9 @@ const rlStatus = document.getElementById("rl-status");
 const keyboard = new Keyboard();
 const touchControls = new TouchControls(touchControlsRoot, touchVisibilityButton);
 const sounds = new SoundEffects();
+let keyboardFirePressed = false;
+let touchFirePressed = false;
+let immediateFirePressed = false;
 
 let wasm = null;
 let scratchPtr = null;
@@ -161,6 +172,24 @@ async function loadModelCatalogue() {
     rlModelSelect.innerHTML = '<option value="">inference service unavailable</option>';
     rlStatus.textContent = `请用 bash viewer/serve.sh 启动（${error.message}）`;
   }
+}
+
+let openingDelaySeconds = DEFAULT_OPENING_DELAY_SECONDS;
+try {
+  openingDelaySeconds = normaliseOpeningDelay(localStorage.getItem(OPENING_DELAY_STORAGE_KEY));
+} catch {
+  // Keep the default when browser storage is unavailable.
+}
+
+function normaliseOpeningDelay(raw) {
+  if (raw === null || raw === "") return DEFAULT_OPENING_DELAY_SECONDS;
+  const value = Number(raw);
+  if (!Number.isFinite(value)) return DEFAULT_OPENING_DELAY_SECONDS;
+  return Math.max(0, Math.min(3, Math.round(value * 10) / 10));
+}
+
+function openingDelayFrameCount() {
+  return Math.round(openingDelaySeconds * C.FPS);
 }
 
 // ------------------------------------------------------------- renderer
@@ -311,7 +340,7 @@ function drawTank(ctx, x, y, rotation, s, colors) {
   ctx.stroke();
 }
 
-function draw(buf, colors, previous, alpha) {
+function draw(buf, colors, previous, alpha, localPlayer = null) {
   renderer.syncSize();
   const ctx = renderer.ctx;
   const w = buf[0];
@@ -390,10 +419,12 @@ function draw(buf, colors, previous, alpha) {
   for (let i = 0; i < nTanks; i++) {
     const o = tankBase + i * 6;
     if (buf[o + 3] < 0.5) continue;
-    const old = sameRound ? previous.tanks[i] : null;
-    const x = old ? old.x + (buf[o] - old.x) * alpha : buf[o];
-    const y = old ? old.y + (buf[o + 1] - old.y) * alpha : buf[o + 1];
-    const rotation = old ? interpolateAngle(old.rotation, buf[o + 2], alpha) : buf[o + 2];
+    const predicted = localPlayer?.tank === i ? localPlayer.pose : null;
+    const old = !predicted && sameRound ? previous.tanks[i] : null;
+    const x = predicted?.x ?? (old ? old.x + (buf[o] - old.x) * alpha : buf[o]);
+    const y = predicted?.y ?? (old ? old.y + (buf[o + 1] - old.y) * alpha : buf[o + 1]);
+    const rotation = predicted?.rotation
+      ?? (old ? interpolateAngle(old.rotation, buf[o + 2], alpha) : buf[o + 2]);
     const number = buf[o + 4] | 0;
     drawTank(ctx, ox + x, oy + y, rotation, buf[o + 5], colors[number % colors.length]);
   }
@@ -557,6 +588,18 @@ function syncForwardAlignmentControl() {
   );
 }
 
+function syncOpeningDelayControl() {
+  const s = t();
+  matchSettingsTitle.textContent = s.matchSettingsTitle;
+  openingDelayLabel.textContent = s.openingDelayLabel;
+  openingDelayValue.textContent = s.openingDelayValue(openingDelaySeconds);
+  openingDelayHint.textContent = s.openingDelayHint;
+  openingDelayInput.value = String(openingDelaySeconds);
+  openingDelayInput.setAttribute(
+    "aria-label", `${s.openingDelayLabel}: ${s.openingDelayValue(openingDelaySeconds)}`,
+  );
+}
+
 function applyLanguage() {
   const s = t();
   document.documentElement.lang = s.htmlLang;
@@ -574,6 +617,7 @@ function applyLanguage() {
   rays512.textContent = s.rays512;
   rays256.textContent = s.rays256;
   syncForwardAlignmentControl();
+  syncOpeningDelayControl();
   oppModelLabel.textContent = s.oppModelLabel;
   oppModelLaikaOption.textContent = s.oppModelLaika;
   oppModelHumanOption.textContent = s.oppModelHuman;
@@ -605,7 +649,7 @@ let currentRound = 1;
 let frozen = false;
 const SELFPLAY_TIMEOUT_MS = SELFPLAY_TIMEOUT_FRAMES; // frames, matches C.FPS-based clock below
 let roundFrames = 0;
-let freezeFrames = 0; // >0 while a round hasn't started moving yet
+let killfieldDelayFrames = 0;
 let previousRenderState = null;
 
 // Match score and win streak are tallied here, outside the engine: rebuilding
@@ -670,10 +714,9 @@ function newGame() {
   inferenceSummary = selectedModel ? "waiting for first action" : "no model loaded";
   wasm.kf_set_direction_input(handle, 0, 128, 0);
 
-  // The instant a new round starts reads as relentless when a human is on the
-  // sticks. Play mode only; watch/self-play have no human waiting to catch a
-  // breath.
-  freezeFrames = mode === "play" ? ROUND_START_DELAY_FRAMES : 0;
+  // In human play the world and human controls start immediately. Only tank 0's
+  // PPO policy waits, giving the player genuine reaction/movement time.
+  killfieldDelayFrames = mode === "play" ? openingDelayFrameCount() : 0;
   roundFrames = 0;
   previousRenderState = captureRenderState(renderBuffer());
   const buf = renderBuffer();
@@ -691,6 +734,7 @@ function setMode(next) {
   selfplayButton.classList.toggle("active", next === "selfplay");
   keyhelp.style.display = next === "play" ? "" : "none";
   touchControls.setAvailable(next === "play");
+  matchSettingsPanel.hidden = next !== "play";
   syncInstantTurnButton();
   // A mode switch changes who tank 1 even is, so treat it as a fresh match.
   matchScore = [0, 0];
@@ -729,6 +773,9 @@ function updateScoreboard() {
   if (mode === "selfplay" && !frozen) {
     const left = Math.max(0, SELFPLAY_TIMEOUT_MS - roundFrames) / C.FPS;
     text += ` · ${left.toFixed(0)}s`;
+  }
+  if (mode === "play" && killfieldDelayFrames > 0 && !frozen) {
+    text += ` · ${s.openingDelayCountdown(killfieldDelayFrames / C.FPS)}`;
   }
   if (paused) text += ` · ${s.paused}`;
   if (roundline.textContent !== text) roundline.textContent = text;
@@ -781,13 +828,12 @@ function requestModelAction() {
 }
 
 function tick() {
-  if (freezeFrames > 0) {
-    // A true freeze, not slow motion: the round doesn't advance at all during
-    // the breather, it just sits on the frame it opened with.
-    freezeFrames -= 1;
-    return;
+  if (killfieldDelayFrames > 0) {
+    killfieldDelayFrames -= 1;
+    wasm.kf_set_direction_input(handle, 0, 128, 0);
+  } else {
+    requestModelAction();
   }
-  requestModelAction();
   // Laika is engine-side; tank 0 keeps the latest async model action while
   // the next 25 Hz request is in flight, so rendering and physics never block.
   const human = MODES[mode].humanTank;
@@ -812,7 +858,8 @@ function tick() {
     roundFrames = 0;
     modelHistory = [];
     lastModelAction = -1;
-    if (mode === "play") freezeFrames = ROUND_START_DELAY_FRAMES;
+    wasm.kf_set_direction_input(handle, 0, 128, 0);
+    killfieldDelayFrames = mode === "play" ? openingDelayFrameCount() : 0;
   }
   if (flags & 64) { // round_end
     applyRoundEnd(buf[15]);
@@ -829,21 +876,62 @@ function tick() {
 let last = performance.now();
 let accumulator = 0;
 
+function predictHumanForRender(buf, alpha) {
+  const human = MODES[mode].humanTank;
+  if (human === null || paused || frozen || buf[14] > 0.5) return null;
+  const nWalls = buf[5] | 0;
+  const o = HEADER + nWalls * 4 + human * 6;
+  if (buf[o + 3] < 0.5) return null;
+  const pose = { x: buf[o], y: buf[o + 1], rotation: buf[o + 2] };
+  const input = touchControls.resolveMovement(keyboard.sampleStrengths(), pose.rotation);
+  if (!(input.forward || input.backup || input.turnLeft || input.turnRight)) {
+    return { tank: human, pose };
+  }
+  wasm.kf_predict_human_pose(
+    handle, human, input.forward, input.backup, input.turnLeft, input.turnRight, scratchPtr,
+  );
+  const predicted = new Float32Array(wasm.memory.buffer, scratchPtr, 3);
+  return {
+    tank: human,
+    pose: interpolatePredictedPose(pose, {
+      x: predicted[0], y: predicted[1], rotation: predicted[2],
+    }, alpha),
+  };
+}
+
+function syncImmediateHumanFire() {
+  const pressed = keyboardFirePressed || touchFirePressed;
+  if (pressed === immediateFirePressed) return;
+  immediateFirePressed = pressed;
+  const human = MODES[mode].humanTank;
+  if (wasm === null || handle === null || human === null) return;
+  // A release is always safe and must not be lost while paused/frozen, or the
+  // next press could inherit a latched trigger. Only creation is gated.
+  if (pressed && (paused || frozen)) return;
+  if (wasm.kf_set_fire_immediate(handle, human, pressed ? 1 : 0)) {
+    sounds.playEvent(["fire"]);
+  }
+}
+
 function frame(now) {
-  accumulator = Math.min(accumulator + (now - last), MAX_CATCHUP_MS);
+  const budget = simulationBudget(
+    accumulator, now - last, STEP_MS, MAX_CATCHUP_MS, mode === "play",
+  );
   last = now;
   if (paused) {
     // Don't let the gap pile up while paused, or unpausing would fast-forward.
     accumulator = 0;
   } else {
-    while (accumulator >= STEP_MS) {
+    for (let i = 0; i < budget.steps; i++) {
       previousRenderState = captureRenderState(renderBuffer());
       tick();
-      accumulator -= STEP_MS;
     }
+    accumulator = budget.remainder;
   }
   const renderAlpha = paused ? 1 : Math.min(1, accumulator / STEP_MS);
-  draw(renderBuffer(), activeTankColors(), previousRenderState, renderAlpha);
+  const buf = renderBuffer();
+  const localPlayer = predictHumanForRender(buf, renderAlpha);
+  draw(buf, activeTankColors(), previousRenderState, renderAlpha, localPlayer);
   updateScoreboard();
   updateTelemetry();
   requestAnimationFrame(frame);
@@ -986,6 +1074,14 @@ async function boot() {
 
   keyboard.onReroll = newGame;
   keyboard.onPause = togglePause;
+  keyboard.onFireChange = (pressed) => {
+    keyboardFirePressed = pressed;
+    syncImmediateHumanFire();
+  };
+  touchControls.onFireChange = (pressed) => {
+    touchFirePressed = pressed;
+    syncImmediateHumanFire();
+  };
   rerollButton.addEventListener("click", () => { newGame(); rerollButton.blur(); });
   resetScoreButton.addEventListener("click", () => { resetScore(); resetScoreButton.blur(); });
   instantTurnButton.addEventListener("click", toggleInstantTurn);
@@ -996,6 +1092,13 @@ async function boot() {
   forwardAlignmentInput.addEventListener("input", () => {
     touchControls.setForwardAlignmentDegrees(forwardAlignmentInput.value);
     syncForwardAlignmentControl();
+  });
+  openingDelayInput.addEventListener("input", () => {
+    openingDelaySeconds = normaliseOpeningDelay(openingDelayInput.value);
+    try {
+      localStorage.setItem(OPENING_DELAY_STORAGE_KEY, String(openingDelaySeconds));
+    } catch { /* optional */ }
+    syncOpeningDelayControl();
   });
   oppModelSelect.addEventListener("change", newGame);
   rlModelSelect.addEventListener("change", () => {
