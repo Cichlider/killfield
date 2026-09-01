@@ -769,7 +769,10 @@ function tick() {
   // JS loop this only needs to push human input before stepping.
   const human = MODES[mode].humanTank;
   if (human !== null) {
-    const strengths = keyboard.sampleStrengths();
+    // Reconstruct only the latest fixed frame from timestamped key edges.
+    // A keyup near the boundary preserves movement already shown in this
+    // frame, while the next full frame is zero; no old command is replayed.
+    const strengths = keyboard.sampleWindowStrengths(STEP_MS);
     const rotation = previousRenderState?.tanks[human]?.rotation ?? 0;
     const snappedRotation = touchControls.applyTo(
       wasm, handle, human, strengths, rotation, instantTurn,
@@ -816,7 +819,12 @@ function predictHumanForRender(buf, alpha) {
   const o = HEADER + nWalls * 4 + human * 6;
   if (buf[o + 3] < 0.5) return null;
   const pose = { x: buf[o], y: buf[o + 1], rotation: buf[o + 2] };
-  const input = touchControls.resolveMovement(keyboard.sampleStrengths(), pose.rotation);
+  // Prediction integrates the same key-edge interval that has elapsed since
+  // the authoritative tick. Using the instantaneous post-keyup state here
+  // would erase movement already displayed and visibly pull the tank back.
+  const predictionWindowMs = alpha * STEP_MS;
+  const keyboardStrengths = keyboard.sampleWindowStrengths(predictionWindowMs);
+  const input = touchControls.resolveMovement(keyboardStrengths, pose.rotation);
   if (!(input.forward || input.backup || input.turnLeft || input.turnRight)) {
     return { tank: human, pose };
   }
