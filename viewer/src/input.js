@@ -1,10 +1,9 @@
 /**
  * Keyboard and touch input, ported from killfield/src/input.js.
  *
- * Keyboard control keeps the current pressed set plus a bounded history of
- * edges from the latest 25 FPS simulation window. Physics can therefore apply
- * the fraction of the current 40ms frame for which a key was really held.
- * Nothing older than that window is queued or replayed after keyup.
+ * Keyboard control is deliberately stateless beyond the keys held right now.
+ * Every 25 FPS simulation sample reads the current pressed set directly;
+ * keyup makes the next authoritative sample zero, with no input tail.
  *
  * The one deliberate change from killfield: instead of writing
  * forward/backup/turnLeft/turnRight/fire straight onto a JS tank object,
@@ -34,16 +33,11 @@ const SWALLOW = new Set([
 ]);
 
 export class Keyboard {
-  constructor(target = window, clock = () => performance.now()) {
+  constructor(target = window) {
     this.pressed = new Set();
-    this.clock = clock;
     this.onReroll = null;
     this.onPause = null;
     this.onFireChange = null;
-    // Keep only enough edge history to reconstruct the current physics frame.
-    // This is deliberately a sliding window, not a command queue: old input is
-    // never consumed by a later catch-up tick.
-    this.transitions = [{ at: this.clock(), strengths: this.sampleStrengths() }];
 
     this._down = (e) => {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
@@ -63,9 +57,7 @@ export class Keyboard {
         return;
       }
       const hadFire = this.has("fire");
-      const before = this.sampleStrengths();
       this.pressed.add(k);
-      this._recordTransition(before);
       if (!hadFire && BINDINGS.fire.includes(k) && this.onFireChange) {
         this.onFireChange(true);
       }
@@ -73,9 +65,7 @@ export class Keyboard {
     this._up = (e) => {
       const key = e.key.toLowerCase();
       const wasFire = BINDINGS.fire.includes(key) && this.pressed.has(key);
-      const before = this.sampleStrengths();
       this.pressed.delete(key);
-      this._recordTransition(before);
       if (wasFire && !this.has("fire") && this.onFireChange) this.onFireChange(false);
     };
     // A tab switch or alert can eat the keyup, leaving a key stuck down.
@@ -94,53 +84,6 @@ export class Keyboard {
     return strengths;
   }
 
-  /**
-   * Average the real key state over the most recent fixed-step interval.
-   *
-   * A press at 10ms and release at 30ms in a 40ms frame therefore produces
-   * strength 0.5 for that one frame, then zero on the next frame. This keeps
-   * presentation prediction and authoritative physics on the same timeline
-   * without ever replaying an old key state after release.
-   */
-  sampleWindowStrengths(windowMs, now = this.clock()) {
-    const span = Number.isFinite(windowMs) ? Math.max(0, windowMs) : 0;
-    const end = Number.isFinite(now) ? now : this.clock();
-    if (span === 0) return this.sampleStrengths();
-    const start = end - span;
-    const totals = Object.fromEntries(Object.keys(BINDINGS).map((action) => [action, 0]));
-
-    let state = this.transitions[0]?.strengths ?? this.sampleStrengths();
-    let cursor = start;
-    let keep = 0;
-    for (let i = 0; i < this.transitions.length; i++) {
-      const transition = this.transitions[i];
-      if (transition.at <= start) {
-        state = transition.strengths;
-        keep = i;
-        continue;
-      }
-      if (transition.at > end) break;
-      const duration = Math.max(0, transition.at - cursor);
-      for (const action of Object.keys(BINDINGS)) totals[action] += state[action] * duration;
-      state = transition.strengths;
-      cursor = transition.at;
-    }
-    const tail = Math.max(0, end - cursor);
-    for (const action of Object.keys(BINDINGS)) totals[action] += state[action] * tail;
-
-    // Retain the state immediately before the next window plus newer edges.
-    // Memory stays bounded even if sampleWindowStrengths is called every rAF.
-    if (keep > 0) this.transitions.splice(0, keep);
-    for (const action of Object.keys(BINDINGS)) totals[action] /= span;
-    return totals;
-  }
-
-  _recordTransition(before) {
-    const after = this.sampleStrengths();
-    if (Object.keys(BINDINGS).every((action) => before[action] === after[action])) return;
-    this.transitions.push({ at: this.clock(), strengths: after });
-  }
-
   has(action, strengths = null) {
     if (strengths !== null) return strengths[action] > 0;
     for (const key of BINDINGS[action]) {
@@ -149,9 +92,9 @@ export class Keyboard {
     return false;
   }
 
-  /** Push this fixed frame's bounded, edge-aware input to the wasm tank. */
-  applyTo(wasm, handle, tank, windowMs = 1000 / C.FPS, now = this.clock()) {
-    const s = this.sampleWindowStrengths(windowMs, now);
+  /** Push the keys held at this tick straight to the wasm tank. */
+  applyTo(wasm, handle, tank) {
+    const s = this.sampleStrengths();
     wasm.kf_set_input(handle, tank, s.forward, s.backup, s.turnLeft, s.turnRight,
       s.fire > 0 ? 1 : 0, 1);
     return s;
@@ -159,9 +102,7 @@ export class Keyboard {
 
   clear() {
     const hadFire = this.has("fire");
-    const before = this.sampleStrengths();
     this.pressed.clear();
-    this._recordTransition(before);
     if (hadFire && this.onFireChange) this.onFireChange(false);
   }
 }

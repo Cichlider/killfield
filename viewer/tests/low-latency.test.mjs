@@ -22,6 +22,14 @@ target.dispatch("keydown", "q");
 target.dispatch("keyup", " ");   // q still holds the combined trigger
 target.dispatch("keyup", "q");
 assert.deepEqual(fireEdges, [true, false]);
+assert.equal(keyboard.sampleStrengths().fire, 0,
+  "released immediate-fire edge must not reappear on the physics tick");
+
+target.dispatch("keydown", "w");
+assert.equal(keyboard.sampleStrengths().forward, 1);
+target.dispatch("keyup", "w");
+assert.equal(keyboard.sampleStrengths().forward, 0,
+  "keyup must remove movement without a trailing input frame");
 
 assert.deepEqual(
   interpolatePredictedPose(
