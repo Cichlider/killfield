@@ -769,11 +769,12 @@ function tick() {
   // JS loop this only needs to push human input before stepping.
   const human = MODES[mode].humanTank;
   if (human !== null) {
-    // Fire edges are already applied authoritatively by
-    // syncImmediateHumanFire(). Sampling only the currently held state here
-    // prevents a released trigger or movement key from being resurrected by
-    // historical input on the next physics tick.
-    const strengths = keyboard.sampleStrengths();
+    // Movement is the share of this 40 ms frame each key was really held, so a
+    // tap that falls between two ticks still registers instead of being lost.
+    // Fire is passed straight through by sampleWindowStrengths and its edges
+    // are applied authoritatively by syncImmediateHumanFire(), so a released
+    // trigger is never resurrected by the window.
+    const strengths = keyboard.sampleWindowStrengths(STEP_MS);
     const rotation = previousRenderState?.tanks[human]?.rotation ?? 0;
     const snappedRotation = touchControls.applyTo(
       wasm, handle, human, strengths, rotation, instantTurn,
@@ -820,7 +821,11 @@ function predictHumanForRender(buf, alpha) {
   const o = HEADER + nWalls * 4 + human * 6;
   if (buf[o + 3] < 0.5) return null;
   const pose = { x: buf[o], y: buf[o + 1], rotation: buf[o + 2] };
-  const input = touchControls.resolveMovement(keyboard.sampleStrengths(), pose.rotation);
+  // Same fixed one-frame window the authoritative tick uses. Scaling it by
+  // alpha instead would shrink the averaging interval as the frame drains and
+  // make the predicted direction flicker on and off near the threshold.
+  const strengths = keyboard.sampleWindowStrengths(STEP_MS);
+  const input = touchControls.resolveMovement(strengths, pose.rotation);
   if (!(input.forward || input.backup || input.turnLeft || input.turnRight)) {
     return { tank: human, pose };
   }
@@ -994,7 +999,7 @@ function toggleLanguage() {
 // -------------------------------------------------------------------- boot
 
 async function boot() {
-  const res = await fetch("kf_engine.wasm?v=8799ab13");
+  const res = await fetch("kf_engine.wasm?v=e4e6909c");
   const { instance } = await WebAssembly.instantiate(await res.arrayBuffer(), {});
   wasm = instance.exports;
   scratchPtr = wasm.kf_scratch_ptr();
