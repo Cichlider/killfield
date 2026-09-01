@@ -31,7 +31,13 @@ pub struct Tuning {
 impl Default for Tuning {
     fn default() -> Self {
         Tuning {
-            field_ascent_weight: 34.0,
+            // Raw ballistic density describes shooting opportunity, not a
+            // traversable navigation potential. In particular, leaving a
+            // high-density cell beside a wall may be necessary to follow the
+            // maze-distance guidance around that wall. A non-zero default
+            // makes that temporary density drop overwhelm guidance (0..1)
+            // and creates wall-side local optima.
+            field_ascent_weight: 0.0,
             field_peak_weight: 6.0,
             guidance_progress_weight: 120.0,
             hunt_chain_gain_weight: 12.0,
@@ -48,5 +54,16 @@ impl Default for Tuning {
             active_kill_time_weight: 8.0,
             risk_weight: 320.0,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn raw_density_is_not_a_default_navigation_potential() {
+        assert_eq!(Tuning::default().field_ascent_weight, 0.0);
+        assert!(Tuning::default().guidance_progress_weight > 0.0);
     }
 }
