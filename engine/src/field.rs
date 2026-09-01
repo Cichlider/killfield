@@ -449,9 +449,10 @@ impl InverseDensityFieldBuilder {
     ///     straight-line near, maze-far. That is the "drives to the nearest
     ///     spot on the wrong side of a wall, then freezes" report.
     ///
-    /// If no cell clears both gates the field falls back to the ungated set,
-    /// so a map whose only lit cells are dead ends still gets a gradient rather
-    /// than a flat zero.
+    /// If no cell clears both gates — a reachable region that is one long
+    /// corridor, say — the degree gate is dropped and the share is measured
+    /// against the best count overall, so such a map still gets a gradient
+    /// rather than a flat zero.
     fn guidance_envelope(&self, g: &Game, counts: &[i32], min_frames: &[f32]) -> Vec<f32> {
         let size = self.width * self.height;
         let mut guidance = vec![0.0f32; size];
