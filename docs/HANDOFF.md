@@ -77,16 +77,28 @@
 ## 现在跑着什么
 
 ```sh
-# 训练（每约 22.9 万步原子发布一次 live.pt + live.json）
+# 训练（每约 22.9 万步原子发布 live.pt + live.json + resume.pt）
 .venv/bin/python training/duel_ppo.py --seed 11 --envs 256 --mix 0.4 0.4 0.2 \
-  --init-from outputs/pool/duel_gen2.pt --frozen-from outputs/pool/duel_gen2.pt \
-  --save-every 200000 --output outputs/ppo_duel_v6
+  --init-from outputs/pool/v6_final.pt --frozen-from outputs/pool/duel_gen2.pt \
+  --trained-steps 79429632 --schedule-steps 200000000 \
+  --save-every 200000 --output outputs/ppo_duel_v7
 
 # 网页 + 推理服务，一个进程同源提供
 bash viewer/serve.sh          # http://127.0.0.1:8000/
 ```
 
-`viewer/serve.sh` 的 `RUN` 和 `FROZEN` 是变量，默认指向 v6 和 gen2。
+`viewer/serve.sh` 的 `RUN` 和 `FROZEN` 是变量，默认指向 v7 和 gen2。
+
+**学习率调度属于血统，不属于单次 run。** 三种入口：
+
+| 参数 | 语义 | 何时用 |
+|---|---|---|
+| （无） | 冷起，`trained_steps = 0`，带 critic 预热 | 从零训练 |
+| `--resume resume.pt` | 权重 + Adam 状态 + 调度位置，**不预热** | 同一配置继续跑 |
+| `--init-from live.pt --trained-steps N` | 只要权重，调度位置手给 | 改了奖励：旧 Adam 和 value 头本来就该重来，但 lr 不该跳回顶 |
+
+`--init-from` 不给 `--trained-steps` 就会从 3e-4 重新开始。这个默认值坑过一次，
+见下面的待办。
 
 两个进程都用 `start_new_session=True` 起（等价于 setsid，macOS 没有这个命令），
 父进程是 1，**关掉终端不影响它们**。日志在 `logs/train.log` 和 `logs/serve.log`。
@@ -128,6 +140,7 @@ subprocess.Popen(argv, start_new_session=True,
 | v4 | 赢改为**时间折扣**（10s 满分，对数衰减到 30s 的 0.5） | gen1 |
 | v5 | 双亡 **+0.2 → 0** | gen1 |
 | v6 | 加**平滑分** `STYLE_MAX = 0.25`，满分线 13% | gen2 |
+| v7 | 奖励未变。修调度：血统累计 79.4M 步接在 200M 调度的 39.7% 处，lr 从 1.81e-4 起 | gen2 |
 
 ## 命令速查
 
@@ -162,6 +175,9 @@ cargo test --manifest-path engine/Cargo.toml         # 60 个测试
    如果不够，下一步是**动作承诺**（k 帧内不换）或 CAPS 时间正则，
    两者都是结构层干预，优先于继续加奖励项。
 2. 自我对战里双亡占 62.5%，是所有对手里最高的。
-3. 训练器不保存 optimizer 状态，续训只能靠权重热启动。要长跑就该存。
+3. ~~训练器不保存 optimizer 状态~~ 已修（`resume.pt` + `--resume`）。
+   v1–v6 六次热启动都把 lr 重置回 3e-4，实际等于全程恒定学习率跑了 78M 步——
+   `LESSONS.md` 里「恒定 lr 长训会崩」正是加调度要防的事。v7 起才真正在退火，
+   所以 v6 之前所有关于「策略稳定性」的观察都要打折看。
 4. `AGENTS.md` 要求「恰好 100 局对固定 Laika」的胜率报告，
    `eval_duel.py` 目前是按对手池比例分配局数，需要一个纯 Laika 的 100 局模式。

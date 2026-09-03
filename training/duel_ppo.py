@@ -176,7 +176,35 @@ def pick_device(model) -> torch.device:
     return best
 
 
-def save_live(output: Path, model, config: Config, steps: int, update: int, started: float):
+def save_resume(output: Path, model, optimiser, trained_steps: int,
+                schedule_steps: int):
+    """Everything needed to carry on where this left off.
+
+    Kept beside `live.pt` rather than inside it: the page only ever wants
+    weights, and an Adam state doubles the file it would have to download
+    through the inference server for no reason.
+
+    Without this a warm start silently resets the learning rate to its initial
+    value, the entropy coefficient with it, and the Adam moments to zero. Six
+    runs of that in a row is how this project spent 78M steps at an almost
+    constant 3e-4 while believing it had a decaying schedule.
+    """
+    tmp = output / "resume.pt.tmp"
+    torch.save(
+        {
+            "model": model.state_dict(),
+            "optimiser": optimiser.state_dict(),
+            "trained_steps": trained_steps,
+            "schedule_steps": schedule_steps,
+            "arch": ARCH,
+        },
+        tmp,
+    )
+    os.replace(tmp, output / "resume.pt")
+
+
+def save_live(output: Path, model, config: Config, steps: int, update: int, started: float,
+              trained_steps: int = 0, schedule_steps: int = 0):
     """Publish the current weights for the viewer.
 
     Written to a fixed path so the server can key its cache on mtime and the
@@ -200,6 +228,9 @@ def save_live(output: Path, model, config: Config, steps: int, update: int, star
         "update": update,
         "wall_seconds": round(time.perf_counter() - started, 1),
         "seed": config.seed,
+        # Where the lineage is in its schedule, not just this run.
+        "trained_steps": trained_steps,
+        "schedule_steps": schedule_steps,
         "pool": {"laika": config.laika_weight, "mpc": config.mpc_weight,
                  "frozen": config.frozen_weight},
         "timestamp": time.time(),
@@ -264,7 +295,20 @@ def main():
                         metavar=("LAIKA", "MPC", "FROZEN"),
                         help="opponent pool weights, normalised")
     parser.add_argument("--init-from", type=Path, default=None,
-                        help="warm-start the learner from this checkpoint")
+                        help="warm-start from a checkpoint's weights only. Use "
+                             "when the reward changed: a stale Adam state and "
+                             "value head should not carry over")
+    parser.add_argument("--resume", type=Path, default=None,
+                        help="continue a run: weights, Adam state and the "
+                             "position in the learning-rate schedule")
+    parser.add_argument("--trained-steps", type=int, default=None,
+                        help="how far into the schedule this lineage already "
+                             "is. --resume reads it from the checkpoint; give "
+                             "it by hand after an --init-from so the rate keeps "
+                             "annealing instead of jumping back to the top")
+    parser.add_argument("--schedule-steps", type=int, default=None,
+                        help="horizon the learning rate and entropy anneal to "
+                             "zero over (default: --steps)")
     parser.add_argument("--frozen-from", type=Path, default=None,
                         help="checkpoint driving the pool's frozen slots; "
                              "defaults to --init-from")
@@ -295,7 +339,15 @@ def main():
     device = pick_device(model)
     model = model.to(device)
 
-    if args.init_from:
+    if args.init_from and args.resume:
+        raise SystemExit("--init-from and --resume mean different things; pick one")
+
+    resume_state = None
+    if args.resume:
+        resume_state = torch.load(args.resume, map_location=device, weights_only=False)
+        model.load_state_dict(resume_state["model"])
+        print(f"resuming from {args.resume}", flush=True)
+    elif args.init_from:
         payload = torch.load(args.init_from, map_location=device, weights_only=False)
         model.load_state_dict(payload["model"])
         print(f"warm start from {args.init_from}", flush=True)
@@ -324,6 +376,24 @@ def main():
 
     batch = config.envs * config.rollout_steps
     updates = max(1, config.total_steps // batch)
+
+    # The schedule belongs to the lineage, not to this invocation. `progress`
+    # is measured against `schedule_steps` from `trained_steps`, so continuing
+    # a run picks the rate up where it was left instead of jumping back to the
+    # top — which is what silently happened six times before this existed.
+    schedule_steps = args.schedule_steps or config.total_steps
+    trained_steps = args.trained_steps
+    if trained_steps is None:
+        trained_steps = int(resume_state["trained_steps"]) if resume_state else 0
+    if resume_state and "optimiser" in resume_state:
+        optimiser.load_state_dict(resume_state["optimiser"])
+        if args.schedule_steps is None:
+            schedule_steps = int(resume_state.get("schedule_steps", schedule_steps))
+        print("restored the Adam state", flush=True)
+    start_progress = min(trained_steps / max(schedule_steps, 1), 1.0)
+    print(f"schedule: {trained_steps:,}/{schedule_steps:,} done "
+          f"({start_progress:.1%}) · lr starts at "
+          f"{config.learning_rate * (1 - start_progress):.2e}", flush=True)
     pool = " / ".join(f"{name} {share:.0%}"
                       for name, share in zip(OPPONENT_NAMES.values(), env.weights))
     print(f"device {device} · {updates} updates x {batch:,} steps = "
@@ -339,19 +409,22 @@ def main():
     if args.save_every:
         # Publish the untrained network at once, so the page has something from
         # the first second and step 0 is the baseline you compare against.
-        save_live(output, model, config, 0, 0, started)
+        save_live(output, model, config, 0, 0, started,
+                  trained_steps, schedule_steps)
+        save_resume(output, model, optimiser, trained_steps, schedule_steps)
 
     for update in range(updates):
-        # Linear decay to zero. A constant rate collapsed irreversibly at ~2M
-        # steps once and never came back.
-        progress = update / updates
+        # Linear decay to zero across the lineage's whole budget. A constant
+        # rate collapsed irreversibly at ~2M steps once and never came back.
+        progress = min((trained_steps + total) / max(schedule_steps, 1), 1.0)
         lr = config.learning_rate * (1.0 - progress)
         for group in optimiser.param_groups:
             group["lr"] = lr
         entropy_coefficient = config.entropy_coefficient * (1.0 - progress)
         # Until the critic has something to say, moving the policy against its
-        # advantage estimates is noise amplification.
-        critic_only = update < config.critic_warmup_updates
+        # advantage estimates is noise amplification. A resumed run's critic is
+        # not stale — it was trained on this very reward — so it skips this.
+        critic_only = resume_state is None and update < config.critic_warmup_updates
 
         shape = (config.rollout_steps, config.envs)
         obs_buf = np.empty(shape + (OBS_DIM,), np.float32)
@@ -492,12 +565,16 @@ def main():
 
         if args.save_every and total - published >= args.save_every:
             published = total
-            save_live(output, model, config, total, update + 1, started)
+            save_live(output, model, config, total, update + 1, started,
+                      trained_steps + total, schedule_steps)
+            save_resume(output, model, optimiser, trained_steps + total, schedule_steps)
 
     env.close()
     result = {
         "name": f"ppo-duel-v1-joystick18-s{config.seed}",
         "steps": total,
+        "trained_steps": trained_steps + total,
+        "schedule_steps": schedule_steps,
         "seconds": time.perf_counter() - started,
         "config": asdict(config),
     }
@@ -505,7 +582,9 @@ def main():
     torch.save({"model": model.state_dict(), "arch": ARCH, "result": result},
                output / "final.pt")
     if args.save_every:
-        save_live(output, model, config, total, updates, started)
+        save_live(output, model, config, total, updates, started,
+                  trained_steps + total, schedule_steps)
+        save_resume(output, model, optimiser, trained_steps + total, schedule_steps)
 
 
 if __name__ == "__main__":
