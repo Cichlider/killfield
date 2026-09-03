@@ -15,7 +15,13 @@ const STEP_MS = 1000 / FPS;
 const MAX_CATCHUP_MS = 250;
 
 const OUTCOME = ["进行中", "胜", "负", "双亡", "平局"];
-const OPPONENTS = [{ code: 0, label: "Laika" }, { code: 1, label: "MPC" }];
+const OPPONENTS = [
+  { code: 0, label: "Laika" },
+  { code: 1, label: "MPC" },
+  { code: 2, label: "冻结自我" },
+];
+// kf_step_pair's "nothing to say" sentinel: tank 1 holds still this frame.
+const NO_ACTION = 0xffffffff;
 
 // Render buffer layout, matching engine/src/wasm.rs's build_render doc comment.
 const HEADER = 14;
@@ -113,6 +119,7 @@ const mpcButton = document.getElementById("mode-mpc");
 const ppoButton = document.getElementById("mode-ppo");
 const laikaButton = document.getElementById("opp-laika");
 const oppMpcButton = document.getElementById("opp-mpc");
+const oppFrozenButton = document.getElementById("opp-frozen");
 const pauseButton = document.getElementById("pause");
 const restartButton = document.getElementById("restart");
 
@@ -133,6 +140,10 @@ let settled = false;
 let ppoAction = 8;
 let ppoPending = false;
 let ppoGeneration = 0;
+// A frozen checkpoint driving tank 1. Its weights are served over the same
+// endpoint, so the page fetches both seats' actions in one request.
+let frozenAction = NO_ACTION;
+let frozenInfo = null;
 
 // What this wasm build actually encodes. Every /api/act carries these, and the
 // server refuses to answer a checkpoint that disagrees. A model trained on one
@@ -182,6 +193,11 @@ function gate(manifest) {
 
 function adopt(manifest) {
   served = manifest;
+  frozenInfo = manifest.frozen || null;
+  oppFrozenButton.disabled = !frozenInfo;
+  oppFrozenButton.title = frozenInfo
+    ? `冻结档 ${frozenInfo.name}${frozenInfo.steps ? ` · ${(frozenInfo.steps / 1e6).toFixed(2)}M 步` : ""}`
+    : "服务端未加载冻结档（serve.sh 的 FROZEN=）";
   pendingManifest = null;
   ui.fresh.hidden = true;
   ui.source.textContent = manifest.source || "—";
@@ -234,23 +250,29 @@ async function pollModel(initial) {
   }
 }
 
+function readObservation(fn) {
+  const length = wasm.kf_observation_len();
+  return Array.from(new Float32Array(wasm.memory.buffer, fn(handle), length));
+}
+
 function requestPpoAction() {
   if (ppoPending || !served) return;
-  const length = wasm.kf_observation_len();
-  const pointer = wasm.kf_observation(handle);
-  const flat = new Float32Array(wasm.memory.buffer, pointer, length);
-  const obs = Array.from(flat);
+  const body = {
+    obs: readObservation(wasm.kf_observation),
+    schema_version: engine.schema,
+    obs_dim: engine.obsDim,
+    action_count: engine.actions,
+  };
+  // Both seats in the same request, so they can never end up a frame apart.
+  if (opponent === 2 && frozenInfo) {
+    body.opponent_obs = readObservation(wasm.kf_opponent_observation);
+  }
   ppoPending = true;
   const generation = ppoGeneration;
   fetch("/api/act", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      obs,
-      schema_version: engine.schema,
-      obs_dim: engine.obsDim,
-      action_count: engine.actions,
-    }),
+    body: JSON.stringify(body),
   })
     .then(async (r) => {
       if (r.status === 409) {
@@ -262,8 +284,12 @@ function requestPpoAction() {
       return r.ok ? r.json() : null;
     })
     .then((d) => {
-      if (d && generation === ppoGeneration && Number.isInteger(d.action)) {
+      if (!d || generation !== ppoGeneration) return;
+      if (Number.isInteger(d.action)) {
         ppoAction = Math.max(0, Math.min(actionCount - 1, d.action));
+      }
+      if (Number.isInteger(d.opponent_action)) {
+        frozenAction = Math.max(0, Math.min(actionCount - 1, d.opponent_action));
       }
     })
     .catch(() => {})
@@ -275,6 +301,7 @@ function newEpisode() {
   roll += 1;
   ppoGeneration += 1;
   ppoAction = 8;
+  frozenAction = NO_ACTION;
   settled = false;
   if (pendingManifest) adopt(pendingManifest);
   // A new seed per round is a new maze, new spawns and new headings, which is
@@ -431,9 +458,12 @@ function recordEpisode(outcome) {
 }
 
 function stepOnce() {
+  // A frozen opponent is driven from here too. Under the MPC baseline nobody
+  // is asking the server for tank 1, so it would stand still — which would be
+  // a fake matchup, so that combination is refused in setOpponent instead.
   const flags = mode === "mpc"
     ? wasm.kf_step_mpc(handle)
-    : wasm.kf_step(handle, ppoAction);
+    : wasm.kf_step_pair(handle, ppoAction, frozenAction);
   if (mode === "ppo") requestPpoAction();
   return flags & 1;
 }
@@ -461,6 +491,11 @@ function frame(now) {
 }
 
 function setMode(next) {
+  if (next === "mpc" && opponent === 2) {
+    // Same rule from the other side.
+    setOpponent(0);
+    return;
+  }
   mode = next;
   mpcButton.classList.toggle("active", next === "mpc");
   ppoButton.classList.toggle("active", next === "ppo");
@@ -473,13 +508,17 @@ function setOpponent(next) {
   opponent = next;
   laikaButton.classList.toggle("active", next === 0);
   oppMpcButton.classList.toggle("active", next === 1);
+  oppFrozenButton.classList.toggle("active", next === 2);
+  // Only the policy can face the frozen checkpoint: watching the planner play
+  // a tank nobody is driving would be a fake matchup, not a baseline.
+  if (next === 2 && mode !== "ppo") setMode("ppo");
   resetHistory();
   handle = null;
   newEpisode();
 }
 
 async function main() {
-  const response = await fetch("kf_engine.wasm?v=33b94e47");
+  const response = await fetch("kf_engine.wasm?v=62503df6");
   const { instance } = await WebAssembly.instantiate(await response.arrayBuffer(), {});
   wasm = instance.exports;
   episodeFrames = wasm.kf_episode_frames();
@@ -500,6 +539,7 @@ async function main() {
   ppoButton.addEventListener("click", () => setMode("ppo"));
   laikaButton.addEventListener("click", () => setOpponent(0));
   oppMpcButton.addEventListener("click", () => setOpponent(1));
+  oppFrozenButton.addEventListener("click", () => setOpponent(2));
   pauseButton.addEventListener("click", () => {
     paused = !paused;
     pauseButton.textContent = paused ? "继续" : "暂停";

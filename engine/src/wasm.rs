@@ -37,8 +37,11 @@ pub struct Handle {
     game: Game,
     state: DuelState,
     observation: DuelObservation,
+    /// Tank 1's own view, encoded only when a frozen checkpoint is driving it.
+    observation_opponent: DuelObservation,
     render: Vec<f32>,
     scratch: Vec<f32>,
+    scratch_opponent: Vec<f32>,
     last_action: Option<u16>,
     episode_reward: f32,
     ended: bool,
@@ -93,8 +96,10 @@ fn fresh(seed: u32, opponent: Opponent) -> Handle {
         game,
         state,
         observation: DuelObservation::default(),
+        observation_opponent: DuelObservation::default(),
         render: Vec::new(),
         scratch: vec![0.0; OBS_DIM + BULLET_SLOTS],
+        scratch_opponent: vec![0.0; OBS_DIM + BULLET_SLOTS],
         last_action: None,
         episode_reward: 0.0,
         ended: false,
@@ -106,16 +111,17 @@ fn fresh(seed: u32, opponent: Opponent) -> Handle {
 }
 
 /// Open a duel. `seed` picks the maze, both spawn cells and both headings;
-/// `opponent` is 0 for the scripted Laika and 1 for the MPC planner.
+/// `opponent` is 0 for the scripted Laika, 1 for the MPC planner, 2 for a
+/// frozen policy checkpoint.
 ///
-/// The trainer's third opponent, a frozen policy checkpoint, is not available
-/// here: its weights live in the trainer, and the page has no way to run them
-/// for tank 1. Anything out of range falls back to Laika rather than producing
-/// an opponent nobody drives.
+/// A frozen opponent's weights are not in this module — they are served over
+/// the same inference endpoint the policy uses. The page reads tank 1's view
+/// with `kf_opponent_observation` and hands the action back through
+/// `kf_step_pair`; a frozen opponent driven with `kf_step` alone simply holds
+/// still, which is visible rather than silent.
 #[no_mangle]
 pub extern "C" fn kf_new_duel(seed: u32, opponent: u32) -> *mut Handle {
-    let opponent = if opponent == 1 { Opponent::Mpc } else { Opponent::Laika };
-    Box::into_raw(Box::new(fresh(seed, opponent)))
+    Box::into_raw(Box::new(fresh(seed, Opponent::from_u8(opponent as u8))))
 }
 
 /// # Safety
@@ -178,8 +184,7 @@ pub unsafe extern "C" fn kf_step_mpc(h: *mut Handle) -> u32 {
 #[no_mangle]
 pub unsafe extern "C" fn kf_reset(h: *mut Handle, seed: u32, opponent: u32) {
     let planner = (*h).mpc.take();
-    let opponent = if opponent == 1 { Opponent::Mpc } else { Opponent::Laika };
-    *h = fresh(seed, opponent);
+    *h = fresh(seed, Opponent::from_u8(opponent as u8));
     (*h).mpc = planner;
 }
 
@@ -192,6 +197,22 @@ pub unsafe extern "C" fn kf_reset(h: *mut Handle, seed: u32, opponent: u32) {
 /// `h` must come from `kf_new_duel`.
 #[no_mangle]
 pub unsafe extern "C" fn kf_step(h: *mut Handle, action: u32) -> u32 {
+    kf_step_pair(h, action, u32::MAX)
+}
+
+/// Advance one frame, supplying tank 1's action as well.
+///
+/// `opponent_action` is ignored unless a frozen checkpoint is driving tank 1;
+/// pass `u32::MAX` to mean "nothing to say", which leaves it holding still.
+///
+/// # Safety
+/// `h` must come from `kf_new_duel`.
+#[no_mangle]
+pub unsafe extern "C" fn kf_step_pair(
+    h: *mut Handle,
+    action: u32,
+    opponent_action: u32,
+) -> u32 {
     let h = &mut *h;
     if h.ended {
         return 1;
@@ -199,7 +220,9 @@ pub unsafe extern "C" fn kf_step(h: *mut Handle, action: u32) -> u32 {
     let action = (action as u16).min(DUEL_ACTIONS as u16 - 1);
     apply_duel_action(&mut h.game, 0, action);
     h.last_action = Some(action);
-    h.state.before_step(&mut h.game);
+    let supplied = (opponent_action != u32::MAX)
+        .then(|| (opponent_action as u16).min(DUEL_ACTIONS as u16 - 1));
+    h.state.before_step_with(&mut h.game, supplied);
     let events = h.game.step();
     let step = duel_settle(&h.game, &mut h.state, &events);
     h.episode_reward += step.reward as f32;
@@ -263,6 +286,32 @@ pub unsafe extern "C" fn kf_observation(h: *mut Handle) -> *const f32 {
         h.scratch[OBS_DIM + i] = h.observation.bullet_mask[i] as u8 as f32;
     }
     h.scratch.as_ptr()
+}
+
+/// Tank 1's own view of the current frame, in the same layout as
+/// `kf_observation`. Only meaningful for a frozen opponent; the encoder is
+/// symmetric in `tank`, so the opponent sees exactly what the policy sees from
+/// the other seat.
+///
+/// # Safety
+/// `h` must come from `kf_new_duel`.
+#[no_mangle]
+pub unsafe extern "C" fn kf_opponent_observation(h: *mut Handle) -> *const f32 {
+    let h = &mut *h;
+    encode(
+        &h.game,
+        1,
+        &h.state.prev_pose,
+        &h.state.boxes,
+        h.state.opponent_last_action(),
+        &mut h.observation_opponent,
+    );
+    h.scratch_opponent[..OBS_DIM].copy_from_slice(&h.observation_opponent.values);
+    for i in 0..BULLET_SLOTS {
+        h.scratch_opponent[OBS_DIM + i] =
+            h.observation_opponent.bullet_mask[i] as u8 as f32;
+    }
+    h.scratch_opponent.as_ptr()
 }
 
 #[no_mangle]
@@ -369,6 +418,44 @@ mod tests {
             assert_eq!(kf_outcome(handle), Outcome::Running.as_u8() as u32);
             assert_ne!((&*handle).game.maze.cells, first, "reset replayed the same maze");
             kf_free(handle);
+        }
+    }
+
+    #[test]
+    fn a_frozen_opponent_publishes_its_seat_and_plays_what_it_is_handed() {
+        unsafe {
+            let handle = kf_new_duel(31, 2);
+            assert_eq!(kf_opponent(handle), 2);
+
+            // Its view must be a real encoding of the same frame from the
+            // other seat, not a zeroed buffer and not a copy of ours.
+            let len = kf_observation_len() as usize;
+            let ours = std::slice::from_raw_parts(kf_observation(handle), len).to_vec();
+            let theirs =
+                std::slice::from_raw_parts(kf_opponent_observation(handle), len).to_vec();
+            assert!(theirs.iter().any(|v| *v != 0.0));
+            assert!(theirs.iter().all(|v| v.is_finite() && (-1.0..=1.0).contains(v)));
+            assert_ne!(ours, theirs, "both seats saw the same thing");
+
+            // Handed a forward action, tank 1 moves.
+            let before = (&*handle).game.tanks[1];
+            for _ in 0..12 {
+                kf_step_pair(handle, 8, 14); // [2,1,0]: opponent drives forward
+            }
+            let after = (&*handle).game.tanks[1];
+            assert!((after.x - before.x).hypot(after.y - before.y) > 1.0);
+
+            // Handed nothing, it holds still rather than acting on stale input.
+            let handle2 = kf_new_duel(31, 2);
+            let start = (&*handle2).game.tanks[1];
+            for _ in 0..12 {
+                kf_step(handle2, 8);
+            }
+            let end = (&*handle2).game.tanks[1];
+            assert_eq!((start.x, start.y), (end.x, end.y));
+
+            kf_free(handle);
+            kf_free(handle2);
         }
     }
 

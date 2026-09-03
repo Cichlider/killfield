@@ -121,6 +121,7 @@ def schema_mismatches(manifest: dict, claim: dict) -> list[str]:
 class Handler(SimpleHTTPRequestHandler):
     publication: Publication
     device: torch.device
+    frozen: "Frozen"
 
     def _json(self, code: int, payload: dict) -> None:
         body = json.dumps(payload).encode()
@@ -138,6 +139,7 @@ class Handler(SimpleHTTPRequestHandler):
                 self._json(404, {"error": "no checkpoint published yet",
                                  "run": str(self.publication.run)})
             else:
+                manifest["frozen"] = self.frozen.describe()
                 self._json(200, manifest)
             return
         super().do_GET()
@@ -184,24 +186,68 @@ class Handler(SimpleHTTPRequestHandler):
             self._json(500, {"error": str(exc)})
             return
 
-        obs = torch.tensor([flat[:obs_dim]], dtype=torch.float32, device=self.device)
-        mask = torch.tensor([[v > 0.5 for v in flat[obs_dim:]]],
-                            dtype=torch.bool, device=self.device)
-        with torch.inference_mode():
-            logits, _ = model(obs, mask)
-            probabilities = torch.softmax(logits, dim=-1)[0]
-            action = int(torch.argmax(probabilities))
+        def seat(flat_obs, net):
+            obs = torch.tensor([flat_obs[:obs_dim]], dtype=torch.float32,
+                               device=self.device)
+            mask = torch.tensor([[v > 0.5 for v in flat_obs[obs_dim:]]],
+                                dtype=torch.bool, device=self.device)
+            with torch.inference_mode():
+                logits, _ = net(obs, mask)
+                probabilities = torch.softmax(logits, dim=-1)[0]
+            index = int(torch.argmax(probabilities))
+            return index, float(probabilities[index])
 
-        self._json(200, {
+        action, confidence = seat(flat, model)
+        reply = {
             "action": action,
-            "confidence": float(probabilities[action]),
+            "confidence": confidence,
             "steps": manifest.get("steps"),
             "source": manifest.get("source"),
-        })
+        }
+
+        # Both seats in one round trip. Two requests a frame would double the
+        # latency for no reason, and would let the seats drift a frame apart.
+        opponent = request.get("opponent_obs")
+        if opponent is not None and self.frozen.model is not None:
+            if not isinstance(opponent, list) or len(opponent) != obs_dim + slots:
+                self._json(400, {"error": "opponent_obs has the wrong length"})
+                return
+            reply["opponent_action"], _ = seat(opponent, self.frozen.model)
+        self._json(200, reply)
 
     def log_message(self, fmt, *args):
         # One line per engine frame at 25 Hz would bury the training output.
         pass
+
+
+class Frozen:
+    """The pool's frozen checkpoint, loaded once and never reloaded.
+
+    Its whole value is being a fixed rung: if it drifted, "the live model is
+    beating the frozen one" would stop meaning the live model improved.
+    """
+
+    def __init__(self, path: Path | None, device: torch.device):
+        self.path = path
+        self.manifest = None
+        self.model = None
+        if path is None:
+            return
+        manifest_path = path.with_suffix(".json")
+        if manifest_path.exists():
+            self.manifest = json.loads(manifest_path.read_text())
+        arch = (self.manifest or {}).get("arch", "duel_cnn_v1")
+        payload = torch.load(path, map_location=device, weights_only=False)
+        self.model = ARCHITECTURES[arch]().to(device)
+        self.model.load_state_dict(payload["model"])
+        self.model.eval()
+        steps = (self.manifest or {}).get("steps")
+        print(f"frozen opponent: {path.name} · arch={arch} · steps={steps}", flush=True)
+
+    def describe(self) -> dict | None:
+        if self.model is None:
+            return None
+        return {"name": self.path.stem, "steps": (self.manifest or {}).get("steps")}
 
 
 def main():
@@ -211,11 +257,15 @@ def main():
                         help="directory the trainer publishes live.pt into")
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument("--viewer", type=Path, default=Path("viewer"))
+    parser.add_argument("--frozen", type=Path, default=None,
+                        help="checkpoint the page can watch the live model "
+                             "play against; enables the frozen-self opponent")
     args = parser.parse_args()
 
     device = torch.device("cpu")  # batch of one; dispatch latency beats FLOPs
     Handler.publication = Publication(args.run.resolve())
     Handler.device = device
+    Handler.frozen = Frozen(args.frozen.resolve() if args.frozen else None, device)
 
     handler = partial(Handler, directory=str(args.viewer.resolve()))
     server = ThreadingHTTPServer(("127.0.0.1", args.port), handler)
