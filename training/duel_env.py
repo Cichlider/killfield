@@ -93,6 +93,7 @@ class DuelVec:
         self.outcomes = self._view("kf_duel_outcomes", ctypes.c_uint8, (count,))
         self.opponents = self._view("kf_duel_opponents", ctypes.c_uint8, (count,))
         self.frames = self._view("kf_duel_episode_frames", ctypes.c_uint32, (count,))
+        self.action_changes = self._view("kf_duel_action_changes", ctypes.c_uint32, (count,))
         self.shots = self._view("kf_duel_shots", ctypes.c_uint32, (count,))
         self.hits = self._view("kf_duel_hits", ctypes.c_uint32, (count,))
 

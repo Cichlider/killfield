@@ -95,6 +95,8 @@ pub struct DuelVecEnv {
     outcomes: Vec<u8>,
     opponents: Vec<u8>,
     episode_frames: Vec<u32>,
+    /// Frames whose action differed from the one before, this episode.
+    action_changes: Vec<u32>,
     shots: Vec<u32>,
     hits: Vec<u32>,
 }
@@ -142,6 +144,7 @@ impl DuelVecEnv {
             outcomes: vec![0; count],
             opponents: vec![0; count],
             episode_frames: vec![0; count],
+            action_changes: vec![0; count],
             shots: vec![0; count],
             hits: vec![0; count],
         };
@@ -250,6 +253,7 @@ impl DuelVecEnv {
                             .min(DUEL_ACTIONS as u16 - 1);
 
                         apply_duel_action(&mut slot.game, 0, action);
+                        slot.state.record_action(action);
                         slot.last_action = Some(action);
                         // Snapshots the previous pose, then lets whichever
                         // controller owns tank 1 write its buttons: the
@@ -292,6 +296,7 @@ impl DuelVecEnv {
             self.terminals[index] = (r.ended && r.outcome != 0) as u8;
             if r.frames > 0 {
                 self.episode_frames[index] = r.frames;
+                self.action_changes[index] = self.slots[index].state.action_changes;
             }
         }
         self.scatter();
@@ -336,6 +341,7 @@ impl DuelVecEnv {
             self.slots[index] = slot.expect("every pending slot was rebuilt");
             self.opponents[index] = opponent.as_u8();
             self.episode_frames[index] = 0;
+            self.action_changes[index] = 0;
         }
         self.scatter();
     }
@@ -420,6 +426,7 @@ pointer_export!(kf_duel_terminals, terminals, u8);
 pointer_export!(kf_duel_outcomes, outcomes, u8);
 pointer_export!(kf_duel_opponents, opponents, u8);
 pointer_export!(kf_duel_episode_frames, episode_frames, u32);
+pointer_export!(kf_duel_action_changes, action_changes, u32);
 pointer_export!(kf_duel_shots, shots, u32);
 pointer_export!(kf_duel_hits, hits, u32);
 
@@ -496,7 +503,10 @@ mod tests {
                 } else if env.terminals[i] == 1 {
                     terminals_seen += 1;
                     let outcome = crate::duel::Outcome::from_u8(env.outcomes[i]);
-                    let expected = outcome.reward(env.episode_frames[i]) as f32;
+                    let frames = env.episode_frames[i];
+                    let expected = (outcome.reward(frames)
+                        + crate::duel::style_bonus(env.action_changes[i], frames))
+                        as f32;
                     assert!(
                         (env.rewards[i] - expected).abs() < 1e-6,
                         "{outcome:?} at {} frames paid {} not {expected}",

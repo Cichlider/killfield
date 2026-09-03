@@ -225,11 +225,14 @@ class Tally:
     def reset(self):
         self.counts = {name: [0, 0, 0, 0] for name in self.NAMES}  # win/loss/double/draw
         self.frames = []
+        self.change_rates = []
 
-    def record(self, outcome: int, opponent: int, frames: int):
+    def record(self, outcome: int, opponent: int, frames: int, changes: int):
         row = self.counts[OPPONENT_NAMES[min(opponent, 2)]]
         row[min(outcome, 4) - 1] += 1
         self.frames.append(frames)
+        if frames > 1:
+            self.change_rates.append(changes / (frames - 1))
 
     def summary(self) -> dict:
         out = {}
@@ -242,6 +245,11 @@ class Tally:
                 "double_rate": double / total if total else None,
             }
         out["frames_mean"] = float(np.mean(self.frames)) if self.frames else None
+        # Laika and the planner both sit near 0.13; this is the number the
+        # style bonus is paid on, so it belongs next to the win rates.
+        out["change_rate"] = (
+            float(np.mean(self.change_rates)) if self.change_rates else None
+        )
         return out
 
 
@@ -386,7 +394,7 @@ def main():
                 done_buf[t] = env.dones.astype(bool)
                 for i in np.flatnonzero(env.terminals):
                     tally.record(int(env.outcomes[i]), int(env.opponents[i]),
-                                 int(env.frames[i]))
+                                 int(env.frames[i]), int(env.action_changes[i]))
                 env.reset_done()
             obs_t, mask_t = tensors(env, device)
             _, last_value = model(obs_t, mask_t)
@@ -475,7 +483,8 @@ def main():
                          if record[name]["rounds"])
         print(
             f"u{update + 1}/{updates} steps={total:,} {shown} "
-            f"EV={explained:+.2f} H={entropy_seen:.2f}"
+            + (f"chg={record['change_rate']:.0%} " if record["change_rate"] else "")
+            + f"EV={explained:+.2f} H={entropy_seen:.2f}"
             + (" [critic warmup]" if critic_only else ""),
             flush=True,
         )

@@ -27,6 +27,13 @@
 //! pressure where a decision can still respond to it: the eleventh second
 //! costs far more than the twenty-ninth.
 //!
+//! **Why a clean round earns a little.** Up to `STYLE_MAX` on top of the
+//! result, for changing action no more often than a competent controller does.
+//! Laika and the planner both sit at ~13% of frames; the policy sits at ~50%,
+//! and a hull that reverses its turn every other frame throws away the
+//! previous frame's rotation. The bound is arithmetic rather than taste: any
+//! win has to keep beating any trade, which caps it below 0.5.
+//!
 //! **Why a mutual kill is worth nothing.** Zero, not a small positive: a round
 //! you did not win. An earlier version paid `+0.2` for it, on the theory that
 //! a policy which cannot win yet still needs paying for closing distance and
@@ -80,6 +87,27 @@ pub const REWARD_DOUBLE_DEATH: f64 = 0.0;
 /// Thirty seconds of nothing costs exactly as much as losing. There is no
 /// version of this game where running out the clock is a result.
 pub const REWARD_DRAW: f64 = -1.0;
+
+/// The most a round can earn for being played cleanly, on top of its result.
+///
+/// Bounded by the scale, not by taste. Adding `S` to every terminal keeps the
+/// ordering `draw = loss < trade < win` only while the worst win still beats
+/// the best trade: `WIN_FLOOR > REWARD_DOUBLE_DEATH + S`, which here means
+/// `S < 0.5`. At exactly 0.5 a flawlessly smooth mutual kill ties a win that
+/// took the full thirty seconds, and a fast scrappy win ties a slow tidy one.
+/// Half of that bound leaves 0.25 of daylight on both comparisons.
+pub const STYLE_MAX: f64 = 0.25;
+
+/// Action changes per frame that earn the full `STYLE_MAX`.
+///
+/// Measured, not chosen. Over 200 rounds `engine/src/bin/probe_actions.rs`
+/// puts Laika at 12.9% and the MPC planner at 12.7%, folding their buttons
+/// into the same `[throttle, turn, fire]` triple the policy picks from. Two
+/// controllers that play this game well land on the same water line, so that
+/// is what "changing your mind as often as a competent player does" is worth
+/// full marks for. There is nothing to gain below it — a controller that never
+/// changed its action would not be reacting.
+pub const STYLE_ANCHOR_RATE: f64 = 0.13;
 
 /// Rays for an MPC opponent. The planner's own sweep found 512 as strong as
 /// 2048 (88.5% vs 88.3% over 2000 rounds) at a third of the rebuild cost.
@@ -149,6 +177,31 @@ pub fn win_reward(frames: u32) -> f64 {
     let span = (DUEL_FRAMES as f64 / WIN_FULL_FRAMES as f64).ln();
     (REWARD_WIN - (REWARD_WIN - WIN_FLOOR) * elapsed.ln() / span)
         .clamp(WIN_FLOOR, REWARD_WIN)
+}
+
+/// What a round earns for how few times it changed its action.
+///
+/// Full marks at or below `STYLE_ANCHOR_RATE`, decaying logarithmically to
+/// zero at one change per frame. Paid on every terminal, win or lose: the
+/// point is a habit, and a habit that only counted in victories would be
+/// learned only from victories.
+///
+/// The quantity is a **rate**, not a per-round count, and that is load-bearing.
+/// Scoring the raw count against a threshold calibrated on a ~294-frame round
+/// would hand full marks to any round that ended early — and the cheapest way
+/// to end a round early is to die. A rate is length-invariant, so dying fast
+/// buys nothing.
+pub fn style_bonus(changes: u32, frames: u32) -> f64 {
+    if frames <= 1 {
+        return STYLE_MAX;
+    }
+    // The first frame has no predecessor to differ from.
+    let rate = changes as f64 / (frames - 1) as f64;
+    if rate <= STYLE_ANCHOR_RATE {
+        return STYLE_MAX;
+    }
+    let span = (1.0 / STYLE_ANCHOR_RATE).ln();
+    (STYLE_MAX * (1.0 - (rate / STYLE_ANCHOR_RATE).ln() / span)).clamp(0.0, STYLE_MAX)
 }
 
 impl Outcome {
@@ -245,6 +298,9 @@ pub struct DuelState {
     /// What a frozen opponent last played, so its own observation carries the
     /// same "previous action" channel ours does.
     opponent_last_action: Option<u16>,
+    /// How many frames chose a different action than the frame before.
+    pub action_changes: u32,
+    own_last_action: Option<u16>,
 }
 
 impl DuelState {
@@ -274,7 +330,18 @@ impl DuelState {
             shots_fired: 0,
             hits: 0,
             opponent_last_action: None,
+            action_changes: 0,
+            own_last_action: None,
         }
+    }
+
+    /// Note what the policy chose this frame. Call once per frame, alongside
+    /// applying the action.
+    pub fn record_action(&mut self, action: u16) {
+        if self.own_last_action.is_some_and(|previous| previous != action) {
+            self.action_changes += 1;
+        }
+        self.own_last_action = Some(action);
     }
 
     /// Snapshot both poses, then let an MPC opponent choose its buttons.
@@ -384,7 +451,11 @@ pub fn duel_settle(game: &Game, state: &mut DuelState, events: &[Event]) -> Duel
     };
 
     state.outcome = outcome;
-    DuelStep { reward: outcome.reward(state.frames), outcome, fired, hit }
+    let mut reward = outcome.reward(state.frames);
+    if outcome.terminal() {
+        reward += style_bonus(state.action_changes, state.frames);
+    }
+    DuelStep { reward, outcome, fired, hit }
 }
 
 #[cfg(test)]
@@ -394,18 +465,19 @@ mod tests {
     /// Drive one frame the way every caller must.
     fn frame(game: &mut Game, state: &mut DuelState, action: u16) -> DuelStep {
         apply_duel_action(game, 0, action);
+        state.record_action(action);
         state.before_step(game);
         let events = game.step();
         duel_settle(game, state, &events)
     }
 
-    fn play(seed: u32, opponent: Opponent, action: u16, limit: u32) -> (DuelStep, u32) {
+    fn play(seed: u32, opponent: Opponent, action: u16, limit: u32) -> (DuelStep, u32, u32) {
         let mut game = duel_game(seed, opponent);
         let mut state = DuelState::new(seed, opponent, &game);
         for _ in 0..limit {
             let step = frame(&mut game, &mut state, action);
             if step.outcome.terminal() {
-                return (step, state.frames);
+                return (step, state.frames, state.action_changes);
             }
         }
         panic!("round never ended");
@@ -464,12 +536,14 @@ mod tests {
 
     #[test]
     fn standing_still_against_laika_is_decided_and_paid_once() {
-        let (step, frames) = play(21, Opponent::Laika, 8, DUEL_FRAMES + DUEL_GRACE_FRAMES);
+        let (step, frames, changes) =
+            play(21, Opponent::Laika, 8, DUEL_FRAMES + DUEL_GRACE_FRAMES);
         assert!(step.outcome.terminal());
-        let expected = step.outcome.reward(frames);
+        let expected = step.outcome.reward(frames) + style_bonus(changes, frames);
         assert!(
             (step.reward - expected).abs() < 1e-9,
-            "terminal paid {} but {:?} at {frames} frames is worth {expected}",
+            "terminal paid {} but {:?} at {frames} frames with {changes} changes \
+             is worth {expected}",
             step.reward,
             step.outcome
         );
@@ -493,6 +567,8 @@ mod tests {
         assert_eq!(last, Outcome::Draw);
         assert_eq!(state.frames, DUEL_FRAMES);
         assert!((last.reward(state.frames) - REWARD_DRAW).abs() < 1e-9);
+        // Holding one action all round is the cleanest a round can be played.
+        assert_eq!(state.action_changes, 0);
     }
 
     #[test]
@@ -528,6 +604,52 @@ mod tests {
                 "{seconds}s is not below the linear interpolation"
             );
         }
+    }
+
+    #[test]
+    fn a_clean_round_earns_more_than_a_twitchy_one() {
+        let frames = 300u32;
+        let at = |rate: f64| style_bonus((rate * (frames - 1) as f64) as u32, frames);
+
+        // Full marks at or below what Laika and the planner actually do.
+        assert_eq!(at(0.0), STYLE_MAX);
+        assert_eq!(at(STYLE_ANCHOR_RATE * 0.5), STYLE_MAX);
+        assert_eq!(at(STYLE_ANCHOR_RATE), STYLE_MAX);
+
+        // Then strictly decreasing to nothing at one change per frame.
+        let mut previous = STYLE_MAX;
+        for step in 1..=20 {
+            let rate = STYLE_ANCHOR_RATE + step as f64 * (1.0 - STYLE_ANCHOR_RATE) / 20.0;
+            let value = at(rate);
+            assert!(value < previous, "rate {rate:.2} did not decrease");
+            assert!((0.0..=STYLE_MAX).contains(&value));
+            previous = value;
+        }
+        assert!(at(1.0).abs() < 1e-9, "changing every frame must earn nothing");
+
+        // A rate, not a count: ending a round early cannot buy a better score.
+        // Same behaviour, a tenth of the length, same marks.
+        let long = style_bonus(30, 301);
+        let short = style_bonus(3, 31);
+        assert!((long - short).abs() < 0.01, "{long} vs {short}");
+    }
+
+    #[test]
+    fn the_style_bonus_cannot_outrank_the_result() {
+        // The arithmetic that sets STYLE_MAX. Every one of these is an
+        // ordering the scale would lose if the bonus were larger.
+        assert!(
+            WIN_FLOOR > REWARD_DOUBLE_DEATH + STYLE_MAX,
+            "the worst win must beat the best-played trade"
+        );
+        assert!(
+            REWARD_WIN > WIN_FLOOR + STYLE_MAX,
+            "a fast scrappy win must beat a slow tidy one"
+        );
+        assert!(
+            REWARD_DOUBLE_DEATH > REWARD_LOSS + STYLE_MAX,
+            "the worst trade must beat the best-played loss"
+        );
     }
 
     #[test]

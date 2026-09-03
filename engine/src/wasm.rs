@@ -219,6 +219,7 @@ pub unsafe extern "C" fn kf_step_pair(
     }
     let action = (action as u16).min(DUEL_ACTIONS as u16 - 1);
     apply_duel_action(&mut h.game, 0, action);
+    h.state.record_action(action);
     h.last_action = Some(action);
     let supplied = (opponent_action != u32::MAX)
         .then(|| (opponent_action as u16).min(DUEL_ACTIONS as u16 - 1));
