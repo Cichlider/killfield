@@ -192,7 +192,7 @@ observation-only 的安全分类器 held-out **0%**。
 ```sh
 cargo test --manifest-path engine/Cargo.toml
 node --check viewer/viewer.js
-node viewer/tests/low-latency.test.mjs
+node viewer/tests/input-window.test.mjs
 bash viewer/build.sh
 ```
 

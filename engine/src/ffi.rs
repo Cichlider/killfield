@@ -1,793 +1,169 @@
-//! Stable C ABI used by the Python online trainer.
+//! Stable C ABI used by the Python trainer.
 //!
-//! One call advances every environment by one policy decision (four engine
-//! frames).  Terminal games are deliberately left intact until Python has
-//! evaluated the post-transition state and calls `kf_vec_reset_done`.
+//! One `kf_vec_step` advances every environment by one policy decision, which
+//! here is one engine frame. Terminal games are left intact until Python has
+//! read the post-transition state and calls `kf_vec_reset_done`.
 
-use crate::ballistics::{check_bullet_path, ShotOutcome};
-use crate::constants as C;
-use crate::directional::apply_joystick_action;
-use crate::game::Tank;
-use crate::game::{pursuit_room_target_action, walking_curriculum_progress, Event, Game};
-use crate::laika::LaikaAI;
-use crate::reward::{
-    RewardConfig, RewardTracker, CH_EXAMPLE, CH_STYLE, CH_TERMINAL, REWARD_CHANNELS,
+use crate::game::Game;
+use crate::range::{
+    apply_range_action, range_game, range_settle, RangeState, RangeTally, RANGE_ACTIONS,
+    RANGE_FRAMES,
 };
-use crate::score::{action_index, CANDIDATES};
-use crate::semantic_obs::{
-    encode, SemanticObsState, SemanticObservation, BULLET_SLOTS, NAV_OFFSET, OBS_DIM,
-    PATH_LENGTH_OFFSET,
-};
-use crate::teacher::KillFieldAgent;
-
-const AIM_DIM: usize = 5;
-pub const MAX_RETRO: usize = 128;
-const STATIC_TARGET_FRAMES: u32 = 30 * C::FPS as u32;
-const STATIC_TARGET_SEED: u32 = 20_260_824;
-const STATIC_NAV_TOTAL: f64 = 0.5;
-const STATIC_SHOT_ATTEMPT: f64 = 0.10;
-const STATIC_SHOT_BONUS_CAP: f64 = 0.50;
-const WALKING_SEED: u32 = 20_260_825;
-const WALKING_SEED_V2: u32 = 20_260_826;
-const WALKING_FRAMES: u32 = 300;
-const PURSUIT_SEED: u32 = 20_260_827;
-const PURSUIT_FRAMES: u32 = 300;
-const WALKING_PROGRESS_TOTAL: f64 = 5.0;
-const WALKING_SUCCESS: f64 = 10.0;
-const WALKING_FAILURE: f64 = -10.0;
-const WALKING_STEP_COST: f64 = -0.002;
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum LabelMode {
-    None,
-    Laika,
-    Mpc,
-}
+use crate::range_obs::{encode, RangeObservation, BULLET_SLOTS, OBS_DIM, OBS_SCHEMA_VERSION};
 
 struct Slot {
     game: Game,
-    reward: Option<RewardTracker>,
-    teacher: LaikaAI,
-    mpc_teacher: KillFieldAgent,
-    obs_state: SemanticObsState,
-    decisions: u32,
+    state: RangeState,
+    observation: RangeObservation,
+    last_action: Option<u16>,
+    frames: u32,
     done: bool,
-    best_path: f32,
-    provisional_success: Option<f64>,
-    shot_bonus_total: f64,
-    pursuit_initial_bfs: f64,
-    pursuit_target_waypoint: usize,
 }
 
 impl Slot {
-    fn new(
-        seed: u32,
-        reward_enabled: bool,
-        static_target: bool,
-        walking: bool,
-        pursuit: bool,
-    ) -> Self {
-        let walking_start = if walking && seed != WALKING_SEED && seed != WALKING_SEED_V2 {
-            seed as usize % 13
-        } else {
-            0
-        };
-        let game = if pursuit {
-            Game::pursuit_room_curriculum(seed)
-        } else if walking && seed == WALKING_SEED_V2 {
-            Game::walking_curriculum_v2(seed)
-        } else if walking {
-            Game::walking_curriculum_at(seed, walking_start)
-        } else {
-            Game::with_ai(seed, 2, if static_target { &[] } else { &[1] })
-        };
-        let scale = game.scale;
-        let mut mpc_teacher = KillFieldAgent::new(0, seed ^ 0x5bd1_e995);
-        mpc_teacher.ray_count = 512;
-        mpc_teacher.commit_move = 0;
-        mpc_teacher.commit_turn = 0;
-        let best_path = if walking {
-            walking_curriculum_progress(&game) as f32
-        } else {
-            f32::INFINITY
-        };
-        let mut obs_state = SemanticObsState::default();
-        if walking_start > 0 {
-            let incoming_action = game.tanks[0].rotation.rem_euclid(360.0).round() as u16 % 360;
-            obs_state.push_action(incoming_action);
-        }
-        let pursuit_initial_bfs = if pursuit {
-            let mut observation = SemanticObservation::default();
-            encode(&game, 0, &obs_state, &mut observation);
-            (observation.values[PATH_LENGTH_OFFSET] as f64 * 22.0).max(1.0)
-        } else {
-            0.0
-        };
+    fn new(roll: u32) -> Self {
+        // The target is a target: it never moves and never shoots. Everything
+        // dangerous comes from the injector instead, which keeps "the thing I
+        // kill" and "the thing that threatens me" independently tunable.
+        let game = range_game(roll);
         Self {
             game,
-            reward: reward_enabled.then(|| RewardTracker::new(0)),
-            teacher: LaikaAI::new(scale, 0),
-            mpc_teacher,
-            obs_state,
-            decisions: 0,
+            state: RangeState::new(roll),
+            observation: RangeObservation::default(),
+            last_action: None,
+            frames: 0,
             done: false,
-            best_path,
-            provisional_success: None,
-            shot_bonus_total: 0.0,
-            pursuit_initial_bfs,
-            pursuit_target_waypoint: 1,
         }
     }
 }
 
 pub struct VecEnv {
     slots: Vec<Slot>,
-    frame_skip: usize,
-    reward_enabled: bool,
-    reward_r1: bool,
-    reward_paint: bool,
-    static_target: bool,
-    walking_curriculum: bool,
-    pursuit_curriculum: bool,
-    fixed_seed: Option<u32>,
-    next_seed: u32,
+    next_roll: u32,
     obs: Vec<f32>,
     masks: Vec<u8>,
     rewards: Vec<f32>,
-    reward_channels: Vec<f32>,
-    reward_diagnostics: Vec<f32>,
     dones: Vec<u8>,
     terminals: Vec<u8>,
-    transition_frames: Vec<i64>,
-    retro_counts: Vec<u32>,
-    retro_frames: Vec<i64>,
-    retro_values: Vec<f32>,
-    teacher_actions: Vec<u8>,
-    label_valid: Vec<u8>,
-    aim: Vec<f32>,
-    episode_ids: Vec<u32>,
-    decision_ids: Vec<i32>,
-    winners: Vec<i8>,
-    walking_failure_reasons: Vec<i8>,
-    label_mode: LabelMode,
-    mpc_scores: Vec<f32>,
-    mpc_valid: Vec<u8>,
+    kills: Vec<u32>,
+    shots: Vec<u32>,
+    good_shots: Vec<u32>,
+    episode_kills: Vec<u32>,
+    episode_good_shots: Vec<u32>,
 }
 
 impl VecEnv {
-    fn new(
-        count: usize,
-        base_seed: u32,
-        frame_skip: usize,
-        reward_enabled: bool,
-        reward_r1: bool,
-        reward_paint: bool,
-        label_mode: LabelMode,
-        static_target: bool,
-        walking_curriculum: bool,
-        pursuit_curriculum: bool,
-    ) -> Self {
-        let locomotion_curriculum = walking_curriculum || pursuit_curriculum;
-        let fixed_seed = if pursuit_curriculum {
-            Some(PURSUIT_SEED)
-        } else if walking_curriculum {
-            Some(WALKING_SEED)
-        } else {
-            static_target.then_some(STATIC_TARGET_SEED)
-        };
-        let mut result = Self {
+    fn new(count: usize, base_seed: u32) -> Self {
+        let mut env = Self {
             slots: (0..count)
-                .map(|i| {
-                    let seed = fixed_seed.unwrap_or_else(|| base_seed.wrapping_add(i as u32));
-                    let mut slot = Slot::new(
-                        seed,
-                        reward_enabled,
-                        static_target,
-                        walking_curriculum,
-                        pursuit_curriculum,
-                    );
-                    if static_target || locomotion_curriculum || reward_paint {
-                        slot.reward = None;
-                    } else if reward_r1 {
-                        slot.reward = Some(RewardTracker::new_r1(0));
-                    }
-                    slot
-                })
+                .map(|i| Slot::new(base_seed.wrapping_add(i as u32)))
                 .collect(),
-            frame_skip: frame_skip.clamp(1, 4),
-            reward_enabled,
-            reward_r1,
-            reward_paint,
-            static_target,
-            walking_curriculum: locomotion_curriculum,
-            pursuit_curriculum,
-            fixed_seed,
-            next_seed: base_seed.wrapping_add(count as u32),
+            next_roll: base_seed.wrapping_add(count as u32),
             obs: vec![0.0; count * OBS_DIM],
             masks: vec![0; count * BULLET_SLOTS],
             rewards: vec![0.0; count],
-            reward_channels: vec![0.0; count * REWARD_CHANNELS],
-            reward_diagnostics: vec![0.0; count * 3],
             dones: vec![0; count],
             terminals: vec![0; count],
-            transition_frames: vec![0; count],
-            retro_counts: vec![0; count],
-            retro_frames: vec![0; count * MAX_RETRO],
-            retro_values: vec![0.0; count * MAX_RETRO],
-            teacher_actions: vec![0; count],
-            label_valid: vec![0; count],
-            aim: vec![0.0; count * AIM_DIM],
-            episode_ids: vec![0; count],
-            decision_ids: vec![0; count],
-            winners: vec![-2; count],
-            walking_failure_reasons: vec![0; count],
-            label_mode,
-            mpc_scores: vec![0.0; count * CANDIDATES.len()],
-            mpc_valid: vec![0; count * CANDIDATES.len()],
+            kills: vec![0; count],
+            shots: vec![0; count],
+            good_shots: vec![0; count],
+            episode_kills: vec![0; count],
+            episode_good_shots: vec![0; count],
         };
-        for i in 0..count {
-            result.encode_slot(i);
+        for index in 0..count {
+            env.encode_slot(index);
         }
-        result
+        env
     }
 
     fn encode_slot(&mut self, index: usize) {
-        let mut observation = SemanticObservation::default();
-        let (teacher_action, valid, aim, scores, score_valid, episode_id, decision_id) = {
-            let slot = &mut self.slots[index];
-            encode(&slot.game, 0, &slot.obs_state, &mut observation);
-            let valid = slot.game.tanks[0].alive && !slot.done && !slot.game.frozen;
-            let mut scores = [0.0f32; 18];
-            let mut score_valid = [false; 18];
-            let teacher_action = if !valid || self.label_mode == LabelMode::None {
-                0
-            } else if self.label_mode == LabelMode::Mpc {
-                slot.mpc_teacher.last_scores = None;
-                let action = slot.mpc_teacher.act(&slot.game);
-                if let Some(values) = slot.mpc_teacher.last_scores.as_ref() {
-                    for (out, value) in scores.iter_mut().zip(values) {
-                        *out = *value as f32;
-                    }
-                }
-                let can_fire = slot.game.tanks[1].alive
-                    && slot.game.tanks[0].trigger_released
-                    && slot.game.weapon_ready(0);
-                for (i, candidate) in CANDIDATES.iter().enumerate() {
-                    score_valid[i] =
-                        candidate[2] == 0 || (can_fire && candidate[0] == 1 && candidate[1] == 1);
-                }
-                action_index(action) as u8
-            } else {
-                let mut shadow = slot.game.clone();
-                shadow.ai_enabled[0] = true;
-                shadow.ais[0] = Some(slot.teacher.clone());
-                shadow.step();
-                slot.teacher = shadow.ais[0].take().unwrap();
-                encode_action(&shadow.tanks[0])
-            };
-            let aim = aim_target(&slot.game, 0);
-            (
-                teacher_action,
-                valid,
-                aim,
-                scores,
-                score_valid,
-                slot.game.seed,
-                slot.decisions as i32,
-            )
-        };
-        self.obs[index * OBS_DIM..(index + 1) * OBS_DIM].copy_from_slice(&observation.values);
-        if self.static_target && self.slots[index].best_path.is_infinite() {
-            self.slots[index].best_path = observation.values[PATH_LENGTH_OFFSET];
+        let slot = &mut self.slots[index];
+        let progress = slot.frames as f32 / RANGE_FRAMES as f32;
+        encode(
+            &slot.game,
+            0,
+            slot.last_action,
+            progress,
+            &mut slot.observation,
+        );
+        self.obs[index * OBS_DIM..(index + 1) * OBS_DIM]
+            .copy_from_slice(&slot.observation.values);
+        for i in 0..BULLET_SLOTS {
+            self.masks[index * BULLET_SLOTS + i] = slot.observation.bullet_mask[i] as u8;
         }
-        for (out, value) in self.masks[index * BULLET_SLOTS..(index + 1) * BULLET_SLOTS]
-            .iter_mut()
-            .zip(observation.bullet_mask)
-        {
-            *out = value as u8;
-        }
-        self.teacher_actions[index] = teacher_action;
-        self.label_valid[index] = valid as u8;
-        self.aim[index * AIM_DIM..(index + 1) * AIM_DIM].copy_from_slice(&aim);
-        self.mpc_scores[index * 18..(index + 1) * 18].copy_from_slice(&scores);
-        for (out, value) in self.mpc_valid[index * 18..(index + 1) * 18]
-            .iter_mut()
-            .zip(score_valid)
-        {
-            *out = value as u8;
-        }
-        self.episode_ids[index] = episode_id;
-        self.decision_ids[index] = decision_id;
     }
 
     fn step(&mut self, actions: &[u16]) {
         self.rewards.fill(0.0);
-        self.reward_channels.fill(0.0);
-        self.reward_diagnostics.fill(0.0);
         self.dones.fill(0);
         self.terminals.fill(0);
-        self.retro_counts.fill(0);
-        self.retro_frames.fill(0);
-        self.retro_values.fill(0.0);
-        self.winners.fill(-2);
-        self.walking_failure_reasons.fill(0);
+        self.kills.fill(0);
+        self.shots.fill(0);
+        self.good_shots.fill(0);
 
-        for (index, &action) in actions.iter().enumerate().take(self.slots.len()) {
+        for index in 0..self.slots.len() {
+            if self.slots[index].done {
+                self.dones[index] = 1;
+                continue;
+            }
+            let action = actions
+                .get(index)
+                .copied()
+                .unwrap_or(0)
+                .min(RANGE_ACTIONS as u16 - 1);
+
             let slot = &mut self.slots[index];
-            if slot.done {
-                self.dones[index] = 1;
-                continue;
-            }
-            let expected_rotation = if self.walking_curriculum {
-                let mut observation = SemanticObservation::default();
-                encode(&slot.game, 0, &slot.obs_state, &mut observation);
-                observation.values[NAV_OFFSET..NAV_OFFSET + 4]
-                    .iter()
-                    .position(|&value| value > 0.5)
-                    .map(|direction| [0.0, 90.0, 180.0, -90.0][direction])
-            } else {
-                None
-            };
-            apply_joystick_action(&mut slot.game, 0, action);
-            slot.obs_state.push_action(action);
-            slot.decisions += 1;
-            let wrong_route_direction = !self.pursuit_curriculum
-                && expected_rotation.is_some_and(|expected| {
-                    crate::game::norm_rot(slot.game.tanks[0].rotation - expected).abs() > 1.5
-                });
-            if self.walking_curriculum
-                && (action == crate::directional::FIRE_ACTION
-                    || action == crate::directional::STOP_ACTION
-                    || wrong_route_direction)
-            {
-                self.rewards[index] = WALKING_FAILURE as f32;
-                self.reward_channels[index * REWARD_CHANNELS + CH_TERMINAL] =
-                    WALKING_FAILURE as f32;
-                self.winners[index] = 1;
-                self.walking_failure_reasons[index] = if action == crate::directional::FIRE_ACTION {
-                    3
-                } else if action == crate::directional::STOP_ACTION {
-                    5
-                } else {
-                    6
-                };
-                slot.done = true;
-                self.dones[index] = 1;
-                self.terminals[index] = 1;
-                self.encode_slot(index);
-                continue;
-            }
-            let mut reward = 0.0f64;
-            let mut terminal = false;
-            let mut retro_count = 0usize;
-            for _ in 0..self.frame_skip {
-                let before = (slot.game.tanks[0].x, slot.game.tanks[0].y);
-                if self.pursuit_curriculum {
-                    let action =
-                        pursuit_room_target_action(&slot.game, &mut slot.pursuit_target_waypoint);
-                    apply_joystick_action(&mut slot.game, 1, action);
-                }
-                let events = slot.game.step();
-                if self.walking_curriculum {
-                    let tank = slot.game.tanks[0];
-                    if !self.pursuit_curriculum {
-                        reward += WALKING_STEP_COST;
-                    }
-                    let dx = tank.x - before.0;
-                    let dy = tank.y - before.1;
-                    let distance = dx.hypot(dy);
-                    let facing = (tank.rotation - 90.0) * C::DEG;
-                    let stopped = distance <= 1e-9;
-                    let aligned =
-                        !stopped && (dx * facing.cos() + dy * facing.sin()) / distance >= 0.995;
-                    if tank.hit_something
-                        || tank.wall_sliding
-                        || stopped
-                        || (!self.pursuit_curriculum && !aligned)
-                    {
-                        reward += WALKING_FAILURE;
-                        self.reward_channels[index * REWARD_CHANNELS + CH_TERMINAL] +=
-                            WALKING_FAILURE as f32;
-                        self.winners[index] = 1;
-                        self.walking_failure_reasons[index] =
-                            if tank.hit_something || tank.wall_sliding {
-                                1
-                            } else if stopped {
-                                5
-                            } else if !aligned {
-                                2
-                            } else {
-                                5
-                            };
-                        terminal = true;
-                    }
-                } else if self.static_target {
-                    for event in &events {
-                        if matches!(event, Event::Fire(0))
-                            && slot.shot_bonus_total < STATIC_SHOT_BONUS_CAP
-                        {
-                            let value = STATIC_SHOT_ATTEMPT
-                                .min(STATIC_SHOT_BONUS_CAP - slot.shot_bonus_total);
-                            slot.shot_bonus_total += value;
-                            reward += value;
-                            self.reward_channels[index * REWARD_CHANNELS + CH_EXAMPLE] +=
-                                value as f32;
-                        }
-                    }
-                    let me_alive = slot.game.tanks[0].alive;
-                    let opponent_alive = slot.game.tanks[1].alive;
-                    if !opponent_alive && me_alive && slot.provisional_success.is_none() {
-                        let speed = 2.0
-                            * (1.0 - slot.decisions as f64 / STATIC_TARGET_FRAMES as f64)
-                                .clamp(0.0, 1.0);
-                        let value = 10.0 + speed;
-                        slot.provisional_success = Some(value);
-                        reward += value;
-                        self.reward_channels[index * REWARD_CHANNELS + CH_TERMINAL] += value as f32;
-                    }
-                    if !me_alive {
-                        let value = if let Some(provisional) = slot.provisional_success.take() {
-                            -(provisional + slot.shot_bonus_total + 10.0)
-                        } else {
-                            -(slot.shot_bonus_total + 10.0)
-                        };
-                        reward += value;
-                        self.reward_channels[index * REWARD_CHANNELS + CH_TERMINAL] += value as f32;
-                        self.winners[index] = if opponent_alive { 1 } else { -1 };
-                        terminal = true;
-                    }
-                } else if self.reward_paint {
-                    let paint = slot.obs_state.update_paint(&slot.game, 0);
-                    reward += paint;
-                    self.reward_channels[index * REWARD_CHANNELS + CH_STYLE] += paint as f32;
-                } else if let Some(tracker) = &mut slot.reward {
-                    tracker.process(&slot.game, &events);
-                    let info = tracker.info();
-                    for channel in 0..REWARD_CHANNELS {
-                        self.reward_channels[index * REWARD_CHANNELS + channel] +=
-                            info[3 + channel];
-                    }
-                    self.reward_diagnostics[index * 3..index * 3 + 3]
-                        .copy_from_slice(&info[12..15]);
-                    let retro = tracker.retroactive_allocations();
-                    let retro_sum: f64 = retro.iter().map(|(_, value)| *value).sum();
-                    reward += info[0] as f64 - retro_sum;
-                    for &(frame, value) in retro {
-                        if retro_count < MAX_RETRO {
-                            let at = index * MAX_RETRO + retro_count;
-                            self.retro_frames[at] = frame;
-                            self.retro_values[at] = value as f32;
-                            retro_count += 1;
-                        } else {
-                            reward += value;
-                        }
-                    }
-                }
-                for event in &events {
-                    if let Event::RoundEnd(winner) = event {
-                        self.winners[index] = winner.map(|x| x as i8).unwrap_or(-1);
-                        terminal = true;
-                        if self.reward_paint {
-                            let value = match winner {
-                                Some(0) => 20.0,
-                                Some(_) => -20.0,
-                                None => 0.0,
-                            };
-                            reward += value;
-                            self.reward_channels[index * REWARD_CHANNELS + CH_TERMINAL] +=
-                                value as f32;
-                        }
-                    }
-                }
-                if terminal {
-                    break;
-                }
-            }
-            if self.walking_curriculum && !terminal {
-                let arrived = if self.pursuit_curriculum {
-                    false
-                } else {
-                    walking_curriculum_progress(&slot.game) >= 0.98
-                };
-                if self.pursuit_curriculum && slot.decisions % 4 == 0 {
-                    let mut observation = SemanticObservation::default();
-                    encode(&slot.game, 0, &slot.obs_state, &mut observation);
-                    let bfs = observation.values[PATH_LENGTH_OFFSET] as f64 * 22.0;
-                    let value = -(bfs - slot.pursuit_initial_bfs).exp();
-                    reward += value;
-                    self.reward_channels[index * REWARD_CHANNELS + CH_STYLE] += value as f32;
-                } else if !self.pursuit_curriculum {
-                    let progress = walking_curriculum_progress(&slot.game) as f32;
-                    if progress > slot.best_path {
-                        let value = WALKING_PROGRESS_TOTAL * (progress - slot.best_path) as f64;
-                        reward += value;
-                        self.reward_channels[index * REWARD_CHANNELS + CH_STYLE] += value as f32;
-                        slot.best_path = progress;
-                    }
-                }
-                if arrived {
-                    reward += WALKING_SUCCESS;
-                    self.reward_channels[index * REWARD_CHANNELS + CH_TERMINAL] +=
-                        WALKING_SUCCESS as f32;
-                    self.winners[index] = 0;
-                    terminal = true;
-                }
-            }
-            if self.static_target
-                && !terminal
-                && slot.game.tanks[0].alive
-                && slot.game.tanks[1].alive
-            {
-                let mut observation = SemanticObservation::default();
-                encode(&slot.game, 0, &slot.obs_state, &mut observation);
-                let path = observation.values[PATH_LENGTH_OFFSET];
-                if path < slot.best_path {
-                    let max_path = 119.0 / 22.0;
-                    let value = STATIC_NAV_TOTAL * (slot.best_path - path) as f64 / max_path;
-                    reward += value;
-                    self.reward_channels[index * REWARD_CHANNELS + CH_STYLE] += value as f32;
-                    slot.best_path = path;
-                }
-            }
-            let timed_out = !terminal
-                && ((self.static_target && slot.decisions >= STATIC_TARGET_FRAMES)
-                    || (self.walking_curriculum
-                        && slot.decisions
-                            >= if self.pursuit_curriculum {
-                                PURSUIT_FRAMES
-                            } else {
-                                WALKING_FRAMES
-                            }));
-            if timed_out {
-                let value = if self.pursuit_curriculum {
-                    0.0
-                } else if self.walking_curriculum {
-                    WALKING_FAILURE
-                } else {
-                    -(slot.shot_bonus_total + 10.0)
-                };
-                reward += value;
-                self.reward_channels[index * REWARD_CHANNELS + CH_TERMINAL] += value as f32;
-                self.winners[index] = -2;
-                if self.walking_curriculum && !self.pursuit_curriculum {
-                    self.walking_failure_reasons[index] = 4;
-                }
-            }
-            self.rewards[index] = reward as f32;
-            self.transition_frames[index] = slot.game.frame;
-            self.retro_counts[index] = retro_count as u32;
-            slot.done = terminal
-                || timed_out
-                || (!self.static_target && slot.decisions >= (1500 / self.frame_skip) as u32);
+            // The reward judges the shot by what the observation showed, so the
+            // aim assist must be sampled before the action moves the hull.
+            slot.state.before_action(&slot.game);
+            apply_range_action(&mut slot.game, 0, action);
+            slot.last_action = Some(action);
+            let events = slot.game.step();
+            let outcome = range_settle(&mut slot.game, &mut slot.state, &events);
+            slot.frames += 1;
+
+            self.rewards[index] = outcome.reward as f32;
+            self.kills[index] = outcome.killed_target as u32;
+            self.shots[index] = outcome.fired as u32;
+            self.good_shots[index] = outcome.good_shot as u32;
+            self.episode_kills[index] = slot.state.tally.kills;
+            self.episode_good_shots[index] = slot.state.tally.good_shots;
+
+            let timed_out = !outcome.terminal && slot.frames >= RANGE_FRAMES;
+            slot.done = outcome.terminal || timed_out;
+            self.terminals[index] = outcome.terminal as u8;
             self.dones[index] = slot.done as u8;
-            self.terminals[index] = terminal as u8;
             self.encode_slot(index);
         }
     }
 
     fn reset_done(&mut self) {
         for index in 0..self.slots.len() {
-            if self.slots[index].done {
-                let seed = self.fixed_seed.unwrap_or(self.next_seed);
-                if self.fixed_seed.is_none() {
-                    self.next_seed = self.next_seed.wrapping_add(1);
-                }
-                let mut slot = Slot::new(
-                    seed,
-                    self.reward_enabled,
-                    self.static_target,
-                    self.walking_curriculum && !self.pursuit_curriculum,
-                    self.pursuit_curriculum,
-                );
-                if self.static_target || self.walking_curriculum || self.reward_paint {
-                    slot.reward = None;
-                } else if self.reward_r1 {
-                    slot.reward = Some(RewardTracker::new_r1(0));
-                }
-                self.slots[index] = slot;
-                self.encode_slot(index);
+            if !self.slots[index].done {
+                continue;
             }
+            self.next_roll = self.next_roll.wrapping_add(1);
+            // The maze is fixed; the threat pattern and respawn sequence are
+            // not, so a policy cannot memorise one script.
+            self.slots[index] = Slot::new(self.next_roll);
+            self.episode_kills[index] = 0;
+            self.episode_good_shots[index] = 0;
+            self.encode_slot(index);
         }
     }
-}
 
-#[no_mangle]
-pub extern "C" fn kf_vec_new(count: u32, base_seed: u32) -> *mut VecEnv {
-    Box::into_raw(Box::new(VecEnv::new(
-        count.max(1) as usize,
-        base_seed,
-        4,
-        true,
-        false,
-        false,
-        LabelMode::Laika,
-        false,
-        false,
-        false,
-    )))
-}
-
-#[no_mangle]
-pub extern "C" fn kf_vec_new_dagger(count: u32, base_seed: u32) -> *mut VecEnv {
-    Box::into_raw(Box::new(VecEnv::new(
-        count.max(1) as usize,
-        base_seed,
-        1,
-        false,
-        false,
-        false,
-        LabelMode::Laika,
-        false,
-        false,
-        false,
-    )))
-}
-
-#[no_mangle]
-pub extern "C" fn kf_vec_new_mpc_dagger(count: u32, base_seed: u32) -> *mut VecEnv {
-    Box::into_raw(Box::new(VecEnv::new(
-        count.max(1) as usize,
-        base_seed,
-        1,
-        false,
-        false,
-        false,
-        LabelMode::Mpc,
-        false,
-        false,
-        false,
-    )))
-}
-
-#[no_mangle]
-pub extern "C" fn kf_vec_new_ppo_r1(count: u32, base_seed: u32) -> *mut VecEnv {
-    Box::into_raw(Box::new(VecEnv::new(
-        count.max(1) as usize,
-        base_seed,
-        1,
-        true,
-        true,
-        false,
-        LabelMode::None,
-        false,
-        false,
-        false,
-    )))
-}
-
-#[no_mangle]
-pub extern "C" fn kf_vec_new_ppo_paint_v1(count: u32, base_seed: u32) -> *mut VecEnv {
-    Box::into_raw(Box::new(VecEnv::new(
-        count.max(1) as usize,
-        base_seed,
-        1,
-        true,
-        false,
-        true,
-        LabelMode::None,
-        false,
-        false,
-        false,
-    )))
-}
-
-#[no_mangle]
-pub extern "C" fn kf_vec_new_static_target_v1(count: u32) -> *mut VecEnv {
-    Box::into_raw(Box::new(VecEnv::new(
-        count.max(1) as usize,
-        STATIC_TARGET_SEED,
-        1,
-        true,
-        false,
-        false,
-        LabelMode::None,
-        true,
-        false,
-        false,
-    )))
-}
-
-#[no_mangle]
-pub extern "C" fn kf_vec_new_walking_v1(count: u32) -> *mut VecEnv {
-    Box::into_raw(Box::new(VecEnv::new(
-        count.max(1) as usize,
-        WALKING_SEED,
-        1,
-        true,
-        false,
-        false,
-        LabelMode::None,
-        false,
-        true,
-        false,
-    )))
-}
-
-#[no_mangle]
-pub extern "C" fn kf_vec_new_walking_v2(count: u32) -> *mut VecEnv {
-    let count = count.max(1) as usize;
-    let mut env = VecEnv::new(
-        count,
-        WALKING_SEED_V2,
-        1,
-        true,
-        false,
-        false,
-        LabelMode::None,
-        false,
-        true,
-        false,
-    );
-    env.fixed_seed = Some(WALKING_SEED_V2);
-    for index in 0..count {
-        env.slots[index] = Slot::new(WALKING_SEED_V2, true, false, true, false);
-        env.encode_slot(index);
+    pub fn tally(&self, index: usize) -> RangeTally {
+        self.slots[index].state.tally
     }
-    Box::into_raw(Box::new(env))
 }
 
 #[no_mangle]
-pub extern "C" fn kf_vec_new_walking_train_v3(count: u32, base_seed: u32) -> *mut VecEnv {
-    let count = count.max(1) as usize;
-    let mut env = VecEnv::new(
-        count,
-        base_seed,
-        1,
-        true,
-        false,
-        false,
-        LabelMode::None,
-        false,
-        true,
-        false,
-    );
-    env.fixed_seed = None;
-    env.next_seed = base_seed.wrapping_add(count as u32);
-    for index in 0..count {
-        env.slots[index] = Slot::new(
-            base_seed.wrapping_add(index as u32),
-            true,
-            false,
-            true,
-            false,
-        );
-        env.encode_slot(index);
-    }
-    Box::into_raw(Box::new(env))
+pub extern "C" fn kf_vec_new_range(count: u32, base_seed: u32) -> *mut VecEnv {
+    Box::into_raw(Box::new(VecEnv::new(count.max(1) as usize, base_seed)))
 }
 
-#[no_mangle]
-pub extern "C" fn kf_vec_new_pursuit_v1(count: u32) -> *mut VecEnv {
-    Box::into_raw(Box::new(VecEnv::new(
-        count.max(1) as usize,
-        PURSUIT_SEED,
-        1,
-        true,
-        false,
-        false,
-        LabelMode::None,
-        false,
-        false,
-        true,
-    )))
-}
-
-#[no_mangle]
-pub extern "C" fn kf_vec_new_ppo_eval(count: u32, base_seed: u32) -> *mut VecEnv {
-    Box::into_raw(Box::new(VecEnv::new(
-        count.max(1) as usize,
-        base_seed,
-        1,
-        false,
-        false,
-        false,
-        LabelMode::None,
-        false,
-        false,
-        false,
-    )))
-}
-
+/// # Safety
+/// `handle` must come from `kf_vec_new_range` and must not be used afterwards.
 #[no_mangle]
 pub unsafe extern "C" fn kf_vec_free(handle: *mut VecEnv) {
     if !handle.is_null() {
@@ -795,22 +171,31 @@ pub unsafe extern "C" fn kf_vec_free(handle: *mut VecEnv) {
     }
 }
 
+/// # Safety
+/// `actions` must point to at least `count` `u16` values.
 #[no_mangle]
 pub unsafe extern "C" fn kf_vec_step(handle: *mut VecEnv, actions: *const u16) {
     let env = &mut *handle;
-    env.step(std::slice::from_raw_parts(actions, env.slots.len()));
+    let count = env.slots.len();
+    let actions = std::slice::from_raw_parts(actions, count);
+    env.step(actions);
 }
 
+/// # Safety
+/// `handle` must come from `kf_vec_new_range`.
 #[no_mangle]
 pub unsafe extern "C" fn kf_vec_reset_done(handle: *mut VecEnv) {
-    (&mut *handle).reset_done();
+    (*handle).reset_done();
 }
 
 macro_rules! pointer_export {
     ($name:ident, $field:ident, $ty:ty) => {
+        /// # Safety
+        /// `handle` must come from `kf_vec_new_range`; the buffer stays valid
+        /// until the next call that mutates the environment.
         #[no_mangle]
-        pub unsafe extern "C" fn $name(handle: *mut VecEnv) -> *mut $ty {
-            (&mut *handle).$field.as_mut_ptr()
+        pub unsafe extern "C" fn $name(handle: *mut VecEnv) -> *const $ty {
+            (*handle).$field.as_ptr()
         }
     };
 }
@@ -818,23 +203,13 @@ macro_rules! pointer_export {
 pointer_export!(kf_vec_obs, obs, f32);
 pointer_export!(kf_vec_masks, masks, u8);
 pointer_export!(kf_vec_rewards, rewards, f32);
-pointer_export!(kf_vec_reward_channels, reward_channels, f32);
-pointer_export!(kf_vec_reward_diagnostics, reward_diagnostics, f32);
 pointer_export!(kf_vec_dones, dones, u8);
 pointer_export!(kf_vec_terminals, terminals, u8);
-pointer_export!(kf_vec_transition_frames, transition_frames, i64);
-pointer_export!(kf_vec_retro_counts, retro_counts, u32);
-pointer_export!(kf_vec_retro_frames, retro_frames, i64);
-pointer_export!(kf_vec_retro_values, retro_values, f32);
-pointer_export!(kf_vec_teacher_actions, teacher_actions, u8);
-pointer_export!(kf_vec_label_valid, label_valid, u8);
-pointer_export!(kf_vec_aim, aim, f32);
-pointer_export!(kf_vec_episode_ids, episode_ids, u32);
-pointer_export!(kf_vec_decision_ids, decision_ids, i32);
-pointer_export!(kf_vec_winners, winners, i8);
-pointer_export!(kf_vec_walking_failure_reasons, walking_failure_reasons, i8);
-pointer_export!(kf_vec_mpc_scores, mpc_scores, f32);
-pointer_export!(kf_vec_mpc_valid, mpc_valid, u8);
+pointer_export!(kf_vec_kills, kills, u32);
+pointer_export!(kf_vec_shots, shots, u32);
+pointer_export!(kf_vec_good_shots, good_shots, u32);
+pointer_export!(kf_vec_episode_kills, episode_kills, u32);
+pointer_export!(kf_vec_episode_good_shots, episode_good_shots, u32);
 
 #[no_mangle]
 pub extern "C" fn kf_vec_obs_dim() -> u32 {
@@ -847,47 +222,96 @@ pub extern "C" fn kf_vec_bullet_slots() -> u32 {
 }
 
 #[no_mangle]
-pub extern "C" fn kf_vec_max_retro() -> u32 {
-    MAX_RETRO as u32
+pub extern "C" fn kf_vec_action_count() -> u32 {
+    RANGE_ACTIONS as u32
 }
 
 #[no_mangle]
-pub extern "C" fn kf_vec_reward_channel_count() -> u32 {
-    REWARD_CHANNELS as u32
+pub extern "C" fn kf_vec_episode_frames() -> u32 {
+    RANGE_FRAMES
 }
 
+/// The observation layout this build encodes. The trainer stamps it into every
+/// checkpoint manifest so the viewer can refuse a mismatched model outright.
 #[no_mangle]
-pub extern "C" fn kf_vec_r1_gamma() -> f64 {
-    RewardConfig::r1().gamma
+pub extern "C" fn kf_vec_obs_schema_version() -> u32 {
+    OBS_SCHEMA_VERSION
 }
 
-fn encode_action(tank: &Tank) -> u8 {
-    let throttle = if tank.backup {
-        0
-    } else if tank.forward {
-        2
-    } else {
-        1
-    };
-    let turn = if tank.turn_left {
-        0
-    } else if tank.turn_right {
-        2
-    } else {
-        1
-    };
-    throttle * 6 + turn * 2 + tank.fire as u8
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-fn aim_target(game: &Game, tank: usize) -> [f32; AIM_DIM] {
-    let result = check_bullet_path(game, tank, game.tanks[tank].rotation, 2.0 * game.scale, 2.0);
-    let mut target = [0.0; AIM_DIM];
-    target[match result.outcome {
-        ShotOutcome::Hit => 0,
-        ShotOutcome::Suicide => 1,
-        ShotOutcome::Nothing => 2,
-    }] = 1.0;
-    target[3] = (result.time / (C::BULLETLIFETIME as f64 / 3.0)).clamp(0.0, 1.0) as f32;
-    target[4] = (result.closest / (C::MOVIEWIDTH + C::MOVIEHEIGHT)).clamp(0.0, 1.0) as f32;
-    target
+    #[test]
+    fn a_batch_runs_and_reports_the_right_shapes() {
+        let mut env = VecEnv::new(4, 1);
+        assert_eq!(env.obs.len(), 4 * OBS_DIM);
+        assert_eq!(kf_vec_obs_dim() as usize, 100);
+        assert_eq!(kf_vec_action_count() as usize, 18);
+        let mut rng = crate::rng::Rng::new(9);
+        for _ in 0..300 {
+            let actions: Vec<u16> = (0..4)
+                .map(|_| (rng.random() * RANGE_ACTIONS as f64) as u16)
+                .collect();
+            env.step(&actions);
+            assert!(env.obs.iter().all(|v| v.is_finite()));
+            env.reset_done();
+        }
+    }
+
+    #[test]
+    fn wall_contact_never_ends_an_episode() {
+        let mut env = VecEnv::new(1, 3);
+        let mut wall_frames = 0;
+        for _ in 0..RANGE_FRAMES.min(600) {
+            // Drive straight into the arena boundary and keep pushing.
+            // CANDIDATES[14] = [2, 1, 0]: forward, no turn, no fire.
+            env.step(&[14]);
+            if env.slots[0].game.tanks[0].hit_something
+                || env.slots[0].game.tanks[0].wall_sliding
+            {
+                wall_frames += 1;
+            }
+            if env.terminals[0] == 1 {
+                // Only a real death may terminate, never wall contact.
+                assert!(!env.slots[0].game.tanks[0].alive);
+                break;
+            }
+        }
+        assert!(wall_frames > 0, "the fixture never touched a wall");
+    }
+
+    #[test]
+    fn an_episode_ends_by_timeout_when_nothing_kills_the_policy() {
+        let mut env = VecEnv::new(1, 11);
+        // Sit still and hold fire: no self-inflicted bullet, so the only exit
+        // should be the horizon.
+        for _ in 0..RANGE_FRAMES {
+            env.step(&[8]); // [1, 1, 0]: no throttle, no turn, no fire
+        }
+        assert_eq!(env.dones[0], 1);
+        assert_eq!(env.terminals[0], 0, "a timeout must not be reported as a death");
+    }
+
+    #[test]
+    fn episodes_differ_between_slots_and_across_resets() {
+        // The maze is fixed, but the threat pattern must not be, or the policy
+        // can memorise one bullet script instead of learning to dodge.
+        let mut env = VecEnv::new(2, 21);
+        // Accumulate while both slots are still alive; a sitting duck dies
+        // around frame 140, and a finished slot stops producing bullets.
+        let mut trace: [Vec<(i64, i64)>; 2] = [Vec::new(), Vec::new()];
+        for _ in 0..100 {
+            env.step(&[8, 8]);
+            for slot in 0..2 {
+                for bullet in env.slots[slot].game.bullets.iter().filter(|b| b.injected) {
+                    trace[slot].push(((bullet.x * 4.0) as i64, (bullet.y * 4.0) as i64));
+                }
+            }
+        }
+        assert!(!trace[0].is_empty(), "no barrage was produced to compare");
+        // The arena and the target's spawn are deliberately identical; what
+        // must differ is where the barrage comes from and when.
+        assert_ne!(trace[0], trace[1], "parallel slots ran an identical threat script");
+    }
 }

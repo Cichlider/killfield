@@ -1,66 +1,51 @@
-//! Browser entry point.
+//! Browser entry point for watching a duel policy.
 //!
-//! No `wasm-bindgen`: the surface is small enough that a C ABI plus one flat
-//! `f32` buffer is simpler, has no build-tool dependency, and costs nothing at
-//! the boundary. JS reads the buffer straight out of the wasm linear memory,
-//! so a frame of render state crosses with zero serialisation.
+//! No `wasm-bindgen`: a C ABI plus one flat `f32` buffer is simpler, has no
+//! build-tool dependency, and costs nothing at the boundary. JS reads the
+//! buffer straight out of wasm linear memory, so a frame of render state
+//! crosses with zero serialisation.
 //!
-//! Because it is the same crate the training loop links, the browser and the
-//! trainer run byte-identical physics. That is the whole reason for compiling
-//! to wasm rather than keeping a second engine in JS.
+//! This is the same crate the trainer links, so the browser and the training
+//! loop run byte-identical physics on byte-identical scenarios: a freshly
+//! generated maze, a real opponent, and a round that ends only when the engine
+//! says who won.
 
-use crate::directional::{
-    apply_human_direction, apply_joystick_action, ACTION_COUNT, FIRE_ACTION, STOP_ACTION,
+use crate::duel::{
+    apply_duel_action, duel_game, duel_settle, DuelState, Opponent, Outcome, DUEL_ACTIONS,
+    DUEL_FRAMES, DUEL_GRACE_FRAMES,
 };
-use crate::game::{pursuit_room_target_action, walking_curriculum_progress, Event, Game};
-use crate::reward::{
-    RewardConfig, RewardTracker, CH_STYLE, CH_TERMINAL, REWARD_CHANNELS, REWARD_INFO_LEN,
-};
-use crate::sandbox::{preview_human_input, OppModel};
-use crate::semantic_obs::{
-    encode as encode_semantic, SemanticObsState, SemanticObservation, BULLET_SLOTS, NAV_OFFSET,
-    OBS_DIM,
-};
+use crate::duel_obs::{encode, DuelObservation, BULLET_SLOTS, OBS_DIM, OBS_SCHEMA_VERSION};
+use crate::game::Game;
+use crate::sandbox::OppModel;
 use crate::teacher::KillFieldAgent;
-use crate::tuning::Tuning;
 
 /// Layout of the render buffer, in `f32` slots.
 ///
-///   [0]  maze width          [1]  maze height
-///   [2]  scale               [3]  wall half thickness
-///   [4]  shake               [5]  wall count
-///   [6]  tank count          [7]  bullet count
-///   [8]  frame               [9]  round number
-///   [10] score 0             [11] score 1
-///   [12] alive count         [13] end count
-///   [14] frozen              [15] last round winner (-1 none, 2 double death)
-///   [16] painted cell count [17] current paint score
-///   then 120 paint flags in x-major order
-///   then  wall_count * 4   : x1, y1, x2, y2
-///   then  tank_count * 6   : x, y, rotation, alive, number, display_scale
-///   then  bullet_count * 2 : x, y
-pub const HEADER_SLOTS: usize = 18;
-pub const PAINT_SLOTS: usize = 12 * 10;
+///   [0]  maze width      [1]  maze height
+///   [2]  scale           [3]  wall half thickness
+///   [4]  wall count      [5]  tank count
+///   [6]  bullet count    [7]  frame
+///   [8]  outcome code    [9]  shots fired
+///   [10] episode reward  [11] alive (0/1)
+///   [12] frames elapsed  [13] last action index
+///   then wall_count * 4   : x1, y1, x2, y2
+///   then tank_count * 4   : x, y, rotation, alive
+///   then bullet_count * 3 : x, y, is_threat
+pub const HEADER_SLOTS: usize = 14;
 
 pub struct Handle {
     game: Game,
-    agents: Vec<Option<KillFieldAgent>>,
-    agent_enabled: Vec<bool>,
+    state: DuelState,
+    observation: DuelObservation,
     render: Vec<f32>,
-    last_winner: f32,
-    reward: RewardTracker,
-    paint_profile: bool,
-    paint_step: [f64; REWARD_CHANNELS],
-    paint_cumulative: [f64; REWARD_CHANNELS],
-    paint_round_total: f64,
-    paint_match_total: f64,
-    semantic_state: SemanticObsState,
-    semantic: SemanticObservation,
-    semantic_buffer: Vec<f32>,
-    /// 0 = ordinary, 1/2 = walking maps, 3 = room-patrol pursuit curriculum.
-    walking_curriculum: u8,
-    pursuit_target_waypoint: usize,
-    last_rl_action: [u16; 2],
+    scratch: Vec<f32>,
+    last_action: Option<u16>,
+    episode_reward: f32,
+    ended: bool,
+    outcome: Outcome,
+    /// Optional zero-training planner driving tank 0, so the real game can be
+    /// watched with a known-competent agent in the policy's seat.
+    mpc: Option<KillFieldAgent>,
 }
 
 fn build_render(h: &mut Handle) {
@@ -72,26 +57,16 @@ fn build_render(h: &mut Handle) {
     out[1] = g.maze.h as f32;
     out[2] = g.scale as f32;
     out[3] = g.wall_half_t as f32;
-    out[4] = g.shake as f32;
-    out[5] = g.walls.len() as f32;
-    out[6] = g.tanks.len() as f32;
-    out[7] = g.bullets.len() as f32;
-    out[8] = g.frame as f32;
-    out[9] = g.round_number as f32;
-    out[10] = *g.scores.first().unwrap_or(&0) as f32;
-    out[11] = *g.scores.get(1).unwrap_or(&0) as f32;
-    out[12] = g.alive_count as f32;
-    out[13] = g.end_count as f32;
-    out[14] = if g.frozen { 1.0 } else { 0.0 };
-    out[15] = h.last_winner;
-    out[16] = h.semantic_state.painted_count() as f32;
-    out[17] = h.semantic_state.paint_score() as f32;
-    out.extend(
-        h.semantic_state
-            .painted_cells()
-            .iter()
-            .map(|&painted| painted as u8 as f32),
-    );
+    out[4] = g.walls.len() as f32;
+    out[5] = g.tanks.len() as f32;
+    out[6] = g.bullets.len() as f32;
+    out[7] = g.frame as f32;
+    out[8] = h.outcome.as_u8() as f32;
+    out[9] = h.state.shots_fired as f32;
+    out[10] = h.episode_reward;
+    out[11] = g.tanks[0].alive as u8 as f32;
+    out[12] = h.state.frames as f32;
+    out[13] = h.last_action.map(|a| a as f32).unwrap_or(-1.0);
     for w in g.walls.iter() {
         out.extend_from_slice(&[w[0] as f32, w[1] as f32, w[2] as f32, w[3] as f32]);
     }
@@ -100,93 +75,51 @@ fn build_render(h: &mut Handle) {
             t.x as f32,
             t.y as f32,
             t.rotation as f32,
-            if t.alive { 1.0 } else { 0.0 },
-            t.number as f32,
-            t.display_scale as f32,
+            t.alive as u8 as f32,
         ]);
     }
     for b in &g.bullets {
-        out.extend_from_slice(&[b.x as f32, b.y as f32]);
+        // A bullet of ours that has not bounced cannot reach us yet; the
+        // viewer colours the two cases differently.
+        let threat = !(b.owner == 0 && !b.has_bounced);
+        out.extend_from_slice(&[b.x as f32, b.y as f32, threat as u8 as f32]);
     }
 }
 
-/// `laika_mask` is a bitmask of tanks driven by the scripted opponent.
-#[no_mangle]
-pub extern "C" fn kf_new(seed: u32, laika_mask: u32) -> *mut Handle {
-    let ai: Vec<usize> = (0..2usize).filter(|i| laika_mask & (1 << i) != 0).collect();
-    let mut h = Box::new(Handle {
-        game: Game::with_ai(seed, 2, &ai),
-        agents: vec![None, None],
-        agent_enabled: vec![true, true],
+fn fresh(seed: u32, opponent: Opponent) -> Handle {
+    let game = duel_game(seed, opponent);
+    let state = DuelState::new(seed, opponent, &game);
+    let mut h = Handle {
+        game,
+        state,
+        observation: DuelObservation::default(),
         render: Vec::new(),
-        last_winner: -1.0,
-        reward: RewardTracker::new(0),
-        paint_profile: false,
-        paint_step: [0.0; REWARD_CHANNELS],
-        paint_cumulative: [0.0; REWARD_CHANNELS],
-        paint_round_total: 0.0,
-        paint_match_total: 0.0,
-        semantic_state: SemanticObsState::default(),
-        semantic: SemanticObservation::default(),
-        semantic_buffer: vec![0.0; OBS_DIM + BULLET_SLOTS],
-        walking_curriculum: 0,
-        pursuit_target_waypoint: 1,
-        last_rl_action: [STOP_ACTION; 2],
-    });
+        scratch: vec![0.0; OBS_DIM + BULLET_SLOTS],
+        last_action: None,
+        episode_reward: 0.0,
+        ended: false,
+        outcome: Outcome::Running,
+        mpc: None,
+    };
     build_render(&mut h);
-    Box::into_raw(h)
+    h
 }
 
-/// Normal maze with a fully mobile Laika whose weapon is mechanically locked.
+/// Open a duel. `seed` picks the maze, both spawn cells and both headings;
+/// `opponent` is 0 for the scripted Laika and 1 for the MPC planner.
+///
+/// The trainer's third opponent, a frozen policy checkpoint, is not available
+/// here: its weights live in the trainer, and the page has no way to run them
+/// for tank 1. Anything out of range falls back to Laika rather than producing
+/// an opponent nobody drives.
 #[no_mangle]
-pub extern "C" fn kf_new_unarmed_laika(seed: u32) -> *mut Handle {
-    let handle = kf_new(seed, 2);
-    unsafe {
-        let h = &mut *handle;
-        h.game.weapons_disabled[1] = true;
-    }
-    handle
-}
-
-/// Fixed one-corridor locomotion curriculum with an inert target at the end.
-#[no_mangle]
-pub extern "C" fn kf_new_walking_v1() -> *mut Handle {
-    let handle = kf_new(20_260_825, 0);
-    unsafe {
-        (*handle).game = Game::walking_curriculum(20_260_825);
-        (*handle).walking_curriculum = 1;
-        build_render(&mut *handle);
-    }
-    handle
-}
-
-/// Unseen fixed corridor for locomotion transfer review.
-#[no_mangle]
-pub extern "C" fn kf_new_walking_v2() -> *mut Handle {
-    let handle = kf_new(20_260_826, 0);
-    unsafe {
-        (*handle).game = Game::walking_curriculum_v2(20_260_826);
-        (*handle).walking_curriculum = 2;
-        build_render(&mut *handle);
-    }
-    handle
-}
-
-/// Fixed corridor opening into an upper-right room patrolled by an unarmed target.
-#[no_mangle]
-pub extern "C" fn kf_new_pursuit_v1() -> *mut Handle {
-    let handle = kf_new(20_260_827, 0);
-    unsafe {
-        (*handle).game = Game::pursuit_room_curriculum(20_260_827);
-        (*handle).walking_curriculum = 3;
-        (*handle).pursuit_target_waypoint = 1;
-        build_render(&mut *handle);
-    }
-    handle
+pub extern "C" fn kf_new_duel(seed: u32, opponent: u32) -> *mut Handle {
+    let opponent = if opponent == 1 { Opponent::Mpc } else { Opponent::Laika };
+    Box::into_raw(Box::new(fresh(seed, opponent)))
 }
 
 /// # Safety
-/// `h` must come from `kf_new` and must not be used afterwards.
+/// `h` must come from `kf_new_duel` and must not be used afterwards.
 #[no_mangle]
 pub unsafe extern "C" fn kf_free(h: *mut Handle) {
     if !h.is_null() {
@@ -194,659 +127,268 @@ pub unsafe extern "C" fn kf_free(h: *mut Handle) {
     }
 }
 
-/// Attach a search agent to `tank`. `opp_l1` picks the honest opponent model
-/// (freeze their current buttons) instead of replaying the Laika script — the
-/// right choice when a human is on the other side.
+/// Attach the MPC planner to tank 0, our own seat, so the reference agent can
+/// be watched playing the same rounds the policy trains on. Survives a reset.
 ///
 /// # Safety
-/// `h` must come from `kf_new`.
+/// `h` must come from `kf_new_duel`.
 #[no_mangle]
-pub unsafe extern "C" fn kf_attach_mpc(
-    h: *mut Handle,
-    tank: u32,
-    seed: u32,
-    rays: u32,
-    opp_l1: u32,
-) {
+pub unsafe extern "C" fn kf_attach_mpc(h: *mut Handle, rays: u32, seed: u32) {
     let h = &mut *h;
-    let mut a = KillFieldAgent::new(tank as usize, seed);
-    a.ray_count = rays as usize;
-    if opp_l1 != 0 {
-        a.opp_model = OppModel::L1;
-    }
-    h.agents[tank as usize] = Some(a);
-    h.agent_enabled[tank as usize] = true;
-}
-
-/// Enable or pause one attached MPC agent without freezing game physics or
-/// human input. Used by the browser's per-round human reaction delay.
-///
-/// # Safety
-/// `h` must come from `kf_new`.
-#[no_mangle]
-pub unsafe extern "C" fn kf_set_mpc_enabled(h: *mut Handle, tank: u32, enabled: u32) {
-    let h = &mut *h;
-    if let Some(value) = h.agent_enabled.get_mut(tank as usize) {
-        *value = enabled != 0;
-    }
-}
-
-/// Continuous 0..1 strengths, matching the engine's human-input path — a
-/// discrete controller passes 1.0 and gets the ten-degree turn lattice, a
-/// human passes a fraction and does not.
-///
-/// # Safety
-/// `h` must come from `kf_new`.
-#[no_mangle]
-pub unsafe extern "C" fn kf_set_input(
-    h: *mut Handle,
-    tank: u32,
-    forward: f32,
-    backup: f32,
-    turn_left: f32,
-    turn_right: f32,
-    fire: u32,
-    continuous: u32,
-) {
-    let h = &mut *h;
-    let t = &mut h.game.tanks[tank as usize];
-    t.forward = forward > 0.0;
-    t.backup = backup > 0.0;
-    t.turn_left = turn_left > 0.0;
-    t.turn_right = turn_right > 0.0;
-    t.fire = fire != 0;
-    if continuous != 0 {
-        t.forward_amount = Some(forward as f64);
-        t.backup_amount = Some(backup as f64);
-        t.turn_left_amount = Some(turn_left as f64);
-        t.turn_right_amount = Some(turn_right as f64);
-    } else {
-        t.forward_amount = None;
-        t.backup_amount = None;
-        t.turn_left_amount = None;
-        t.turn_right_amount = None;
-    }
-}
-
-/// Apply the human trigger edge immediately instead of waiting for the next
-/// 25 Hz movement tick. A new bullet is authoritative immediately and becomes
-/// eligible to move on the next tick.
-/// Returns 1 only when a shot was created.
-///
-/// # Safety
-/// `h` must come from `kf_new`.
-#[no_mangle]
-pub unsafe extern "C" fn kf_set_fire_immediate(h: *mut Handle, tank: u32, pressed: u32) -> u32 {
-    let h = &mut *h;
-    let fired = h.game.set_human_fire_immediate(tank as usize, pressed != 0);
-    if fired {
-        build_render(h);
-    }
-    fired as u32
-}
-
-/// Return the next pose for a human input using the authoritative wall/contact
-/// solver without advancing or mutating the live game. Writes x, y, rotation.
-///
-/// # Safety
-/// `h` must come from `kf_new`; `out` must point to at least three f32 values.
-#[no_mangle]
-pub unsafe extern "C" fn kf_predict_human_pose(
-    h: *mut Handle,
-    tank: u32,
-    forward: f32,
-    backup: f32,
-    turn_left: f32,
-    turn_right: f32,
-    out: *mut f32,
-) {
-    let h = &*h;
-    let out = std::slice::from_raw_parts_mut(out, 3);
-    if tank as usize >= h.game.tanks.len() {
-        out.fill(0.0);
-        return;
-    }
-    let predicted = preview_human_input(
-        &h.game,
-        tank as usize,
-        [
-            forward as f64,
-            backup as f64,
-            turn_left as f64,
-            turn_right as f64,
-        ],
-    );
-    out.copy_from_slice(&[
-        predicted.x as f32,
-        predicted.y as f32,
-        predicted.rotation as f32,
-    ]);
-}
-
-/// Instantly set a human tank's absolute heading when the resulting hull pose
-/// is clear of walls. Used only by the optional browser accessibility control.
-#[no_mangle]
-pub unsafe extern "C" fn kf_set_rotation_if_clear(h: *mut Handle, tank: u32, rotation: f32) -> u32 {
-    (*h).game
-        .set_tank_rotation_if_clear(tank as usize, rotation as f64) as u32
-}
-
-/// PPO `Discrete(722)` input: 360 forward directions + 360 reverse directions
-/// + FIRE + STOP.
-#[no_mangle]
-pub unsafe extern "C" fn kf_set_rl_action(h: *mut Handle, tank: u32, action: u32) {
-    let h = &mut *h;
-    let tank = tank as usize;
-    let action = action.min(STOP_ACTION as u32) as u16;
-    h.last_rl_action[tank] = action;
-    apply_joystick_action(&mut h.game, tank, action);
-}
-
-/// World-direction input for the human browser wheel. PPO direction actions
-/// reuse this motion contract and add the wheel's collision-safe instant snap.
-#[no_mangle]
-pub unsafe extern "C" fn kf_set_human_direction_input(
-    h: *mut Handle,
-    tank: u32,
-    movement: u32,
-    fire: u32,
-) {
-    apply_human_direction(
-        &mut (*h).game,
-        tank as usize,
-        movement.min(360) as u16,
-        fire.min(1) as u8,
-    );
-}
-
-/// Advance one frame. Any attached search agent plans first, in tank order.
-///
-/// # Safety
-/// `h` must come from `kf_new`.
-#[no_mangle]
-pub unsafe extern "C" fn kf_step(h: *mut Handle) -> u32 {
-    let h = &mut *h;
-    let before = (h.game.tanks[0].x, h.game.tanks[0].y);
-    for i in 0..2usize {
-        if h.agent_enabled[i] {
-            if let Some(mut a) = h.agents[i].take() {
-                a.drive(&mut h.game);
-                h.agents[i] = Some(a);
-            }
-        } else if let Some(tank) = h.game.tanks.get_mut(i) {
-            // Do not leave the last MPC action latched while the planner is paused.
-            tank.forward = false;
-            tank.backup = false;
-            tank.turn_left = false;
-            tank.turn_right = false;
-            tank.fire = false;
-            tank.forward_amount = None;
-            tank.backup_amount = None;
-            tank.turn_left_amount = None;
-            tank.turn_right_amount = None;
-        }
-    }
-    let route_direction_mismatch = if h.walking_curriculum != 0 && h.walking_curriculum != 3 {
-        let mut observation = SemanticObservation::default();
-        encode_semantic(&h.game, 0, &h.semantic_state, &mut observation);
-        observation.values[NAV_OFFSET..NAV_OFFSET + 4]
-            .iter()
-            .position(|&value| value > 0.5)
-            .map(|direction| [0.0, 90.0, 180.0, -90.0][direction])
-            .is_some_and(|expected| {
-                crate::game::norm_rot(h.game.tanks[0].rotation - expected).abs() > 1.5
-            })
-    } else {
-        false
+    let mut agent = KillFieldAgent::new(0, seed);
+    agent.ray_count = rays.max(1) as usize;
+    // Replaying the Laika script inside the lookahead is sound only when the
+    // opponent really is Laika.
+    agent.opp_model = match h.state.opponent {
+        Opponent::Laika => OppModel::L2,
+        // Facing anything that is not the scripted AI, the honest model is to
+        // hold whatever buttons the opponent is pressing right now.
+        Opponent::Mpc | Opponent::Frozen => OppModel::L1,
     };
-    let invalid_stationary_action =
-        h.walking_curriculum != 0 && matches!(h.last_rl_action[0], FIRE_ACTION | STOP_ACTION);
-    if h.walking_curriculum == 3 {
-        let action = pursuit_room_target_action(&h.game, &mut h.pursuit_target_waypoint);
-        apply_joystick_action(&mut h.game, 1, action);
+    h.mpc = Some(agent);
+}
+
+/// Advance one frame with the attached planner choosing the action. Returns
+/// the same flag mask as `kf_step`, or 1 when no planner is attached.
+///
+/// # Safety
+/// `h` must come from `kf_new_duel`.
+#[no_mangle]
+pub unsafe extern "C" fn kf_step_mpc(h: *mut Handle) -> u32 {
+    let handle = &mut *h;
+    let mut agent = match handle.mpc.take() {
+        Some(agent) => agent,
+        None => return 1,
+    };
+    let a = agent.act(&handle.game);
+    handle.mpc = Some(agent);
+    // Map the planner's [throttle, turn, fire] back onto its CANDIDATES index
+    // so the viewer reports the same action space the policy uses.
+    let index = crate::score::CANDIDATES
+        .iter()
+        .position(|c| *c == a)
+        .unwrap_or(8) as u32;
+    kf_step(h, index)
+}
+
+/// Restart with a new maze. `opponent` is 0 for Laika, 1 for the planner.
+///
+/// # Safety
+/// `h` must come from `kf_new_duel`.
+#[no_mangle]
+pub unsafe extern "C" fn kf_reset(h: *mut Handle, seed: u32, opponent: u32) {
+    let planner = (*h).mpc.take();
+    let opponent = if opponent == 1 { Opponent::Mpc } else { Opponent::Laika };
+    *h = fresh(seed, opponent);
+    (*h).mpc = planner;
+}
+
+/// Advance one frame with the given `CANDIDATES` index.
+///
+/// Returns a bitmask: 1 = round over, 2 = we hit the opponent this frame,
+/// 4 = we fired this frame.
+///
+/// # Safety
+/// `h` must come from `kf_new_duel`.
+#[no_mangle]
+pub unsafe extern "C" fn kf_step(h: *mut Handle, action: u32) -> u32 {
+    let h = &mut *h;
+    if h.ended {
+        return 1;
     }
+    let action = (action as u16).min(DUEL_ACTIONS as u16 - 1);
+    apply_duel_action(&mut h.game, 0, action);
+    h.last_action = Some(action);
+    h.state.before_step(&mut h.game);
     let events = h.game.step();
-    h.paint_step.fill(0.0);
-    let mut flags = 0u32;
-    let mut new_round = false;
-    for e in &events {
-        match e {
-            Event::NewRound(_) => {
-                flags |= 1;
-                new_round = true;
-            }
-            Event::Fire(_) => flags |= 2,
-            Event::Bounce(_) => flags |= 4,
-            Event::Hit { .. } => flags |= 8,
-            Event::Destroy(_) => flags |= 16,
-            Event::Expire(_) => flags |= 32,
-            Event::RoundEnd(w) => {
-                flags |= 64;
-                h.last_winner = match w {
-                    Some(n) => *n as f32,
-                    None => 2.0,
-                };
-                if h.paint_profile {
-                    h.paint_step[CH_TERMINAL] += match w {
-                        Some(0) => 20.0,
-                        Some(_) => -20.0,
-                        None => 0.0,
-                    };
-                }
-            }
-        }
-    }
-    let walking_arrived = h.walking_curriculum != 0 && h.game.tanks[0].alive && {
-        if h.walking_curriculum == 3 {
-            false
-        } else {
-            walking_curriculum_progress(&h.game) >= 0.98
-        }
-    };
-    if walking_arrived {
-        h.game.frozen = true;
-        h.last_winner = 0.0;
-        flags |= 64;
-    } else if h.walking_curriculum != 0 && h.game.tanks[0].alive {
-        let tank = h.game.tanks[0];
-        let dx = tank.x - before.0;
-        let dy = tank.y - before.1;
-        let distance = dx.hypot(dy);
-        let facing = (tank.rotation - 90.0) * crate::constants::DEG;
-        let aligned =
-            distance > 1e-9 && (dx * facing.cos() + dy * facing.sin()) / distance >= 0.995;
-        if invalid_stationary_action
-            || route_direction_mismatch
-            || tank.hit_something
-            || tank.wall_sliding
-            || (h.walking_curriculum != 3 && !aligned)
-        {
-            h.game.tanks[0].alive = false;
-            h.game.alive_count = 1;
-            h.game.frozen = true;
-            h.last_winner = 1.0;
-            flags |= 16 | 64;
-        }
-    }
-    if h.walking_curriculum == 3 && !h.game.frozen && h.game.frame - h.game.round_start_frame >= 300
-    {
-        h.game.frozen = true;
-        h.last_winner = -1.0;
-        flags |= 64;
-    }
-    if h.walking_curriculum != 0 && new_round {
-        h.game = if h.walking_curriculum == 3 {
-            Game::pursuit_room_curriculum(20_260_827)
-        } else if h.walking_curriculum == 2 {
-            Game::walking_curriculum_v2(20_260_826)
-        } else {
-            Game::walking_curriculum(20_260_825)
-        };
-        h.semantic_state.reset();
-        h.pursuit_target_waypoint = 1;
-        h.last_rl_action = [STOP_ACTION; 2];
-        h.last_winner = -1.0;
-    }
-    if h.paint_profile {
-        if new_round {
-            h.paint_round_total = 0.0;
-        }
-        h.paint_step[CH_STYLE] += h.semantic_state.update_paint(&h.game, 0);
-        let total: f64 = h.paint_step.iter().sum();
-        h.paint_round_total += total;
-        h.paint_match_total += total;
-        for i in 0..REWARD_CHANNELS {
-            h.paint_cumulative[i] += h.paint_step[i];
-        }
-    } else {
-        h.reward.process(&h.game, &events);
-    }
+    let step = duel_settle(&h.game, &mut h.state, &events);
+    h.episode_reward += step.reward as f32;
+    h.outcome = step.outcome;
+    h.ended = step.outcome.terminal();
     build_render(h);
-    flags
+
+    (h.ended as u32) | ((step.hit as u32) << 1) | ((step.fired as u32) << 2)
+}
+
+/// How the round ended: 0 running, 1 win, 2 loss, 3 double death, 4 draw.
+///
+/// # Safety
+/// `h` must come from `kf_new_duel`.
+#[no_mangle]
+pub unsafe extern "C" fn kf_outcome(h: *mut Handle) -> u32 {
+    (*h).outcome.as_u8() as u32
+}
+
+/// Which controller holds tank 1: 0 Laika, 1 planner.
+///
+/// # Safety
+/// `h` must come from `kf_new_duel`.
+#[no_mangle]
+pub unsafe extern "C" fn kf_opponent(h: *mut Handle) -> u32 {
+    (*h).state.opponent.as_u8() as u32
 }
 
 /// # Safety
-/// `h` must come from `kf_new`. The pointer is invalidated by the next
-/// `kf_step`, so read the buffer before stepping again.
+/// `h` must come from `kf_new_duel`; the buffer is valid until the next step.
 #[no_mangle]
 pub unsafe extern "C" fn kf_render_ptr(h: *mut Handle) -> *const f32 {
     (*h).render.as_ptr()
 }
 
 /// # Safety
-/// `h` must come from `kf_new`.
+/// `h` must come from `kf_new_duel`.
 #[no_mangle]
 pub unsafe extern "C" fn kf_render_len(h: *mut Handle) -> u32 {
     (*h).render.len() as u32
 }
 
-/// Eight f32 of scratch for `kf_agent_info`. A static rather than a JS-side
-/// allocation because the module exports no allocator.
-static mut SCRATCH: [f32; 64] = [0.0; 64];
-
-/// # Safety
-/// The returned pointer is valid for the module's lifetime.
-#[no_mangle]
-pub unsafe extern "C" fn kf_scratch_ptr() -> *mut f32 {
-    &raw mut SCRATCH as *mut f32
-}
-
-/// Planner telemetry for the review overlay: decision kind as a small enum,
-/// the chosen action, median and p95 plan latency.
+/// Encode the current observation into the handle's scratch buffer: `OBS_DIM`
+/// floats followed by `BULLET_SLOTS` mask flags.
 ///
 /// # Safety
-/// `h` must come from `kf_new`.
+/// `h` must come from `kf_new_duel`.
 #[no_mangle]
-pub unsafe extern "C" fn kf_agent_info(h: *mut Handle, tank: u32, out: *mut f32) {
-    let h = &*h;
-    let out = std::slice::from_raw_parts_mut(out, 12);
-    match h.agents[tank as usize].as_ref() {
-        None => out.fill(-1.0),
-        Some(a) => {
-            let t = a.telemetry();
-            out[0] = t.action[0] as f32;
-            out[1] = t.action[1] as f32;
-            out[2] = t.action[2] as f32;
-            out[3] = match t.decision.as_str() {
-                "hold" => 0.0,
-                "plan" => 1.0,
-                "plan:fire_then_move" => 2.0,
-                "post_kill_hold" => 3.0,
-                "post_kill_plan" => 4.0,
-                s if s.ends_with(":own_bullet_guard") => 5.0,
-                _ => -1.0,
-            };
-            out[4] = t.plan_median_ms as f32;
-            out[5] = t.plan_p95_ms as f32;
-            out[6] = t.hunt_chain as f32;
-            out[7] = t.field_builds as f32;
-            out[8] = t.mean_field_build_ms as f32;
-            out[9] = t.hunt_chain_total as f32;
-            out[10] = t.own_bullet_guard_events as f32;
-            out[11] = t.no_effect_events as f32;
-        }
-    }
-}
-
-/// Number of tunable AI weights exposed by `kf_set_tuning`.
-#[no_mangle]
-pub extern "C" fn kf_tuning_param_count() -> u32 {
-    16
-}
-
-/// Set one tuning weight (by index, matching `killfield/src/killfield/tuning.js`'s
-/// `TUNING_SCHEMA` order) on the search agent attached to `tank`. A no-op if no
-/// agent is attached there.
-///
-/// # Safety
-/// `h` must come from `kf_new`.
-#[no_mangle]
-pub unsafe extern "C" fn kf_set_tuning(h: *mut Handle, tank: u32, index: u32, value: f32) {
+pub unsafe extern "C" fn kf_observation(h: *mut Handle) -> *const f32 {
     let h = &mut *h;
-    if let Some(a) = h.agents[tank as usize].as_mut() {
-        set_tuning_field(&mut a.tuning, index, value as f64);
-    }
-}
-
-/// Restore the attached agent's tuning to `Tuning::default()`.
-///
-/// # Safety
-/// `h` must come from `kf_new`.
-#[no_mangle]
-pub unsafe extern "C" fn kf_reset_tuning(h: *mut Handle, tank: u32) {
-    let h = &mut *h;
-    if let Some(a) = h.agents[tank as usize].as_mut() {
-        a.tuning = Tuning::default();
-    }
-}
-
-fn set_tuning_field(t: &mut Tuning, index: u32, value: f64) {
-    match index {
-        0 => t.field_ascent_weight = value,
-        1 => t.field_peak_weight = value,
-        2 => t.guidance_progress_weight = value,
-        3 => t.hunt_chain_gain_weight = value,
-        4 => t.hunt_time_scale_seconds = value,
-        5 => t.hunt_time_max_multiplier = value,
-        6 => t.alignment_weight = value,
-        7 => t.mobility_weight = value,
-        8 => t.good_fire_bonus = value,
-        9 => t.shot_flight_time_weight = value,
-        10 => t.ammo_reserve_weight = value,
-        11 => t.ammo_flight_pressure = value,
-        12 => t.failed_fire_penalty = value,
-        13 => t.suicide_fire_penalty = value,
-        14 => t.active_kill_time_weight = value,
-        15 => t.risk_weight = value,
-        _ => {}
-    }
-}
-
-/// Change one reward-lab parameter. This never mutates game physics or either
-/// controller; it only changes the observer attached to tank 0.
-#[no_mangle]
-pub unsafe extern "C" fn kf_reward_set_param(h: *mut Handle, index: u32, value: f32) {
-    (*h).reward.config.set(index, value as f64);
-}
-
-/// Clear the reward ledger and temporal windows while preserving parameters.
-#[no_mangle]
-pub unsafe extern "C" fn kf_reward_reset(h: *mut Handle) {
-    let h = &mut *h;
-    if h.paint_profile {
-        h.paint_step.fill(0.0);
-        h.paint_cumulative.fill(0.0);
-        h.paint_round_total = 0.0;
-        h.paint_match_total = 0.0;
-    } else {
-        h.reward.reset_tracking();
-    }
-}
-
-/// Profile 0 is the full reward lab, 1 is PPO R1 and 2 is paint-v1.
-#[no_mangle]
-pub unsafe extern "C" fn kf_reward_set_profile(h: *mut Handle, profile: u32) {
-    let h = &mut *h;
-    h.paint_profile = profile == 2;
-    h.paint_step.fill(0.0);
-    h.paint_cumulative.fill(0.0);
-    h.paint_round_total = 0.0;
-    h.paint_match_total = 0.0;
-    h.semantic_state.reset();
-    h.reward = if profile == 1 {
-        RewardTracker::new_r1(0)
-    } else {
-        RewardTracker::new(0)
-    };
-}
-
-/// Restore the design defaults and clear the reward ledger.
-#[no_mangle]
-pub unsafe extern "C" fn kf_reward_defaults(h: *mut Handle) {
-    (*h).reward.config = RewardConfig::default();
-    (*h).reward.reset_tracking();
-}
-
-#[no_mangle]
-pub extern "C" fn kf_reward_param_count() -> u32 {
-    crate::reward::param::COUNT
-}
-
-/// Copy the current per-channel reward telemetry to wasm scratch memory.
-#[no_mangle]
-pub unsafe extern "C" fn kf_reward_info(h: *mut Handle, out: *mut f32) {
-    let h = &mut *h;
-    let values = if h.paint_profile {
-        let mut values = [0.0f32; REWARD_INFO_LEN];
-        values[0] = h.paint_step.iter().sum::<f64>() as f32;
-        values[1] = h.paint_round_total as f32;
-        values[2] = h.paint_match_total as f32;
-        for i in 0..REWARD_CHANNELS {
-            values[3 + i] = h.paint_step[i] as f32;
-            values[20 + i] = h.paint_cumulative[i] as f32;
-        }
-        values[18] = h.semantic_state.painted_count() as f32;
-        values[30] = h.game.round_number as f32;
-        values
-    } else {
-        h.reward.info()
-    };
-    let out = std::slice::from_raw_parts_mut(out, REWARD_INFO_LEN);
-    out.copy_from_slice(&values);
-}
-
-/// Encode schema-8 observation for a browser-hosted learned policy.
-/// `last_action` is the previous Discrete(722) action, or -1 at a boundary.
-#[no_mangle]
-pub unsafe extern "C" fn kf_semantic_observation(
-    h: *mut Handle,
-    tank: u32,
-    last_action: i32,
-) -> *const f32 {
-    let h = &mut *h;
-    let mut state = h.semantic_state.clone();
-    if (0..ACTION_COUNT as i32).contains(&last_action) {
-        state.push_action(last_action as u16);
-    }
-    encode_semantic(&h.game, tank as usize, &state, &mut h.semantic);
-    h.semantic_buffer[..OBS_DIM].copy_from_slice(&h.semantic.values);
+    encode(
+        &h.game,
+        0,
+        &h.state.prev_pose,
+        &h.state.boxes,
+        h.last_action,
+        &mut h.observation,
+    );
+    h.scratch[..OBS_DIM].copy_from_slice(&h.observation.values);
     for i in 0..BULLET_SLOTS {
-        h.semantic_buffer[OBS_DIM + i] = h.semantic.bullet_mask[i] as u8 as f32;
+        h.scratch[OBS_DIM + i] = h.observation.bullet_mask[i] as u8 as f32;
     }
-    h.semantic_buffer.as_ptr()
+    h.scratch.as_ptr()
 }
 
 #[no_mangle]
-pub extern "C" fn kf_semantic_observation_len() -> u32 {
+pub extern "C" fn kf_observation_len() -> u32 {
     (OBS_DIM + BULLET_SLOTS) as u32
 }
 
+#[no_mangle]
+pub extern "C" fn kf_action_count() -> u32 {
+    DUEL_ACTIONS as u32
+}
+
+/// The observation layout this build encodes.
+///
+/// Nothing read this before, which is exactly how a checkpoint trained on one
+/// layout came to be served against another one and silently truncated. The
+/// page now refuses to run a model whose manifest disagrees with this number.
+#[no_mangle]
+pub extern "C" fn kf_obs_schema_version() -> u32 {
+    OBS_SCHEMA_VERSION
+}
+
+#[no_mangle]
+pub extern "C" fn kf_bullet_slots() -> u32 {
+    BULLET_SLOTS as u32
+}
+
+#[no_mangle]
+pub extern "C" fn kf_episode_frames() -> u32 {
+    DUEL_FRAMES
+}
+
+#[no_mangle]
+pub extern "C" fn kf_grace_frames() -> u32 {
+    DUEL_GRACE_FRAMES
+}
+
+#[no_mangle]
+pub extern "C" fn kf_header_slots() -> u32 {
+    HEADER_SLOTS as u32
+}
+
 #[cfg(test)]
-mod walking_viewer_tests {
+mod tests {
     use super::*;
 
     #[test]
-    fn viewer_accepts_the_schema_9_route_actions_and_marks_arrival() {
-        let handle = kf_new_walking_v1();
-        let actions = [(90, 62), (0, 12), (270, 62), (0, 13), (90, 19)];
-        let mut frames = 0;
-        for (action, count) in actions {
-            for _ in 0..count {
-                unsafe {
-                    kf_set_rl_action(handle, 0, action);
-                    let flags = kf_step(handle);
-                    frames += 1;
-                    if frames < 208 {
-                        assert_eq!(flags & 64, 0, "viewer ended at frame {frames}");
-                    } else {
-                        assert_ne!(flags & 64, 0);
-                        assert_eq!((*handle).last_winner, 0.0);
+    fn the_viewer_runs_the_same_scenario_as_the_trainer() {
+        let handle = kf_new_duel(4, 0);
+        unsafe {
+            let h = &*handle;
+            // A real duel: both tanks armed, tank 1 scripted, a generated maze.
+            assert!(!h.game.weapons_disabled[0] && !h.game.weapons_disabled[1]);
+            assert!(h.game.ais[1].is_some(), "the opponent must be driven");
+            assert!(h.game.ais[0].is_none(), "tank 0 is the policy's seat");
+            assert!(h.game.maze.w >= 4 && h.game.maze.h >= 4);
+
+            let mut ended = false;
+            for _ in 0..(DUEL_FRAMES + DUEL_GRACE_FRAMES) {
+                if kf_step(handle, 8) & 1 != 0 {
+                    ended = true;
+                    break;
+                }
+            }
+            assert!(ended, "the round never ended");
+            assert_ne!(kf_outcome(handle), Outcome::Running.as_u8() as u32);
+
+            let len = kf_render_len(handle) as usize;
+            let render = std::slice::from_raw_parts(kf_render_ptr(handle), len);
+            let walls = render[4] as usize;
+            let tanks = render[5] as usize;
+            let bullets = render[6] as usize;
+            assert_eq!(len, HEADER_SLOTS + walls * 4 + tanks * 4 + bullets * 3);
+            assert!(render.iter().all(|v| v.is_finite()));
+
+            let obs =
+                std::slice::from_raw_parts(kf_observation(handle), kf_observation_len() as usize);
+            assert_eq!(obs.len(), OBS_DIM + BULLET_SLOTS);
+            assert!(obs.iter().all(|v| v.is_finite() && (-1.0..=1.0).contains(v)));
+            kf_free(handle);
+        }
+    }
+
+    #[test]
+    fn the_schema_the_page_reads_is_the_one_the_engine_encodes() {
+        // The whole anti-silent-truncation mechanism rests on these three
+        // numbers describing the same layout the encoder actually writes.
+        assert_eq!(kf_obs_schema_version(), OBS_SCHEMA_VERSION);
+        assert_eq!(kf_bullet_slots() as usize, BULLET_SLOTS);
+        assert_eq!(kf_observation_len() as usize, OBS_DIM + BULLET_SLOTS);
+        assert_eq!(kf_action_count() as usize, DUEL_ACTIONS);
+    }
+
+    #[test]
+    fn reset_draws_a_new_arena() {
+        unsafe {
+            let handle = kf_new_duel(1, 0);
+            let first = (&*handle).game.maze.cells.clone();
+            for _ in 0..50 {
+                kf_step(handle, 8);
+            }
+            kf_reset(handle, 2, 0);
+            assert_eq!((&*handle).state.frames, 0);
+            assert_eq!(kf_outcome(handle), Outcome::Running.as_u8() as u32);
+            assert_ne!((&*handle).game.maze.cells, first, "reset replayed the same maze");
+            kf_free(handle);
+        }
+    }
+
+    #[test]
+    fn the_planner_can_take_our_seat_against_either_opponent() {
+        for opponent in [0u32, 1] {
+            unsafe {
+                let handle = kf_new_duel(77 + opponent, opponent);
+                kf_attach_mpc(handle, 256, 5);
+                assert_eq!(kf_opponent(handle), opponent);
+                let mut ended = false;
+                for _ in 0..(DUEL_FRAMES + DUEL_GRACE_FRAMES) {
+                    if kf_step_mpc(handle) & 1 != 0 {
+                        ended = true;
+                        break;
                     }
                 }
+                assert!(ended, "opponent {opponent}: the round never ended");
+                kf_free(handle);
             }
         }
-        unsafe { kf_free(handle) };
-    }
-
-    #[test]
-    fn viewer_map_v2_accepts_the_transferred_policy_route() {
-        let handle = kf_new_walking_v2();
-        let actions = [(90, 75), (0, 25), (270, 75), (0, 12), (90, 70)];
-        let mut frames = 0;
-        for (action, count) in actions {
-            for _ in 0..count {
-                unsafe {
-                    kf_set_rl_action(handle, 0, action);
-                    let flags = kf_step(handle);
-                    frames += 1;
-                    if frames < 257 {
-                        assert_eq!(flags & 64, 0, "viewer ended at frame {frames}");
-                    } else {
-                        assert_ne!(flags & 64, 0);
-                        assert_eq!((*handle).last_winner, 0.0);
-                    }
-                }
-            }
-        }
-        unsafe { kf_free(handle) };
-    }
-
-    #[test]
-    fn unarmed_laika_moves_but_never_creates_a_projectile() {
-        let handle = kf_new_unarmed_laika(20_260_824);
-        let start = unsafe {
-            let h = &*handle;
-            (h.game.tanks[1].x, h.game.tanks[1].y)
-        };
-        for _ in 0..300 {
-            unsafe {
-                kf_set_rl_action(handle, 0, STOP_ACTION.into());
-                kf_step(handle);
-                let h = &*handle;
-                assert_eq!(h.game.round_shots_fired[1], 0);
-                assert!(h.game.bullets.iter().all(|bullet| bullet.owner != 1));
-            }
-        }
-        let end = unsafe {
-            let h = &*handle;
-            (h.game.tanks[1].x, h.game.tanks[1].y)
-        };
-        assert!(start.0 != end.0 || start.1 != end.1);
-        unsafe { kf_free(handle) };
-    }
-
-    #[test]
-    fn room_target_moves_horizontally_vertically_and_diagonally() {
-        let mut game = Game::pursuit_room_curriculum(20_260_827);
-        let scale = game.scale;
-        let mut waypoint = 1;
-        let mut horizontal = 0;
-        let mut vertical = 0;
-        let mut diagonal = 0;
-        for _ in 0..220 {
-            let before = game.tanks[1];
-            let action = pursuit_room_target_action(&game, &mut waypoint);
-            apply_joystick_action(&mut game, 1, action);
-            game.step();
-            let target = game.tanks[1];
-            let dx = (target.x - before.x).abs();
-            let dy = (target.y - before.y).abs();
-            if dx > 1e-6 && dy <= dx * 0.15 {
-                horizontal += 1;
-            } else if dy > 1e-6 && dx <= dy * 0.15 {
-                vertical += 1;
-            } else if dx > 1e-6 && dy > 1e-6 {
-                diagonal += 1;
-            }
-            assert!(!target.hit_something && !target.wall_sliding);
-            assert!((4.0 * scale..6.0 * scale).contains(&target.x));
-            assert!((0.0..2.0 * scale).contains(&target.y));
-        }
-        assert!(horizontal > 5, "only {horizontal} horizontal frames");
-        assert!(vertical > 5, "only {vertical} vertical frames");
-        assert!(diagonal > 20, "only {diagonal} diagonal frames");
-    }
-
-    #[test]
-    fn viewer_room_pursuit_uses_the_300_frame_training_horizon() {
-        let handle = kf_new_pursuit_v1();
-        let mut action = 90;
-        for frame in 1..=300 {
-            unsafe {
-                let h = &*handle;
-                let mut observation = SemanticObservation::default();
-                encode_semantic(&h.game, 0, &h.semantic_state, &mut observation);
-                if let Some(direction) = observation.values[NAV_OFFSET..NAV_OFFSET + 4]
-                    .iter()
-                    .position(|&value| value > 0.5)
-                {
-                    action = [0, 90, 180, 270][direction];
-                }
-                kf_set_rl_action(handle, 0, action);
-                let flags = kf_step(handle);
-                assert_eq!(flags & 64 != 0, frame == 300, "unexpected end at {frame}");
-            }
-        }
-        unsafe { kf_free(handle) };
     }
 }

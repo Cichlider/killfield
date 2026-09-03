@@ -17,8 +17,8 @@ import torch.nn.functional as F
 from torch.distributions import Categorical
 
 from ppo_models import (
-    ACTION_COUNT, BULLET_SLOTS, FIRE_ACTION, MAP_DIM, OBS_DIM,
-    NAV_OFFSET, OBS_SCHEMA_VERSION, STOP_ACTION, make_actor_critic,
+    ACTION_COUNT, BULLET_SLOTS, FIRE_ACTIONS, MAP_DIM, OBS_DIM,
+    NAV_OFFSET, OBS_SCHEMA_VERSION, STOP_ACTIONS, make_actor_critic,
 )
 
 
@@ -83,11 +83,13 @@ class Config:
 class PpoVec:
     def __init__(self, count: int, seed: int, static_target=False, walking=False,
                  walking_training=False, walking_map=1, pursuit=False,
-                 eval_laika=False,
+                 hunt=False, hunt_map="mixed", eval_laika=False,
                  library=Path("engine/target/release/libkf_engine.dylib")):
         self.count = count
         self.lib = ctypes.CDLL(str(library.resolve()))
         constructor_name = (
+            {"real": "kf_vec_new_hunt_v1", "room": "kf_vec_new_hunt_room_v1",
+             "mixed": "kf_vec_new_hunt_mixed_v1"}[hunt_map] if hunt else
             "kf_vec_new_pursuit_v1" if pursuit else
             "kf_vec_new_walking_train_v3" if walking_training else
             f"kf_vec_new_walking_v{walking_map}" if walking else
@@ -96,7 +98,8 @@ class PpoVec:
             "kf_vec_new_ppo_paint_v1"
         )
         constructor = getattr(self.lib, constructor_name)
-        constructor.argtypes = [ctypes.c_uint32] if (static_target or walking or pursuit) and not walking_training else [ctypes.c_uint32, ctypes.c_uint32]
+        fixed_map = (static_target or walking or pursuit or hunt) and not walking_training
+        constructor.argtypes = [ctypes.c_uint32] if fixed_map else [ctypes.c_uint32, ctypes.c_uint32]
         constructor.restype = ctypes.c_void_p
         self.lib.kf_vec_obs_dim.restype = ctypes.c_uint32
         self.lib.kf_vec_bullet_slots.restype = ctypes.c_uint32
@@ -108,7 +111,7 @@ class PpoVec:
         expected = (OBS_DIM, BULLET_SLOTS, len(CHANNEL_NAMES))
         if native != expected:
             raise RuntimeError(f"native/Python schema mismatch: {native} != {expected}")
-        self.handle = constructor(count) if (static_target or walking or pursuit) and not walking_training else constructor(count, seed)
+        self.handle = constructor(count) if fixed_map else constructor(count, seed)
         if not self.handle:
             raise RuntimeError("kf_vec_new_ppo_paint_v1 failed")
         self.lib.kf_vec_step.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_uint16)]
@@ -225,8 +228,8 @@ def collect_rollout(env, model, kind, config, device, starts, hidden):
     metrics = {
         "reward_mean": float(rewards.mean()),
         "reward_std": float(rewards.std()),
-        "fire_rate": float((actions == FIRE_ACTION).mean()),
-        "stop_rate": float((actions == STOP_ACTION).mean()),
+        "fire_rate": float((actions % 2 == 1).mean()),
+        "stop_rate": float(np.isin(actions, STOP_ACTIONS).mean()),
         "done_count": int(dones.sum()),
         "outcomes": outcome_counts,
         "phi_self_mean": float(diagnostics[..., 0].mean()),
@@ -375,7 +378,7 @@ def evaluate(model, kind, config, device):
                 ).view(1, config.eval_envs, 1)
             logits, _value, hidden = model.step(*tensors(current_obs, current_masks, device), hidden)
             action = logits.argmax(-1).cpu().numpy().astype(np.uint16)
-            fired |= action == FIRE_ACTION
+            fired |= action % 2 == 1
             decisions += 1
             env.step(action)
             channel_total += env.channels
@@ -424,6 +427,94 @@ def evaluate(model, kind, config, device):
 
 
 @torch.inference_mode()
+def evaluate_hunt(model, kind, config, device, hunt_map="real"):
+    """Exactly 100 deterministic episodes on one hunt map.
+
+    The fixed-Laika report is a side channel; this is the metric that says
+    whether the policy actually learned to run the maze down and shoot. The
+    two maps are reported separately: an average over the mix would hide the
+    easy half propping up the hard one.
+    """
+    env = PpoVec(config.eval_envs, 0, hunt=True, hunt_map=hunt_map)
+    hidden = model.initial_hidden(config.eval_envs, device)
+    starts = np.ones(config.eval_envs, bool)
+    decisions = np.zeros(config.eval_envs, np.int64)
+    fired = np.zeros(config.eval_envs, bool)
+    bfs_sum = np.zeros(config.eval_envs, np.float64)
+    bfs_count = np.zeros(config.eval_envs, np.int64)
+    bfs_min = np.full(config.eval_envs, np.inf, np.float64)
+    episodes = []
+    try:
+        while len(episodes) < config.eval_episodes:
+            obs = env.obs.copy()
+            masks = env.masks.astype(bool, copy=True)
+            if kind == "gru":
+                hidden = hidden * torch.as_tensor(
+                    ~starts, device=device, dtype=torch.float32
+                ).view(1, config.eval_envs, 1)
+            logits, _value, hidden = model.step(*tensors(obs, masks, device), hidden)
+            action = logits.argmax(-1).cpu().numpy().astype(np.uint16)
+            fired |= action % 2 == 1
+            decisions += 1
+            env.step(action)
+            bfs = env.obs[:, NAV_OFFSET + 4].astype(np.float64) * 22.0
+            settled = decisions % 4 == 0
+            bfs_sum[settled] += bfs[settled]
+            bfs_count[settled] += 1
+            bfs_min[settled] = np.minimum(bfs_min[settled], bfs[settled])
+            reward = env.rewards.copy()
+            done = env.dones.astype(bool).copy()
+            for index in np.flatnonzero(done):
+                winner = int(env.winners[index])
+                reason = int(env.walking_failure_reasons[index])
+                terminal = bool(env.terminals[index])
+                if winner == 0:
+                    outcome = "kill"
+                elif not terminal:
+                    outcome = "truncated"
+                elif reason in (1, 5):
+                    outcome = "rule_failure"
+                else:
+                    outcome = "suicide"
+                episodes.append({
+                    "outcome": outcome,
+                    "failure_reason": {1: "wall_or_slide", 5: "stop_or_stuck"}.get(reason, "none"),
+                    "decisions": int(decisions[index]),
+                    "fired": bool(fired[index]),
+                    "final_reward": float(reward[index]),
+                    "mean_bfs": float(bfs_sum[index] / max(bfs_count[index], 1)),
+                    "min_bfs": float(bfs_min[index]) if np.isfinite(bfs_min[index]) else 0.0,
+                })
+                decisions[index] = 0
+                fired[index] = False
+                bfs_sum[index] = 0.0
+                bfs_count[index] = 0
+                bfs_min[index] = np.inf
+            starts = done
+            env.reset_done()
+    finally:
+        env.close()
+    episodes = episodes[:config.eval_episodes]
+    counts = {k: 0 for k in ("kill", "suicide", "rule_failure", "truncated")}
+    for row in episodes:
+        counts[row["outcome"]] += 1
+    reasons = {}
+    for row in episodes:
+        if row["outcome"] == "rule_failure":
+            reasons[row["failure_reason"]] = reasons.get(row["failure_reason"], 0) + 1
+    return {
+        "episodes": len(episodes),
+        "outcomes": counts,
+        "kill_rate": counts["kill"] / max(len(episodes), 1),
+        "rule_failure_reasons": reasons,
+        "mean_decisions": float(np.mean([r["decisions"] for r in episodes])),
+        "episode_fire_rate": float(np.mean([r["fired"] for r in episodes])),
+        "mean_bfs": float(np.mean([r["mean_bfs"] for r in episodes])),
+        "min_bfs_mean": float(np.mean([r["min_bfs"] for r in episodes])),
+    }
+
+
+@torch.inference_mode()
 def evaluate_walking(model, kind, config, device, walking_map=1, pursuit=False):
     """Exactly 100 deterministic episodes on the curriculum acceptance map."""
     env = PpoVec(
@@ -449,7 +540,7 @@ def evaluate_walking(model, kind, config, device, walking_map=1, pursuit=False):
                 ).view(1, config.eval_envs, 1)
             logits, _value, hidden = model.step(*tensors(obs, masks, device), hidden)
             action = logits.argmax(-1).cpu().numpy().astype(np.uint16)
-            fired |= action == FIRE_ACTION
+            fired |= action % 2 == 1
             decisions += 1
             env.step(action)
             if pursuit:
@@ -599,46 +690,12 @@ def pretrain_pursuit_direction(model, kind, optimiser, config, device):
     )
 
 
-def load_schema8_joystick130(model, legacy_state):
-    """Migrate v6 schema-8 features/actions into schema-9 Discrete(722)."""
-    migrated = model.state_dict()
-    special = {"encoder.scalar_encoder.0.weight", "actor.weight", "actor.bias"}
-    for name, value in legacy_state.items():
-        if name not in special and name in migrated and migrated[name].shape == value.shape:
-            migrated[name].copy_(value)
-
-    old_scalar = legacy_state["encoder.scalar_encoder.0.weight"]
-    new_scalar = migrated["encoder.scalar_encoder.0.weight"]
-    new_scalar[:, :24].copy_(old_scalar[:, :24])
-    for direction in range(360):
-        old_direction = round(direction * 128 / 360) % 128
-        new_scalar[:, 24 + direction].copy_(old_scalar[:, 24 + old_direction])
-        new_scalar[:, 24 + 360 + direction].copy_(old_scalar[:, 24 + old_direction])
-    new_scalar[:, 24 + FIRE_ACTION].copy_(old_scalar[:, 24 + 128])
-    new_scalar[:, 24 + STOP_ACTION].copy_(old_scalar[:, 24 + 129])
-
-    old_weight = legacy_state["actor.weight"]
-    old_bias = legacy_state["actor.bias"]
-    for direction in range(360):
-        old_direction = round(direction * 128 / 360) % 128
-        migrated["actor.weight"][direction].copy_(old_weight[old_direction])
-        migrated["actor.bias"][direction].copy_(old_bias[old_direction])
-        reverse = 360 + direction
-        migrated["actor.weight"][reverse].copy_(old_weight[old_direction])
-        migrated["actor.bias"][reverse].copy_(old_bias[old_direction] - 2.0)
-    migrated["actor.weight"][FIRE_ACTION].copy_(old_weight[128])
-    migrated["actor.bias"][FIRE_ACTION].copy_(old_bias[128])
-    migrated["actor.weight"][STOP_ACTION].copy_(old_weight[129])
-    migrated["actor.bias"][STOP_ACTION].copy_(old_bias[129])
-    model.load_state_dict(migrated)
-
-
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", required=True, choices=("nomem", "gru"))
     parser.add_argument("--seed", required=True, type=int, choices=TRAIN_SEEDS)
     parser.add_argument(
-        "--curriculum", choices=("static-target", "walking", "pursuit"),
+        "--curriculum", choices=("static-target", "walking", "pursuit", "hunt"),
         default="static-target",
     )
     parser.add_argument("--output", type=Path)
@@ -654,6 +711,7 @@ def main():
     config = Config()
     walking = args.curriculum == "walking"
     pursuit = args.curriculum == "pursuit"
+    hunt = args.curriculum == "hunt"
     locomotion = walking or pursuit
     if walking:
         config = Config(
@@ -675,7 +733,7 @@ def main():
         )
     elif pursuit:
         config = Config(
-            stage="pursuit-v10-room-exp-bfs-joystick722",
+            stage="pursuit-v11-room-exp-bfs-joystick130",
             training_opponent="unarmed-laika-irregular-two-dimensional-room-patrol",
             episode_frames=300,
             navigation_total=0.0,
@@ -686,13 +744,36 @@ def main():
             shot_attempt_cap=0.0,
             map_name="walking-v1-upper-right-two-by-two-room-seed-20260827",
             step_cost=0.0,
-            failure_rules="wall-or-slide,no-displacement,fire=-10,stop=-10;human-wheel-reverse-is-legal;300-frame-horizon=truncation",
+            failure_rules="wall-or-slide,no-displacement,fire=-10,stop=-10;forward-only-wheel-no-reverse;300-frame-horizon=truncation",
             initial_checkpoint="outputs/ppo_walking_v6_transition_context_joystick130/nomem/s11/final.pt",
             actor_logit_scale_on_init=0.5,
             direction_pretrain_epochs=200,
             learning_rate=1e-9,
             total_steps=16_384,
             entropy_coefficient=0.0,
+        )
+    elif hunt:
+        config = Config(
+            stage="hunt-v3-mixed-selfclosed-bfs-joystick258",
+            training_opponent="50-50-room-patrol-waypoints-and-scripted-random-walk-real-maze",
+            episode_frames=750,
+            navigation_total=0.0,
+            success_base=50.0,
+            speed_bonus_max=0.0,
+            failure_reward=-300.0,
+            shot_attempt_reward=0.0,
+            shot_attempt_cap=0.0,
+            map_name="50-50-mix:pursuit-room-seed-20260827-and-real-maze-seed-20260862",
+            step_cost=0.0,
+            failure_rules=(
+                "stop=-300,wall-or-slide=-300,no-displacement=-300;"
+                "kill-target=+50;own-ricochet-death=-300;"
+                "approach=+1-per-cell-the-policy-itself-closes-settled-every-frame;"
+                "fire-is-legal;750-frame-horizon=truncation"
+            ),
+            initial_checkpoint="",
+            learning_rate=3e-4,
+            total_steps=5_000_000,
         )
     if args.smoke:
         config = replace(
@@ -701,7 +782,8 @@ def main():
             eval_every_updates=0, eval_episodes=100,
         )
     output_root = args.output or Path(
-        "outputs/ppo_pursuit_v10_room_exp_bfs_joystick722" if pursuit
+        "outputs/ppo_hunt_v3_mixed_selfclosed_joystick258" if hunt
+        else "outputs/ppo_pursuit_v11_room_exp_bfs_joystick130" if pursuit
         else "outputs/ppo_walking_v6_transition_context_joystick130" if walking
         else "outputs/ppo_static_target_fixed_v1_joystick130"
     )
@@ -746,7 +828,7 @@ def main():
     model = make_actor_critic(args.model).to(device)
     if locomotion:
         with torch.no_grad():
-            model.actor.bias[FIRE_ACTION] = -4.0
+            model.actor.bias[FIRE_ACTIONS] = -4.0
     optimiser = torch.optim.Adam(model.parameters(), lr=config.learning_rate, eps=1e-5)
     start_update = 0
     total_steps = 0
@@ -766,16 +848,13 @@ def main():
         )
         if init_checkpoint is not None:
             saved = torch.load(init_checkpoint, map_location=device, weights_only=False)
-            if saved["model"]["actor.bias"].shape[0] == 130 and ACTION_COUNT == 722:
-                load_schema8_joystick130(model, saved["model"])
-            else:
-                model.load_state_dict(saved["model"])
+            model.load_state_dict(saved["model"])
             if config.actor_logit_scale_on_init != 1.0:
                 with torch.no_grad():
                     model.actor.weight.mul_(config.actor_logit_scale_on_init)
                     model.actor.bias.mul_(config.actor_logit_scale_on_init)
-                    model.actor.bias[FIRE_ACTION] = -8.0
-                    model.actor.bias[STOP_ACTION] = -8.0
+                    model.actor.bias[FIRE_ACTIONS] = -8.0
+                    model.actor.bias[STOP_ACTIONS] = -8.0
         if pursuit and config.direction_pretrain_epochs:
             pretrain_optimiser = torch.optim.Adam(
                 model.parameters(),
@@ -796,9 +875,11 @@ def main():
     env = PpoVec(
         config.envs,
         env_seed,
-        static_target=not locomotion,
+        static_target=not (locomotion or hunt),
         walking_training=walking,
         pursuit=pursuit,
+        hunt=hunt,
+        hunt_map="mixed",
     )
     starts = np.ones(config.envs, bool)
     hidden = model.initial_hidden(config.envs, device)
@@ -848,7 +929,7 @@ def main():
     model.eval()
     final_eval = evaluate(model, args.model, config, device)
     result = {
-        "name": f"ppo-{'pursuit-v10-room-exp-bfs-joystick722' if pursuit else 'walking-v6-transition-context-serpentine-joystick130' if walking else 'static-target-fixed-v1-joystick130'}-{args.model}-s{args.seed}",
+        "name": f"ppo-{config.stage}-{args.model}-s{args.seed}",
         "model": args.model, "seed": args.seed, "total_steps": total_steps,
         "seconds_this_run": time.perf_counter() - started,
         "evaluation": final_eval, "config": config_dict,
@@ -857,6 +938,11 @@ def main():
         result["curriculum_evaluation"] = evaluate_walking(
             model, args.model, config, device, pursuit=pursuit
         )
+    if hunt:
+        result["curriculum_evaluation"] = {
+            "room": evaluate_hunt(model, args.model, config, device, hunt_map="room"),
+            "real_maze": evaluate_hunt(model, args.model, config, device, hunt_map="real"),
+        }
     (output / "complete.json").write_text(json.dumps(result, indent=2, ensure_ascii=False))
     atomic_torch_save({"model": model.state_dict(), "result": result}, output / "final.pt")
 

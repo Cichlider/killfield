@@ -1,192 +1,143 @@
-<!DOCTYPE html>
-<html lang="en">
+<!doctype html>
+<html lang="zh">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#000000">
-<meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>killfield RL — PPO behavior review</title>
-<meta name="description" content="Review a PPO policy in its fixed-map static-target training environment or against Laika.">
-<link rel="icon" type="image/png" sizes="48x48" href="assets/brand/favicon-48.png">
-<link rel="icon" type="image/png" sizes="192x192" href="assets/brand/icon-192.png">
-<link rel="apple-touch-icon" sizes="180x180" href="assets/brand/apple-touch-icon.png">
-<link rel="manifest" href="manifest.webmanifest">
-<link rel="stylesheet" href="style.css">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Killfield · 对战</title>
+<link rel="icon" href="assets/brand/favicon-48.png">
+<style>
+:root {
+  --bg: #faf9f7; --ink: #1a1c1f; --mut: #6b7280; --line: #e5e7eb; --card: #fff;
+  --wall: #3f4550; --me: #17191c; --target: #9e101b;
+  --threat: #d82432; --mine: #2563eb; --ground: #efede8;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #131517; --ink: #e8eaed; --mut: #9aa3ad; --line: #2c3035; --card: #1c1f22;
+    --wall: #8b93a1; --me: #e8eaed; --ground: #202327;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; padding: 24px; background: var(--bg); color: var(--ink);
+  font: 15px/1.5 ui-sans-serif, system-ui, -apple-system, "Helvetica Neue", sans-serif;
+}
+h1 { font-size: 18px; margin: 0 0 2px; }
+.sub { color: var(--mut); font-size: 13px; margin-bottom: 18px; }
+.wrap { display: flex; gap: 20px; align-items: flex-start; flex-wrap: wrap; }
+#stage {
+  background: var(--ground); border: 1px solid var(--line); border-radius: 12px;
+  padding: 10px; line-height: 0;
+  /* Sized by the script from the measured box, never by flex. */
+  flex: 0 0 auto;
+}
+canvas { display: block; max-width: 100%; height: auto; border-radius: 6px; }
+.panel {
+  flex: 1 1 240px; min-width: 240px; max-width: 340px;
+  /* Height is capped from the script to the same budget the canvas gets, so
+     a tall panel scrolls itself instead of pushing the page into a scroll and
+     taking the canvas out of view with it. */
+  overflow-y: auto;
+}
+.card {
+  background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+  padding: 11px 12px; margin-bottom: 10px;
+}
+.card:last-child { margin-bottom: 0; }
+.card h2 { font-size: 11px; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--mut); margin: 0 0 7px; font-weight: 600; }
+.row { display: flex; justify-content: space-between; padding: 2px 0; font-size: 13.5px; }
+.row b { font-variant-numeric: tabular-nums; }
+button {
+  font: inherit; font-size: 13.5px; padding: 5px 10px; border-radius: 7px;
+  cursor: pointer; border: 1px solid var(--line); background: var(--card);
+  color: var(--ink); margin: 0;
+}
+/* One labelled row per control group, so adding a button never silently costs
+   the canvas another line of height. */
+.group { display: flex; align-items: center; gap: 6px; margin-top: 6px; }
+.group:first-of-type { margin-top: 0; }
+.group span { color: var(--mut); font-size: 11px; width: 30px; flex: none; }
+button.active { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+button:disabled { opacity: .45; cursor: default; }
+.legend { font-size: 12px; color: var(--mut); line-height: 1.45; }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 50%;
+  margin-right: 6px; vertical-align: -1px; }
+#note { color: var(--mut); font-size: 12px; margin-top: 8px; }
+
+/* Live-model plumbing. The banner exists because a mismatched checkpoint used
+   to render silently, so it is loud on purpose. */
+#alarm {
+  margin: 0 0 14px; padding: 10px 14px; border-radius: 8px;
+  background: #7f1d1d; color: #fee2e2; border: 1px solid #b91c1c;
+  font-size: 13px; line-height: 1.5; white-space: pre-line;
+}
+#m-fresh {
+  margin-top: 7px; padding: 5px 8px; border-radius: 6px;
+  background: #1e3a8a; color: #dbeafe; font-size: 12px; text-align: center;
+}
+</style>
 </head>
 <body>
-<main>
-  <header>
-    <div class="header-row">
-      <h1>killfield</h1>
-      <button id="lang-toggle" type="button" class="lang-toggle" aria-label="Switch to Chinese">中文</button>
-    </div>
-    <p class="tagline" id="tagline">PPO behavior review: fixed training map against an inert target.</p>
-  </header>
+<h1>Killfield · 对战</h1>
+<div class="sub" id="sub">每局随机迷宫 · 双方均可开火 · 30 秒未分胜负判平</div>
+<div id="alarm" hidden></div>
 
-  <div class="play-layout">
-  <div class="game-column">
-  <div class="stage" id="stage">
-    <div class="stage-overlay" id="stage-overlay">
-      <div class="scoreboard" id="scoreboard">
-        <div class="side">
-          <span class="swatch" id="swatch-0"></span>
-          <span class="side-name" id="name-0">PPO model</span>
-          <span class="side-score" id="score-0">0</span>
-        </div>
-        <span class="vs">vs</span>
-        <div class="side side-right">
-          <span class="side-score" id="score-1">0</span>
-          <span class="side-name" id="name-1">Laika</span>
-          <span class="swatch" id="swatch-1"></span>
-        </div>
+<div class="wrap">
+  <div id="stage"><canvas id="screen" width="640" height="640"></canvas></div>
+
+  <div class="panel">
+    <div class="card">
+      <h2>控制</h2>
+      <div class="group"><span>驾驶</span>
+        <button id="mode-mpc" class="active">MPC 基准</button>
+        <button id="mode-ppo">PPO 策略</button>
       </div>
-      <p class="roundline" id="roundline">round 1</p>
-      <p class="streakline" id="streakline">win streak 0 · best 0</p>
-    </div>
-    <div class="canvas-wrap">
-      <canvas id="screen" width="712" height="500"></canvas>
-      <div class="stage-toolbar" aria-label="Game controls">
-        <button id="touch-visibility" type="button" class="touch-visibility-toggle" aria-label="Hide touch controls" hidden>CTRL</button>
-        <button id="sound" type="button" class="sound-toggle" aria-label="Mute sound"></button>
-        <button id="pause" type="button" class="pause-toggle" aria-label="Pause (P)"></button>
-        <button id="fullscreen" type="button" class="fullscreen-toggle" aria-label="Fullscreen">⛶</button>
+      <div class="group"><span>对手</span>
+        <button id="opp-laika" class="active">Laika</button>
+        <button id="opp-mpc">MPC</button>
+      </div>
+      <div class="group"><span></span>
+        <button id="pause">暂停</button>
+        <button id="restart">换一局</button>
       </div>
     </div>
-    <div id="touch-controls" class="touch-controls" hidden>
-      <div class="control-style-switch" role="group" aria-label="Touch control style">
-        <button id="control-style-joystick" type="button">Joystick</button>
-        <button id="control-style-dpad" type="button">Forward / turn</button>
-      </div>
-      <div class="touch-left-control">
-        <div id="touch-joystick" class="touch-joystick" role="application" aria-label="360-degree movement joystick">
-          <span class="joystick-axis axis-n">▲</span>
-          <span class="joystick-axis axis-e">▶</span>
-          <span class="joystick-axis axis-s">▼</span>
-          <span class="joystick-axis axis-w">◀</span>
-          <span id="touch-knob" class="touch-knob"></span>
-        </div>
-        <div id="touch-dpad" class="touch-dpad" role="group" aria-label="Forward, reverse, left and right">
-          <button type="button" class="dpad-up" data-control="forward" aria-label="Forward">▲</button>
-          <button type="button" class="dpad-left" data-control="turnLeft" aria-label="Turn left">◀</button>
-          <button type="button" class="dpad-right" data-control="turnRight" aria-label="Turn right">▶</button>
-          <button type="button" class="dpad-down" data-control="backup" aria-label="Reverse">▼</button>
-        </div>
-      </div>
-      <button id="touch-fire" type="button" class="touch-fire">FIRE</button>
+
+    <div class="card">
+      <h2>本局</h2>
+      <div class="row"><span>结果</span><b id="s-reward">进行中</b></div>
+      <div class="row"><span>开火数</span><b id="s-kills">0</b></div>
+      <div class="row"><span>对手</span><b id="s-dodges">Laika</b></div>
+      <div class="row"><span>剩余时间</span><b id="s-time">30.0s</b></div>
+      <div class="row"><span>状态</span><b id="s-alive">存活</b></div>
     </div>
-    <div id="orientation-hint" class="orientation-hint" role="status" hidden>
-      <span class="orientation-phone" aria-hidden="true"></span>
-      <strong id="orientation-title">Rotate your phone</strong>
-      <span id="orientation-body">Turn off portrait lock, then rotate to landscape.</span>
+
+    <div class="card">
+      <h2>当前模型</h2>
+      <div class="row"><span>来源</span><b id="m-source">—</b></div>
+      <div class="row"><span>训练步数</span><b id="m-steps">—</b></div>
+      <div class="row"><span>schema</span><b id="m-schema">—</b></div>
+      <div id="m-fresh" hidden>新模型已就绪，本局结束后切换</div>
+    </div>
+
+    <div class="card">
+      <h2>历史（本次会话）</h2>
+      <div class="row"><span>回合数</span><b id="h-eps">0</b></div>
+      <div class="row"><span>胜 / 负</span><b id="h-mean">—</b></div>
+      <div class="row"><span>双亡 / 平</span><b id="h-best">—</b></div>
+      <div class="row"><span>胜率</span><b id="h-death">—</b></div>
+    </div>
+
+    <div class="card legend">
+      <div><i style="background:var(--me)"></i>本方（被评估的智能体）</div>
+      <div><i style="background:var(--target)"></i>对手（会移动、会开枪）</div>
+      <div><i style="background:var(--threat)"></i>威胁子弹（会致命）</div>
+      <div><i style="background:var(--mine)"></i>己方子弹（未反弹前无害）</div>
+      <div id="note"></div>
     </div>
   </div>
+</div>
 
-  <div class="controls">
-    <div class="row modes" role="group" aria-label="Mode">
-      <label class="seedbox">
-        <span>model</span>
-        <select id="rl-model"><option value="">checking checkpoints…</option></select>
-      </label>
-      <span id="rl-status" class="hint" role="status">connecting to inference service…</span>
-      <button id="mode-pursuit" type="button" class="mode active">Room-patrol Laika</button>
-      <button id="mode-inert" type="button" class="mode">Real maze · unarmed Laika</button>
-      <button id="mode-target" type="button" class="mode">Walking map v2</button>
-      <button id="mode-watch" type="button" class="mode">Model vs Laika</button>
-      <button id="mode-play" type="button" class="mode" hidden>Play</button>
-      <button id="mode-selfplay" type="button" class="mode" hidden>AI vs AI</button>
-    </div>
-
-    <div class="row">
-      <button id="reroll" type="button">New maze (R)</button>
-      <button id="reset-score" type="button">Reset score</button>
-      <button id="instant-turn" type="button" class="mode" hidden>Instant turn: off</button>
-      <label class="seedbox">
-        <span id="seed-label">seed</span>
-        <input id="seed" type="text" inputmode="numeric" placeholder="random" size="9">
-      </label>
-      <label class="seedbox">
-        <span id="rays-label">rays</span>
-        <select id="rays">
-          <option id="rays-512" value="512" selected>512 — full</option>
-          <option id="rays-256" value="256">256 — mobile</option>
-        </select>
-      </label>
-      <label class="seedbox alignment-box">
-        <span id="forward-alignment-label">forward alignment</span>
-        <input id="forward-alignment" type="range" min="0" max="360" step="2.8125" value="270">
-        <output id="forward-alignment-value" for="forward-alignment">270° / 360° · reverse 90°</output>
-      </label>
-      <label class="seedbox">
-        <span id="oppmodel-label">planner assumes opponent is</span>
-        <select id="oppmodel">
-          <option id="oppmodel-laika" value="L2" selected>Laika (scripted)</option>
-          <option id="oppmodel-human" value="L1">human (unpredictable)</option>
-        </select>
-      </label>
-    </div>
-    <section class="match-settings-panel" id="match-settings-panel" hidden>
-      <div class="match-settings-heading">
-        <h2 id="match-settings-title">Human vs Killfield</h2>
-        <output id="opening-delay-value" for="opening-delay">0.5 s</output>
-      </div>
-      <label for="opening-delay" id="opening-delay-label">Killfield opening delay</label>
-      <input id="opening-delay" type="range" min="0" max="3" step="0.1" value="0.5">
-      <p id="opening-delay-hint">The human can move immediately; only Killfield waits. Applies next round.</p>
-    </section>
-    <p class="hint" id="oppmodel-hint">
-      Only changes what the lookahead simulation predicts tank 1 will do — not who is actually
-      driving it. Pick “Laika” in watch mode, where that prediction is exact. Pick “human” in
-      play mode: scripting your moves as Laika makes the planner imagine kills that never happen,
-      and it can stall as if it had already won.
-    </p>
-
-    <p class="keys" id="keyhelp">
-      <strong>Arrow keys</strong> or <strong>ESDF</strong> to drive &middot;
-      <strong>M</strong> / <strong>Space</strong> / <strong>Q</strong> to fire &middot;
-      <strong>R</strong> for a new maze
-    </p>
-
-    <div class="telemetry" id="telemetry"></div>
-
-    <p class="note" id="note">
-      Bullets ricochet and stay lethal for ten seconds &mdash; including to whoever fired them.
-      A round is not decided the instant someone dies: the world keeps running for three more
-      seconds, so a shot already in the air can still take the apparent winner with it.
-    </p>
-  </div>
-  </div>
-
-  <aside class="tuning-panel" id="tuning-panel" aria-labelledby="tuning-title" hidden>
-    <div class="tuning-heading">
-      <p class="tuning-eyebrow" id="tuning-eyebrow">AI lab</p>
-      <h2 id="tuning-title">Live parameters</h2>
-    </div>
-    <p class="tuning-description" id="tuning-description">
-      Changes apply to the next MPC plan and are saved in this browser.
-    </p>
-    <div id="tuning-controls"></div>
-    <div class="tuning-footer">
-      <button id="tuning-reset" type="button">Reset defaults</button>
-      <span id="tuning-status">live · saved locally</span>
-    </div>
-  </aside>
-  </div>
-
-  <footer class="colophon">
-    <p>
-      &copy; 2026 <a href="https://github.com/Cichlider">Cichlider</a> &middot;
-      code under <a href="https://github.com/Cichlider/killfield/blob/main/LICENSE">MIT</a> &middot;
-      <a href="https://github.com/Cichlider/killfield">Killfield (this project)</a>
-    </p>
-    <p>
-      Unofficial, non-commercial reimplementation of the mechanics of
-      <i>Tank Trouble</i> by Mads Purup. Not affiliated with or endorsed by the
-      original author; contains none of its code.
-    </p>
-  </footer>
-</main>
-<script type="module" src="viewer.js?v=schema9-pursuit-v10-room"></script>
+<script type="module" src="viewer.js?v=d8fb33cd"></script>
 </body>
 </html>

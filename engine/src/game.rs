@@ -20,87 +20,6 @@ use std::sync::Arc;
 
 const DEG: f64 = C::DEG;
 
-/// A six-by-three, one-cell-wide serpentine corridor used by the first
-/// locomotion curriculum. Every reachable cell has at most two neighbours.
-pub const WALKING_CURRICULUM_PATH: [(usize, usize); 18] = [
-    (0, 2),
-    (1, 2),
-    (2, 2),
-    (3, 2),
-    (4, 2),
-    (5, 2),
-    (5, 1),
-    (4, 1),
-    (3, 1),
-    (2, 1),
-    (1, 1),
-    (0, 1),
-    (0, 0),
-    (1, 0),
-    (2, 0),
-    (3, 0),
-    (4, 0),
-    (5, 0),
-];
-
-/// A distinct seven-by-four fixed corridor used to test whether locomotion
-/// transfers to unseen turn order instead of memorising curriculum v1.
-pub const WALKING_CURRICULUM_PATH_V2: [(usize, usize); 22] = [
-    (0, 3),
-    (1, 3),
-    (2, 3),
-    (3, 3),
-    (4, 3),
-    (5, 3),
-    (6, 3),
-    (6, 2),
-    (6, 1),
-    (5, 1),
-    (4, 1),
-    (3, 1),
-    (2, 1),
-    (1, 1),
-    (0, 1),
-    (0, 0),
-    (1, 0),
-    (2, 0),
-    (3, 0),
-    (4, 0),
-    (5, 0),
-    (6, 0),
-];
-
-/// Irregular patrol points inside the pursuit curriculum's open 2×2 room.
-/// The first three legs deliberately include diagonal, vertical, and horizontal
-/// travel; the remaining legs keep the loop from looking like a rectangle.
-pub const PURSUIT_ROOM_WAYPOINTS: [(f64, f64); 8] = [
-    (5.5, 0.5),
-    (4.5, 1.5),
-    (4.5, 0.5),
-    (5.5, 0.5),
-    (4.75, 1.5),
-    (5.5, 1.25),
-    (4.5, 0.75),
-    (5.25, 1.5),
-];
-
-/// Advance an unarmed target along its reproducible irregular room patrol and
-/// return the absolute one-degree forward-wheel action for this frame.
-pub fn pursuit_room_target_action(game: &Game, waypoint: &mut usize) -> u16 {
-    let target = game.tanks[1];
-    let mut goal = PURSUIT_ROOM_WAYPOINTS[*waypoint % PURSUIT_ROOM_WAYPOINTS.len()];
-    let mut dx = goal.0 * game.scale - target.x;
-    let mut dy = goal.1 * game.scale - target.y;
-    let switch_distance = (target.forward_speed * 1.25).max(game.scale * 0.02);
-    if dx.hypot(dy) <= switch_distance {
-        *waypoint = (*waypoint + 1) % PURSUIT_ROOM_WAYPOINTS.len();
-        goal = PURSUIT_ROOM_WAYPOINTS[*waypoint];
-        dx = goal.0 * game.scale - target.x;
-        dy = goal.1 * game.scale - target.y;
-    }
-    (dy.atan2(dx) / DEG + 90.0).rem_euclid(360.0).round() as u16 % 360
-}
-
 /// Normalise an angle to (-180, 180], matching the source engine's setter.
 #[inline]
 pub fn norm_rot(deg: f64) -> f64 {
@@ -501,6 +420,10 @@ pub struct Bullet {
     /// A bullet is harmless to whoever fired it until it has bounced at least
     /// once. That is the actual rule, not a workaround for the muzzle overlap.
     pub has_bounced: bool,
+    /// Set on range-curriculum barrage bullets. They are owned by the target so
+    /// the observation reads them as hostile, but a shooting range whose own
+    /// barrage destroys the targets makes no sense — so they pass through it.
+    pub injected: bool,
 }
 
 impl Bullet {
@@ -523,6 +446,7 @@ impl Bullet {
             removed: false,
             just_created: false,
             has_bounced: false,
+            injected: false,
         }
     }
 }
@@ -585,34 +509,14 @@ pub struct Game {
     pub ai_enabled: Vec<bool>,
 }
 
-/// Continuous progress along the fixed serpentine walking curriculum.
-pub fn walking_curriculum_progress(game: &Game) -> f64 {
-    let path: &[(usize, usize)] = if game.maze.w == 7 && game.maze.h == 4 {
-        &WALKING_CURRICULUM_PATH_V2
-    } else {
-        &WALKING_CURRICULUM_PATH
-    };
-    let tank = game.tanks[0];
-    let mut best_distance = f64::INFINITY;
-    let mut best_progress = 0.0;
-    for (index, pair) in path.windows(2).enumerate() {
-        let ax = (pair[0].0 as f64 + 0.5) * game.scale;
-        let ay = (pair[0].1 as f64 + 0.5) * game.scale;
-        let bx = (pair[1].0 as f64 + 0.5) * game.scale;
-        let by = (pair[1].1 as f64 + 0.5) * game.scale;
-        let dx = bx - ax;
-        let dy = by - ay;
-        let projection =
-            (((tank.x - ax) * dx + (tank.y - ay) * dy) / (dx * dx + dy * dy)).clamp(0.0, 1.0);
-        let px = ax + projection * dx;
-        let py = ay + projection * dy;
-        let distance = (tank.x - px).powi(2) + (tank.y - py).powi(2);
-        if distance < best_distance {
-            best_distance = distance;
-            best_progress = index as f64 + projection;
-        }
-    }
-    best_progress / (path.len() - 1) as f64
+/// Height of each free-standing barrier, in cells. Two rows leaves the lanes
+/// above and below open on a five-row range.
+pub const RANGE_BARRIER_ROWS: usize = 2;
+
+fn barrier_rows(h: usize, span: usize) -> std::ops::Range<usize> {
+    if span == 0 { return 0..0; }
+    let start = h.saturating_sub(span) / 2;
+    start..(start + span).min(h)
 }
 
 impl Game {
@@ -662,128 +566,6 @@ impl Game {
             ai_enabled: (0..tanks).map(|i| ai_tanks.contains(&i)).collect(),
         };
         g.setup_battle();
-        g
-    }
-
-    /// Deterministic walking lesson: one serpentine corridor, the learner at
-    /// one end and an inert Laika-shaped goal at the other.
-    pub fn walking_curriculum(seed: u32) -> Self {
-        Self::walking_curriculum_at(seed, 0)
-    }
-
-    pub fn walking_curriculum_v2(seed: u32) -> Self {
-        Self::walking_curriculum_from_path(seed, 0, 7, 4, &WALKING_CURRICULUM_PATH_V2)
-    }
-
-    /// Walking corridor with the upper-right four cells opened into a 2×2
-    /// room so the unarmed target can move horizontally, vertically, and
-    /// diagonally instead of being constrained to one corridor segment.
-    pub fn pursuit_room_curriculum(seed: u32) -> Self {
-        let mut g = Self::walking_curriculum(seed);
-        let mut maze = (*g.maze).clone();
-        maze.cells[4 * maze.h][1] = 0;
-        maze.cells[5 * maze.h][1] = 0;
-        g.maze = Arc::new(maze);
-        let reachable = calc_reachable(
-            &g.maze,
-            WALKING_CURRICULUM_PATH[0].0,
-            WALKING_CURRICULUM_PATH[0].1,
-        );
-        g.reachable = Arc::new(reachable.cells);
-        g.reachable_index = Arc::new(reachable.index);
-        g.walls = Arc::new(build_wall_segments(&g.maze, g.scale));
-        g.wall_grid = Arc::new(WallGrid::new(&g.walls, g.wall_half_t, g.scale));
-        let mut distances = vec![None; g.maze.w * g.maze.h];
-        for &(x, y) in g.reachable.iter() {
-            distances[x * g.maze.h + y] = Some(calc_distances(&g.maze, x, y));
-        }
-        g.distances_for_maze = Arc::new(distances);
-        g.dead_ends = Arc::new(find_dead_ends(&g.maze, &g.reachable, C::MAXDEADENDPENALTY));
-        g
-    }
-
-    /// The same fixed corridor with the learner starting later on its unique
-    /// path. Used only to expose all three turns during training.
-    pub fn walking_curriculum_at(seed: u32, start_index: usize) -> Self {
-        Self::walking_curriculum_from_path(seed, start_index, 6, 3, &WALKING_CURRICULUM_PATH)
-    }
-
-    fn walking_curriculum_from_path(
-        seed: u32,
-        start_index: usize,
-        w: usize,
-        h: usize,
-        path: &[(usize, usize)],
-    ) -> Self {
-        let mut g = Game::with_ai(seed, 2, &[]);
-        let mut cells = vec![[1u8, 1u8, 1u8]; w * h];
-        for pair in path.windows(2) {
-            let (x, y) = pair[0];
-            let (nx, ny) = pair[1];
-            if nx == x + 1 {
-                cells[nx * h + ny][2] = 0;
-            } else if x == nx + 1 {
-                cells[x * h + y][2] = 0;
-            } else if ny == y + 1 {
-                cells[x * h + y][1] = 0;
-            } else if y == ny + 1 {
-                cells[nx * h + ny][1] = 0;
-            }
-        }
-        g.maze = Arc::new(Maze { w, h, cells });
-        g.scale = f64::min(
-            (C::MOVIEHEIGHT - C::HEIGHTTOBOTTOM) / (h as f64 + 0.125),
-            C::MOVIEWIDTH / (w as f64 + 0.125),
-        );
-        let reachable = calc_reachable(&g.maze, path[0].0, path[0].1);
-        g.reachable = Arc::new(reachable.cells);
-        g.reachable_index = Arc::new(reachable.index);
-        g.walls = Arc::new(build_wall_segments(&g.maze, g.scale));
-        g.wall_half_t = (g.scale / 16.0).floor();
-        g.wall_grid = Arc::new(WallGrid::new(&g.walls, g.wall_half_t, g.scale));
-
-        let start_index = start_index.min(path.len() - 2);
-        let spawns = [path[start_index], *path.last().unwrap()];
-        g.tanks = spawns
-            .iter()
-            .enumerate()
-            .map(|(number, &cell)| Tank::new(number, cell, g.scale, &mut g.rng))
-            .collect();
-        let heading_target = if start_index == 0 {
-            path[start_index + 1]
-        } else {
-            path[start_index - 1]
-        };
-        let (dx, dy) = if start_index == 0 {
-            (
-                heading_target.0 as f64 - spawns[0].0 as f64,
-                heading_target.1 as f64 - spawns[0].1 as f64,
-            )
-        } else {
-            (
-                spawns[0].0 as f64 - heading_target.0 as f64,
-                spawns[0].1 as f64 - heading_target.1 as f64,
-            )
-        };
-        g.tanks[0].rotation = norm_rot(dy.atan2(dx) / DEG + 90.0);
-        g.tanks[1].rotation = -90.0;
-        g.tank_fields = spawns.iter().map(|&(x, y)| (x as i64, y as i64)).collect();
-        g.bullets.clear();
-        g.bullet_depth = 0;
-        g.round_shots_fired = vec![0; 2];
-        g.alive_count = 2;
-        g.end_count = -1;
-        g.reset_count = -1;
-        g.frozen = false;
-        g.ais = vec![None, None];
-        g.ai_enabled = vec![false, false];
-
-        let mut distances = vec![None; w * h];
-        for &(x, y) in g.reachable.iter() {
-            distances[x * h + y] = Some(calc_distances(&g.maze, x, y));
-        }
-        g.distances_for_maze = Arc::new(distances);
-        g.dead_ends = Arc::new(find_dead_ends(&g.maze, &g.reachable, C::MAXDEADENDPENALTY));
         g
     }
 
@@ -895,6 +677,23 @@ impl Game {
             && self.tanks[tank].bullets_fired < self.settings_max_bullets
     }
 
+    /// Inject a bullet from an arbitrary pose without touching the owner's
+    /// ammo. Used by the range curriculum's threat injector, which needs a
+    /// projectile that is physically identical to a fired one — same muzzle
+    /// offset, same speed, same lifetime, lethal to both tanks — but is not
+    /// limited by any tank's magazine.
+    pub fn inject_bullet(&mut self, owner: usize, x: f64, y: f64, rotation: f64) {
+        self.bullet_depth += 1;
+        let mut source = self.tanks[owner];
+        source.x = x;
+        source.y = y;
+        source.rotation = rotation;
+        let mut bullet = Bullet::new(self.bullet_depth, owner, &source, self.scale);
+        bullet.just_created = true;
+        bullet.injected = true;
+        self.bullets.push(bullet);
+    }
+
     pub fn fire_weapon(&mut self, tank: usize) {
         self.bullet_depth += 1;
         let b = Bullet::new(self.bullet_depth, tank, &self.tanks[tank], self.scale);
@@ -975,6 +774,79 @@ impl Game {
         }
         self.tanks[idx].rotation = candidate.rotation;
         true
+    }
+
+    /// A shooting range: open floor, an outer wall, and two free-standing
+    /// barriers.
+    ///
+    /// A generated maze made navigation the dominant problem — the policy spent
+    /// its whole capacity on not scraping corners and never reached aiming. But
+    /// a bare box is not a range either: with nothing to break line of sight
+    /// there is no reason to reposition, and no geometry for a bank shot. Two
+    /// symmetric barriers spanning the middle rows give cover to break from and
+    /// surfaces to ricochet off, while the open top and bottom lanes keep every
+    /// cell reachable in a straight walk.
+    ///
+    /// This follows `setup_battle`'s own derivation chain and only substitutes
+    /// the maze. Scale is not something that can be assigned after the fact:
+    /// wall thickness, tank hull size, drive speed and turn rate are all
+    /// derived from it, so overwriting `scale` on a finished game leaves hair-
+    /// thin walls and tanks sized for a different map.
+    pub fn range_arena(seed: u32, w: usize, h: usize) -> Self {
+        let mut g = Game::with_ai(seed, 2, &[]);
+        g.scale = f64::min(
+            (C::MOVIEHEIGHT - C::HEIGHTTOBOTTOM) / (h as f64 + 0.125),
+            C::MOVIEWIDTH / (w as f64 + 0.125),
+        );
+
+        // `build_wall_segments` adds the outer ring itself, so an all-clear
+        // grid is an empty box; cell[2] raises a wall on a cell's left edge.
+        let mut maze = Maze { w, h, cells: vec![[1, 0, 0]; w * h] };
+        for &x in &[w / 3, w - w / 3] {
+            for y in barrier_rows(h, RANGE_BARRIER_ROWS) {
+                maze.cells[x * h + y][2] = 1;
+            }
+        }
+        g.maze = Arc::new(maze);
+
+        let reachable = calc_reachable(&g.maze, 0, 0);
+        g.reachable = Arc::new(reachable.cells);
+        g.reachable_index = Arc::new(reachable.index);
+        g.walls = Arc::new(build_wall_segments(&g.maze, g.scale));
+        g.wall_half_t = (g.scale / 16.0).floor();
+        g.wall_grid = Arc::new(WallGrid::new(&g.walls, g.wall_half_t, g.scale));
+
+        // Rebuild the tanks so hull size and speeds come from this scale.
+        // The shooter starts on the centre line, not in a corner: a muzzle
+        // pressed against a wall sends its own first shot straight back.
+        let spawn = [(w / 2, h - 1), (w - 1, 0usize)];
+        g.tanks = Vec::with_capacity(2);
+        g.bullets = Vec::new();
+        g.bullet_depth = 0;
+        g.round_shots_fired = vec![0; 2];
+        for (n, &cell) in spawn.iter().enumerate() {
+            let mut rng = g.rng.clone();
+            let mut tank = Tank::new(n, cell, g.scale, &mut rng);
+            g.rng = rng;
+            // Face up the range, so the opening shot has the floor in front of
+            // it rather than the wall behind.
+            tank.rotation = if n == 0 { 0.0 } else { 180.0 };
+            g.tanks.push(tank);
+        }
+        g.alive_count = 2;
+        g.end_count = -1;
+        g.reset_count = -1;
+        g.frozen = false;
+
+        let mut distances = vec![None; w * h];
+        for &(cx, cy) in g.reachable.iter() {
+            distances[cx * h + cy] = Some(calc_distances(&g.maze, cx, cy));
+        }
+        g.distances_for_maze = Arc::new(distances);
+        g.ais = vec![None, None];
+        g.tank_fields = spawn.iter().map(|&(x, y)| (x as i64, y as i64)).collect();
+        g.dead_ends = Arc::new(find_dead_ends(&g.maze, &g.reachable, C::MAXDEADENDPENALTY));
+        g
     }
 
     /// Advance one frame (1/25 s) and return this frame's events.
@@ -1191,63 +1063,6 @@ pub fn tank_update(g: &mut Game, idx: usize) {
     }
 }
 
-#[cfg(test)]
-mod walking_curriculum_tests {
-    use super::*;
-
-    #[test]
-    fn walking_map_is_one_unbranched_path_with_inert_goal() {
-        let game = Game::walking_curriculum(20_260_825);
-        assert_eq!(game.maze.w, 6);
-        assert_eq!(game.maze.h, 3);
-        assert_eq!(game.reachable.len(), WALKING_CURRICULUM_PATH.len());
-        assert!(game.ais.iter().all(Option::is_none));
-        for (index, &(x, y)) in WALKING_CURRICULUM_PATH.iter().enumerate() {
-            let mut neighbours = 0;
-            neighbours += (x > 0 && game.maze.v_open(x as i64, y as i64)) as usize;
-            neighbours +=
-                (x + 1 < game.maze.w && game.maze.v_open(x as i64 + 1, y as i64)) as usize;
-            neighbours += (y > 0 && game.maze.h_open(x as i64, y as i64 - 1)) as usize;
-            neighbours += (y + 1 < game.maze.h && game.maze.h_open(x as i64, y as i64)) as usize;
-            assert_eq!(
-                neighbours,
-                if index == 0 || index + 1 == WALKING_CURRICULUM_PATH.len() {
-                    1
-                } else {
-                    2
-                }
-            );
-        }
-    }
-
-    #[test]
-    fn walking_map_v2_is_a_distinct_unbranched_path_with_inert_goal() {
-        let game = Game::walking_curriculum_v2(20_260_826);
-        assert_eq!((game.maze.w, game.maze.h), (7, 4));
-        assert_eq!(game.reachable.len(), WALKING_CURRICULUM_PATH_V2.len());
-        assert_eq!(game.tank_fields[0], (0, 3));
-        assert_eq!(game.tank_fields[1], (6, 0));
-        assert!(game.ais.iter().all(Option::is_none));
-        assert!(game.ai_enabled.iter().all(|enabled| !enabled));
-        assert_eq!(walking_curriculum_progress(&game), 0.0);
-    }
-
-    #[test]
-    fn pursuit_map_opens_a_two_by_two_room_in_the_upper_right() {
-        let game = Game::pursuit_room_curriculum(20_260_827);
-        assert_eq!((game.maze.w, game.maze.h), (6, 3));
-        assert!(game.maze.h_open(4, 0));
-        assert!(game.maze.h_open(5, 0));
-        assert!(game.maze.v_open(5, 0));
-        assert!(game.maze.v_open(5, 1));
-        assert_eq!(game.reachable.len(), WALKING_CURRICULUM_PATH.len());
-        assert!(game.ais.iter().all(Option::is_none));
-        assert!(game.weapons_disabled.iter().all(|disabled| !disabled));
-    }
-}
-
-// ----------------------------------------------------------- bullet update
-
 pub fn bullet_update(g: &mut Game, idx: usize) {
     if g.frozen {
         return;
@@ -1285,6 +1100,11 @@ pub fn bullet_update(g: &mut Game, idx: usize) {
     if b.deadly == 0 {
         for i in 0..g.tanks_count {
             if i == b.owner && !b.has_bounced {
+                continue;
+            }
+            // A barrage bullet is nominally the target's, but it is scenery:
+            // it threatens the policy and passes through the thing being shot at.
+            if b.injected && i == b.owner {
                 continue;
             }
             if g.tanks[i].alive && g.tanks[i].point_in_shape(b.x, b.y) {

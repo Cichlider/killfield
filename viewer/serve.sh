@@ -25,10 +25,18 @@ bash build.sh
 echo
 echo "  http://127.0.0.1:$PORT"
 echo
-if [[ -x ../.venv/bin/python ]]; then
-  cd ..
-  exec .venv/bin/python training/serve_ppo.py --port "$PORT"
-else
-  echo "警告：未找到 .venv，页面可以打开，但 PPO checkpoint 推理不可用。" >&2
-  python3 -m http.server "$PORT" --bind 127.0.0.1
+
+# One process serves both the page and the inference API, so the page's
+# relative /api/... fetches need no CORS. RUN points at the directory the
+# trainer publishes live.pt into; it re-reads the manifest on every request, so
+# training can start after the server and the page still picks it up.
+ROOT="$(cd .. && pwd)"
+RUN="${RUN:-outputs/ppo_duel_v1/s11}"
+PYTHON="${PYTHON:-$ROOT/.venv/bin/python}"
+if [[ ! -x "$PYTHON" ]]; then
+  echo "找不到 $PYTHON；先建虚拟环境：" >&2
+  echo "  python3 -m venv .venv && .venv/bin/pip install -r training/requirements.txt" >&2
+  exit 1
 fi
+cd "$ROOT"
+exec "$PYTHON" training/serve_live.py --run "$RUN" --port "$PORT" --viewer viewer

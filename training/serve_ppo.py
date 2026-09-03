@@ -11,14 +11,39 @@ from pathlib import Path
 import torch
 
 from ppo_models import (
-    BULLET_SLOTS, OBS_DIM, make_actor_critic, make_legacy_schema7_actor_critic,
-    make_legacy_schema8_actor_critic,
+    BULLET_SLOTS, OBS_DIM, STOP_ACTION, STOP_FIRE_ACTION, make_actor_critic,
+    make_legacy_schema7_actor_critic, make_legacy_schema8_actor_critic,
 )
 
 
 # Completed runs remain selectable so behavior review never silently replaces an
-# earlier handoff. Schema-7/8 inputs are reconstructed by read-only adapters.
+# earlier handoff, so retired protocols are reconstructed by read-only adapters
+# rather than dropped.
+#
+# Schema 10 pairs each of 128 headings with a trigger bit, giving a 258-wide
+# action one-hot and a 1182-wide payload. A schema-8 checkpoint reads a 1054
+# payload and a Discrete(130) head, so `schema10_to_schema8` collapses the pair
+# back down and `LEGACY_130_TO_SCHEMA10` re-expands the chosen action. The old
+# 130 protocol's direction buckets carry the same world angles, and every one of
+# those runs came from a curriculum that failed the episode on reverse or on
+# firing, so nothing is lost in the round trip.
+#
+# The schema-9 runs are the exception: their 722-wide head came from a protocol
+# where reverse was an explicit gear, so collapsing it would silently invent a
+# forward action the policy never chose. They stay listed but unservable.
+SUPPORTED_SCHEMAS = (7, 8, 10)
+
 SOURCES = {
+    "hunt-v3-s11": {
+        "display": "ppo-hunt-v3-mixed-selfclosed-bfs-joystick258-nomem-s11",
+        "architecture": "nomem", "schema": 10, "history": 1,
+        "checkpoint": "outputs/ppo_hunt_v3_mixed_selfclosed_joystick258/nomem/s11/final.pt",
+    },
+    "hunt-v1-s11": {
+        "display": "ppo-hunt-v1-real-maze-exp-bfs-joystick258-nomem-s11",
+        "architecture": "nomem", "schema": 10, "history": 1,
+        "checkpoint": "outputs/ppo_hunt_v1_real_maze_exp_bfs_joystick258/nomem/s11/final.pt",
+    },
     "pursuit-v10-s22": {
         "display": "ppo-pursuit-v10-room-exp-bfs-joystick722-nomem-s22",
         "architecture": "nomem", "schema": 9, "history": 1,
@@ -73,20 +98,27 @@ SOURCES = {
 }
 
 
-def schema9_to_schema8(obs):
-    """Collapse the two 360-degree wheels for completed Discrete(130) models."""
+def schema10_to_schema8(obs):
+    """Collapse the movement/trigger pair back into the retired Discrete(130)."""
     old = list(obs[:924]) + [0.0] * 130
-    active = next((i for i, value in enumerate(obs[924:1646]) if value > 0.5), None)
+    active = next((i for i, value in enumerate(obs[924:1182]) if value > 0.5), None)
     if active is not None:
-        if active < 720:
-            direction = active % 360
-            old_action = round(direction * 128 / 360) % 128
-        elif active == 720:
-            old_action = 128
+        movement, fire = divmod(active, 2)
+        if movement < 128:
+            # The old protocol could not drive and shoot at once, so a firing
+            # move is reported to the legacy head as its heading.
+            old_action = movement
         else:
-            old_action = 129
+            old_action = 128 if fire else 129
         old[924 + old_action] = 1.0
     return old
+
+
+def legacy_130_to_schema10(action):
+    """Re-express a Discrete(130) choice in the current protocol."""
+    if action < 128:
+        return action * 2
+    return STOP_FIRE_ACTION if action == 128 else STOP_ACTION
 
 
 def schema8_to_schema7(obs):
@@ -153,7 +185,8 @@ class Models:
     def available(self):
         return [
             token for token, source in SOURCES.items()
-            if (self.root / source["checkpoint"]).exists()
+            if source["schema"] in SUPPORTED_SCHEMAS
+            and (self.root / source["checkpoint"]).exists()
         ]
 
     def get(self, token):
@@ -187,8 +220,8 @@ class Models:
         if not history:
             raise ValueError("empty history")
         obs_rows = [item["obs"] for item in history]
-        if source["schema"] < 9:
-            obs_rows = [schema9_to_schema8(row) for row in obs_rows]
+        if source["schema"] < 10:
+            obs_rows = [schema10_to_schema8(row) for row in obs_rows]
         if source["schema"] == 7:
             obs_rows = [schema8_to_schema7(row) for row in obs_rows]
         obs = torch.tensor(
@@ -208,14 +241,7 @@ class Models:
             logits, _values, _hidden = model.step(obs[:, -1], mask[:, -1])
             probabilities = logits[0].softmax(-1)
         raw_action = int(probabilities.argmax())
-        action = raw_action
-        if source["schema"] < 9:
-            if raw_action < 128:
-                action = round(raw_action * 360 / 128) % 360
-            elif raw_action == 128:
-                action = 720
-            else:
-                action = 721
+        action = raw_action if source["schema"] == 10 else legacy_130_to_schema10(raw_action)
         return {
             "action": action,
             "confidence": float(probabilities[raw_action]),
@@ -292,6 +318,12 @@ def main():
 
     print(f"PPO viewer: http://127.0.0.1:{args.port}")
     print(f"models: {models.available() or 'training in progress'}; inference: {device}")
+    retired = [
+        token for token, source in SOURCES.items()
+        if source["schema"] not in SUPPORTED_SCHEMAS
+    ]
+    if retired:
+        print(f"schema-9 双轮盘 checkpoint 不兼容 Discrete(130)，已从列表隐藏：{retired}")
     ThreadingHTTPServer(("127.0.0.1", args.port), Handler).serve_forever()
 
 

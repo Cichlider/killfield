@@ -8,8 +8,8 @@ import torch
 import torch.nn as nn
 
 
-OBS_SCHEMA_VERSION = 9
-OBS_DIM = 1646
+OBS_SCHEMA_VERSION = 10
+OBS_DIM = 1182
 MAP_DIM = 840
 NAV_OFFSET = 840
 SELF_OFFSET = 845
@@ -20,9 +20,14 @@ BULLET_DIM = 6
 PHASE_OFFSET = 920
 TIME_OFFSET = 923
 ACTION_OFFSET = 924
-ACTION_COUNT = 722
-FIRE_ACTION = 720
-STOP_ACTION = 721
+ACTION_COUNT = 258
+PPO_DIRECTION_COUNT = 128
+# action = movement * 2 + fire, so every odd index pulls the trigger and the
+# last movement (128) is the standing one.
+FIRE_ACTIONS = slice(1, ACTION_COUNT, 2)
+STOP_ACTION = 256
+STOP_FIRE_ACTION = 257
+STOP_ACTIONS = [STOP_ACTION, STOP_FIRE_ACTION]
 SCALAR_DIM = (BULLET_OFFSET - MAP_DIM) + (OBS_DIM - PHASE_OFFSET)
 
 
@@ -147,8 +152,10 @@ class LegacySchema8FrameEncoder(nn.Module):
 
 
 class ActorCritic(nn.Module):
-    def __init__(self, recurrent: bool, encoder=None, action_count=ACTION_COUNT,
-                 fire_action=FIRE_ACTION):
+    def __init__(self, recurrent: bool, encoder=None, fire_logit_bias: float = 0.0,
+                 action_count: int = ACTION_COUNT):
+        """`action_count` is only ever overridden to reload a retired protocol's
+        checkpoint for behaviour review; training always uses the current one."""
         super().__init__()
         self.recurrent = recurrent
         self.encoder = encoder or FrameEncoder()
@@ -158,9 +165,9 @@ class ActorCritic(nn.Module):
             self.memory = nn.Sequential(nn.Linear(128, 256), nn.Tanh())
         self.actor = nn.Linear(256, action_count)
         self.critic = nn.Linear(256, 1)
-        self._initialise(fire_action)
+        self._initialise(fire_logit_bias if action_count == ACTION_COUNT else None)
 
-    def _initialise(self, fire_action):
+    def _initialise(self, fire_logit_bias):
         for layer in self.modules():
             if isinstance(layer, (nn.Linear, nn.Conv2d)):
                 nn.init.orthogonal_(layer.weight, gain=math.sqrt(2))
@@ -175,7 +182,12 @@ class ActorCritic(nn.Module):
                     else:
                         nn.init.zeros_(parameter)
         nn.init.orthogonal_(self.actor.weight, gain=0.01)
-        self.actor.bias.data[fire_action] = 2.0
+        # The trigger is one bit spread over 129 actions rather than a single
+        # slot, so a prior on firing has to bias the whole odd half. A legacy
+        # head has a different layout and is about to be overwritten by a
+        # checkpoint load anyway, so it gets no prior.
+        if fire_logit_bias is not None:
+            self.actor.bias.data[FIRE_ACTIONS] = fire_logit_bias
         nn.init.orthogonal_(self.critic.weight, gain=1.0)
 
     def initial_hidden(self, batch: int, device):
@@ -253,12 +265,12 @@ def make_actor_critic(kind: str):
 def make_legacy_schema7_actor_critic(kind: str):
     return ActorCritic(
         recurrent=kind == "gru", encoder=LegacySchema7FrameEncoder(),
-        action_count=130, fire_action=128,
+        action_count=130,
     )
 
 
 def make_legacy_schema8_actor_critic(kind: str):
     return ActorCritic(
         recurrent=kind == "gru", encoder=LegacySchema8FrameEncoder(),
-        action_count=130, fire_action=128,
+        action_count=130,
     )
