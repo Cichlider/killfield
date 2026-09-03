@@ -76,33 +76,16 @@
 
 ## 现在跑着什么
 
-```sh
-# 训练（每约 22.9 万步原子发布 live.pt + live.json + resume.pt）
-.venv/bin/python training/duel_ppo.py --seed 11 --envs 256 --mix 0.4 0.4 0.2 \
-  --init-from outputs/pool/v6_final.pt --frozen-from outputs/pool/duel_gen2.pt \
-  --trained-steps 79429632 --schedule-steps 200000000 \
-  --save-every 200000 --output outputs/ppo_duel_v7
-
-# 网页 + 推理服务，一个进程同源提供
-bash viewer/serve.sh          # http://127.0.0.1:8000/
-```
-
-`viewer/serve.sh` 的 `RUN` 和 `FROZEN` 是变量，默认指向 v7 和 gen2。
-
-**学习率调度属于血统，不属于单次 run。** 三种入口：
-
-| 参数 | 语义 | 何时用 |
-|---|---|---|
-| （无） | 冷起，`trained_steps = 0`，带 critic 预热 | 从零训练 |
-| `--resume resume.pt` | 权重 + Adam 状态 + 调度位置，**不预热** | 同一配置继续跑 |
-| `--init-from live.pt --trained-steps N` | 只要权重，调度位置手给 | 改了奖励：旧 Adam 和 value 头本来就该重来，但 lr 不该跳回顶 |
-
-`--init-from` 不给 `--trained-steps` 就会从 3e-4 重新开始。这个默认值坑过一次，
-见下面的待办。
-
 两个进程都用 `start_new_session=True` 起（等价于 setsid，macOS 没有这个命令），
 父进程是 1，**关掉终端不影响它们**。日志在 `logs/train.log` 和 `logs/serve.log`。
-重起的话：
+
+```sh
+tail -f logs/train.log                  # 训练进度
+curl -s localhost:8000/api/model | jq   # 服务端当前在服务哪个 checkpoint
+pgrep -f "duel_ppo.py|serve_live.py"    # 还活着吗
+```
+
+起进程的配方（`&` 起的会随工具调用的 shell 一起死，必须走这个）：
 
 ```python
 import subprocess
@@ -111,36 +94,156 @@ subprocess.Popen(argv, start_new_session=True,
                  stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL)
 ```
 
-被杀掉会丢什么：上次发布之后不到 22.9 万步的进度、**Adam 动量**（`save_live`
-只存 `model.state_dict()`，从不存 optimizer）、以及学习率调度的位置。所以每次
-重启都是权重热启动而不是真正续训，lr 会从头开始线性衰减——反复重启会让它一直
-停在高位。
+---
+
+## 怎么继续训练
+
+### 情况一：什么都不改，接着跑
+
+```sh
+.venv/bin/python training/duel_ppo.py --seed 11 --envs 256 --mix 0.4 0.4 0.2 \
+  --resume outputs/ppo_duel_v7/s11/resume.pt \
+  --frozen-from outputs/pool/duel_gen2.pt \
+  --save-every 200000 --output outputs/ppo_duel_v7
+```
+
+`--resume` 恢复权重、Adam 状态和调度位置，且**不重跑 critic 预热**。
+输出目录可以复用，`metrics.jsonl` 会被truncate，想留历史就换目录。
+
+### 情况二：改了奖励，开新 run
+
+**必须手给 `--trained-steps`，否则学习率会跳回 3e-4。** 这个默认值坑过一次
+（见「已知的坑」）。
+
+```sh
+# 1. 先记下血统累计步数
+python3 -c "
+import json,pathlib
+t=sum(json.loads(pathlib.Path(f'outputs/ppo_duel_v{v}/s11/metrics.jsonl')
+      .read_text().splitlines()[-1])['steps']
+      for v in range(1,8) if pathlib.Path(f'outputs/ppo_duel_v{v}/s11/metrics.jsonl').exists())
+print(t)"
+
+# 2. 快照当前权重（新 run 会覆盖旧目录的 live.pt）
+cp outputs/ppo_duel_v7/s11/live.pt outputs/pool/v7_final.pt
+
+# 3. 开新 run
+.venv/bin/python training/duel_ppo.py --seed 11 --envs 256 --mix 0.4 0.4 0.2 \
+  --init-from outputs/pool/v7_final.pt --frozen-from outputs/pool/duel_gen2.pt \
+  --trained-steps <上面那个数> --schedule-steps 200000000 \
+  --save-every 200000 --output outputs/ppo_duel_v8
+
+# 4. 把网页指过去
+python3 - <<'EOF'
+import pathlib, re
+p = pathlib.Path("viewer/serve.sh"); s = p.read_text()
+m = re.search(r'RUN="\$\{RUN:-([^}]+)\}"', s); assert m, "RUN default not found"
+p.write_text(s[:m.start(1)] + "outputs/ppo_duel_v8/s11" + s[m.end(1):])
+EOF
+# 重起服务（先杀掉占 8000 的旧进程）
+```
+
+改奖励用 `--init-from` 而不是 `--resume` 是对的：奖励变了，旧的 Adam 动量和
+value 头本来就该重来，critic 预热也该跑。要保留的只有调度位置。
+
+### 情况三：自博弈升代
+
+冻结档是一根**固定的横杆**，训练期间绝不更新——它要是也在漂，「打赢了 frozen」
+就不再意味着变强了。升代 = 把当前权重快照成新一代：
+
+```sh
+cp outputs/ppo_duel_v7/s11/live.pt   outputs/pool/duel_gen3.pt
+cp outputs/ppo_duel_v7/s11/live.json outputs/pool/duel_gen3.json
+# 然后新 run 传 --frozen-from outputs/pool/duel_gen3.pt
+# 网页想看新一代对战，还要把 serve.sh 的 FROZEN 也改掉
+```
+
+升代前先评估一次，把这一代的实力记进下面的表——不然代际比较就断了。
+
+---
+
+## 怎么评估
+
+**`AGENTS.md` 的硬要求是「恰好 100 局对固定 Laika」。** 这是唯一可以对外报的
+胜率口径，不要用其他样本量替代，也不要拿混合池里 Laika 那一栏顶替：
+
+```sh
+.venv/bin/python training/eval_duel.py --run outputs/ppo_duel_v7/s11 \
+  --mix 1 0 0 --episodes 100 --envs 25
+```
+
+看整体画像（含 MPC 和冻结档）时才用混合池：
+
+```sh
+.venv/bin/python training/eval_duel.py --run outputs/ppo_duel_v7/s11 \
+  --frozen outputs/pool/duel_gen2.pt --mix 0.4 0.4 0.2 --episodes 300
+```
+
+三条评估纪律：
+
+1. **跑 argmax，不跑采样。** `eval_duel.py` 默认就是 argmax，和网页一致。
+   训练日志里的 `chg=` 是采样策略的变更率，天然高 30 个点，不能拿来判断平滑分。
+2. **单次 100 局的标准误约 5%。** 想下结论就换种子多跑几次。实测 v7 的三次分别是
+   57.0 / 59.0 / 55.0；而同一模型在混合池里的 Laika 栏是 44.1%（n=127），
+   这个差距是抽样噪声，不是 bug。
+3. **不要跨 run 比较 argmax 行为**（切换率、局长这类），除非两个 checkpoint 在
+   调度上的位置相当。v1–v6 每次重启都把策略重新搅动过。
+
+---
 
 ## 模型在哪
 
-| 文件 | 步数 | 对 Laika（argmax 实测） |
-|---|---:|---:|
-| `outputs/pool/duel_gen0.pt` | 34.9M | 50.0% |
-| `outputs/pool/duel_gen1.pt` | 11.7M | 52.0% |
-| `outputs/pool/duel_gen2.pt` | 8.5M | **57.9%** |
-| `outputs/ppo_duel_v6/s11/live.pt` | 跑着 | 未测 |
+`outputs/*` 在 `.gitignore` 里，不进版本库。**只有这台机器上有。**
 
-步数在代际间下降是因为每代都热启动重新计数，不是能力下降。
-`outputs/*` 在 `.gitignore` 里，不进版本库。
+| 文件 | 对 Laika（100 局 argmax） | 说明 |
+|---|---:|---|
+| `outputs/pool/duel_gen0.pt` | 50.0% | 第一代冻结档 |
+| `outputs/pool/duel_gen1.pt` | 52.0% | 第二代 |
+| `outputs/pool/duel_gen2.pt` | 57.9% | **当前对手池用的这个** |
+| `outputs/pool/v6_final.pt` | — | v7 的热启动来源 |
+| `outputs/ppo_duel_v7/s11/live.pt` | **57.0%** | 跑着，网页服务的就是它 |
+| `outputs/ppo_duel_v7/s11/resume.pt` | — | 带 Adam 状态，`--resume` 用 |
+
+各 run 目录里的 `metrics.jsonl` 是完整历史，逐 update 一行。
 
 ## 各 run 改了什么
 
-每次改奖励都开新 run，好让数字可归因。
+| run | 相对上一版的改动 | 冻结档 | 对 Laika |
+|---|---|---|---:|
+| v1 | duel 首版：赢 +1 / 输 −1 / 双亡 **−1** / 平 **−0.3** | 无 | 50.0% |
+| v2 | 双亡 **+0.3**、平 **−1**（v1 把这两个写反了） | gen0 | 52.0% |
+| v3 | 冻结档升到 gen1 | gen1 | — |
+| v4 | 赢改为**时间折扣**（10s 满分，对数衰减到 30s 的 0.5） | gen1 | — |
+| v5 | 双亡 **+0.2 → 0** | gen1 | **57.9%** |
+| v6 | 加**平滑分** `STYLE_MAX = 0.25`，满分线 13% | gen2 | 52.0% |
+| v7 | 奖励未变。修调度：血统 79.4M 接在 200M 的 39.7%，lr 从 1.81e-4 起 | gen2 | **57.0%** |
 
-| run | 相对上一版的改动 | 冻结档 |
-|---|---|---|
-| v1 | duel 首版：赢 +1 / 输 −1 / 双亡 **−1** / 平 **−0.3** | 无 |
-| v2 | 双亡 **+0.3**、平 **−1**（我第一版把这两个写反了） | gen0 |
-| v3 | 冻结档升到 gen1 | gen1 |
-| v4 | 赢改为**时间折扣**（10s 满分，对数衰减到 30s 的 0.5） | gen1 |
-| v5 | 双亡 **+0.2 → 0** | gen1 |
-| v6 | 加**平滑分** `STYLE_MAX = 0.25`，满分线 13% | gen2 |
-| v7 | 奖励未变。修调度：血统累计 79.4M 步接在 200M 调度的 39.7% 处，lr 从 1.81e-4 起 | gen2 |
+步数在代际间下降是因为每代都热启动重新计数，不是能力下降。
+
+v7 在 340 万步（血统 8240 万）的完整画像，混合池 300 局：
+
+| 对手 | 胜 | 负 | 双亡 | 平 |
+|---|---:|---:|---:|---:|
+| Laika | 44.1%(n=127) | 26.0% | 29.9% | 0.0% |
+| MPC | 41.3% | 33.0% | 24.8% | 0.9% |
+| 冻结档 gen2 | 21.9% | 9.4% | **65.6%** | 3.1% |
+
+动作切换率 49.8%、转向反向率 22.6%（Laika 是 12.9% 和 1.0%）。
+
+参照线：MPC 规划器对 Laika **90.2%**；`LESSONS.md` 记的纯 PPO 历史天花板 **36.4%**，
+本分支更早的 checkpoint 是 9% / 7% / 5% / 1%。
+
+## 已知的坑
+
+1. **`--init-from` 不给 `--trained-steps` 会把学习率跳回 3e-4。** v1–v6 六次都
+   踩了，等于用近似恒定 lr 跑了 7800 万步——而 `LESSONS.md` 记着「恒定 lr 长训会崩
+   且不可逆」。没崩是运气。连带后果：熵系数从未离开 0.01，采样变更率一直钉在 83%；
+   v6 之前所有跨 run 的 argmax 行为比较都不可靠。
+2. **改 `serve.sh` 的 `RUN`/`FROZEN` 用正则匹配，不要字符串替换。** 用
+   `.replace()` 替换一个不存在的字符串会静默跳过，结果是网页服务了一个落后两个 run
+   的 checkpoint 却把它标成 live。这个坑真的发生过。
+3. **新 run 会覆盖旧目录的 `live.pt`**，换目录前先 `cp` 一份到 `outputs/pool/`。
+4. **`&` 起的后台进程会随工具调用的 shell 一起死**，必须 `start_new_session=True`。
 
 ## 命令速查
 
@@ -148,15 +251,13 @@ subprocess.Popen(argv, start_new_session=True,
 cargo test --manifest-path engine/Cargo.toml         # 60 个测试
 ./engine/target/release/probe_game 40 20260814       # 游戏与 main 的等价性指纹
 ./engine/target/release/probe_actions 200 512        # Laika/MPC 的动作变更率
-./engine/target/release/bench_mpc 500 512 20260814   # MPC 强度（当前 90.2%）
+./engine/target/release/bench_mpc 500 512 20260814   # MPC 强度
 .venv/bin/python training/bench_duel.py              # 环境吞吐
-.venv/bin/python training/eval_duel.py --run outputs/ppo_duel_v6/s11 \
-  --frozen outputs/pool/duel_gen2.pt --mix 0.4 0.4 0.2 --episodes 300
+bash viewer/build.sh                                 # 改了引擎或 viewer.js 之后必跑
 ```
 
-`eval_duel.py` 跑的是 **argmax**（网页看到的那个），并同时报动作切换率、
-转向反向率。训练日志里的 `chg=` 是**采样**策略的变更率，天然偏高，
-判断平滑分有没有起效要看 argmax 那个数。
+改了 `engine/` 要 `cargo build --release`（训练用的 dylib）**和** `viewer/build.sh`
+（网页用的 wasm）两个都跑，否则两边跑的不是同一份代码。
 
 ## 已经核查过、不要重复查的事
 
@@ -171,13 +272,22 @@ cargo test --manifest-path engine/Cargo.toml         # 60 个测试
 
 ## 待办
 
-1. 动作抖动：argmax 变更率 41%，Laika 是 13%。平滑分刚上，效果待测。
-   如果不够，下一步是**动作承诺**（k 帧内不换）或 CAPS 时间正则，
-   两者都是结构层干预，优先于继续加奖励项。
-2. 自我对战里双亡占 62.5%，是所有对手里最高的。
-3. ~~训练器不保存 optimizer 状态~~ 已修（`resume.pt` + `--resume`）。
-   v1–v6 六次热启动都把 lr 重置回 3e-4，实际等于全程恒定学习率跑了 78M 步——
-   `LESSONS.md` 里「恒定 lr 长训会崩」正是加调度要防的事。v7 起才真正在退火，
-   所以 v6 之前所有关于「策略稳定性」的观察都要打折看。
-4. `AGENTS.md` 要求「恰好 100 局对固定 Laika」的胜率报告，
-   `eval_duel.py` 目前是按对手池比例分配局数，需要一个纯 Laika 的 100 局模式。
+1. **动作抖动。** argmax 变更率 ~50%，Laika 是 13%；转向反向 23% 对 1%。
+   平滑分（v6 起）目前没看到效果，但每一次测量都落在一次重启之后，读数不干净。
+   **v7 是第一个真正在退火的 run**，等它跑到 1500–2000 万步（血统约 1 亿）再测，
+   那才是第一次可信的读数。
+   如果那时候还压不下来，下一步不该继续加奖励项——平滑分是**终局奖励**，一局约
+   200 帧，从 50% 降到 13% 的全部收益 0.165 摊到每个动作只有约 0.0008，而胜负项
+   是 ±1，信噪比差三个数量级。正确的形式是**动作承诺**（k 帧内不换，MPC 就是这么
+   做的，`COMMIT_MOVE_FRAMES = 4`）或 **CAPS 时间正则**（加在策略损失上的
+   `D(π(·|s_t), π(·|s_{t+1}))`，完全不经过 credit assignment）。按仓库的三级纪律
+   （补观测 → 改结构 → 加奖励项），这两个都优先于再加一项。
+2. **自我对战 65.6% 是双亡**，所有对手里最高。两份同源权重、同样的冲脸倾向。
+   如果要治，先看它是不是集中在长局——若是，说明时间折扣把「拖到后面不如换命」
+   变划算了（回合末换命的盈亏平衡点是 67%，回合初是 50%），该让双亡走同一条
+   衰减曲线，而不是把赢的曲线压平。
+3. **`V(s)` 到底可不可学。** `LESSONS.md` 第 0 节记着六个受控消融里 R² 全在 0 附近、
+   「局面几乎不决定胜负」，但训练中 explained variance 稳定在 +0.90 以上。
+   这两个数字需要一个解释——很可能「对某个固定策略的结局可预测」和「局面决定胜负」
+   不是一回事，但没人验证过。
+4. **对手池的权重从没做过消融。** 40/40/20 是拍的。
