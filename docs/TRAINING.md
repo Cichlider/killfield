@@ -1,154 +1,120 @@
 # PPO 训练与交付
 
-## 当前 Action 契约：schema-10 `Discrete(258)`
+> 更新于 2026-09-03。当前课程是 **duel-v1**；O/A/R 的完整定义见
+> [`docs/DESIGN.md`](DESIGN.md)，接手先读 [`docs/HANDOFF.md`](HANDOFF.md)。
+> 之前的 static-target / walking / pursuit / hunt / shooting-range 课程全部退役，
+> 它们证伪的结论保留在 [`docs/LESSONS.md`](LESSONS.md)，配置不再保留。
 
-```text
-action = movement * 2 + fire
-movement 0..127 = 128 个绝对世界方向（每档 2.8125°），瞬间对齐后前进
-movement 128    = 原地不动
-fire 0/1        = 本帧是否扣扳机
-→ 256 = STOP，257 = 原地开火
-```
+## 契约
 
-- **开火与移动正交**：扳机是独立一位，可以边走边打；
-- **没有倒车挡**：身后的目标靠转头到位；
-- 方向瞬间对齐，**无转速限制**；瞬转会使车体进墙时拒绝转向、保持原朝向；
-- Observation 为 `1182` 维（地图 840、导航 5、自身 9、对手 6、子弹 60、阶段 3、
-  时间 1、上一动作 258）。
-
-## hunt-v1 真实迷宫自由跑动 Laika 课程（当前）
-
-- 地图：**真实迷宫生成器**，固定 seed `20260862`；不是手工蛇形道路；
-- 对手：**不使用 LaikaAI**。LaikaAI 的每一个 goal 都以敌方位置定义，武器一锁死它就直奔
-  tank 0 并在约 2 格外定住举枪（实测从 9.8 格逼近到 2.0 格后不再移动），根本不是巡游。
-  改由 `RoamState` 脚本驱动：随机挑一个可达格 → 沿最短路走 → 到了再挑下一个，卡住或
-  原地打转强制换目标；从不开火。**地图固定，但每个并行环境与每一局的游走 RNG 都不同**，
-  否则整个训练只会面对同一条可背诵的轨迹；
-- 实测单局覆盖 25–31 / 50 格、走过约 50 格路程，且与 tank 0 的位置完全无关
-  （`roaming_target_covers_ground_and_ignores_the_policy` 逐帧比对两种 tank 0 摆位）；
-- Reward（Laika 存活期间）：每 4 帧结算 `-exp(BFS当前 − BFS初始)`；
-- 立即死亡（`-300` 并终止）：STOP、撞墙 / 侧滑、无位移；**开火是合法的**；
-- 追上目标不结束回合；
-- 击杀目标 `+50` 并立即结束；被自己的反弹弹打死 `-300`（目标无武器，这是唯一死法）；
-  同帧双亡按自杀结算；
-- **死亡惩罚为什么是 -300**：距离塑形是每 4 帧结算一次、永不封顶的成本，整局停在
-  出生距离约累计 `-187`。死亡终局若轻于这个数，「第 2 帧撞墙」就严格优于「活着探索」——
-  第一次用 `-10` 跑的 2.4M 步就是这样崩的（回合长度从 8.9 帧塌到 2.2 帧，0 击杀）。
-  `-200` 是盈亏平衡点，取 `-300` 留出余量，同时仍让 `+50` 的击杀值得冒约 17% 以内的
-  自杀风险。由 `dying_is_never_cheaper_than_surviving_a_whole_episode` 测试守住；
-- 750 帧 horizon 为 truncation，无额外奖惩。
-
-该课程下尚未训练出 checkpoint。下面各节记录的是**已完成的历史 run**：pursuit v9/v10
-使用已退役的 `Discrete(722)` 双轮盘协议，倒车曾是显式挡位，折叠进新协议会凭空造出策略
-从未选择过的前进动作，因此保留在列表中但不可推理；schema-7/8 的 walking v1–v6、
-pursuit v8 与 static-target v1 通过只读 adapter 仍可正常回放。
-
-## pursuit-v10 双 360° 轮盘、右上房间巡游 Laika 课程（协议已退役，不可推理）
-
-- 地图：固定 seed `20260827`，`6×3` 蛇形道路，并把右上角开放为 `2×2` 房间；Laika
-  无武器，沿房内 8 个 waypoint 做包含水平、垂直与斜线段的不规则巡游；靠近或追上
-  Laika 不结束回合；
-- Observation schema 9：地图 840、当前动态 waypoint 方向和 BFS 剩余格数 5、自身 9、
-  对手 6、子弹 60、阶段 3、时间 1、上一动作 722，共 1646 维；
-- Action 为 `Discrete(722)`：`0..359` 是完整 360° 前进轮盘，`360..719` 是完整 360°
-  倒车轮盘，`720` FIRE，`721` STOP；两套轮盘都瞬时对齐，无转速限制；
-- STOP、FIRE、撞墙/侧滑、无位移立即 `-10` 并终止；前进/倒车均为合法显式挡位；
-  300 帧 horizon 是 truncation，没有追上奖励、到达终止、逐帧成本或超时扣分；
-- 每 4 帧精确结算 `-exp(BFS当前 - BFS初始)`；它等价于给 `e^BFS当前` 乘固定系数
-  `e^-BFS初始`，避免十几格初始距离造成数值爆炸；
-- 从 walking-v6 schema-8 checkpoint 迁移地图/导航编码和旧动作头；用精确 300 帧动态
-  路线以 lr `1e-4` 做 200 epochs 方向预训练，随后重建 Adam，以 lr `1e-9`、entropy
-  `0` 运行 16,384 PPO 步；无 paint、gate 或 MPC 信息；
-- 固定动态图恰好 100 局：100 局均严格完成 300 帧，0 失败，平均 BFS `1.67`、最小
-  BFS 均值 `0`、最终 BFS 均值 `1.00`；固定 Laika 旁路恰好 100 局：9 胜、82 负、
-  9 双亡、0 超时，胜率 9%。
-
-## walking-v6 transition-context 课程
-
-- 地图：固定 seed `20260825`，`6×3` 单通道蛇形道路，终点为不行动、不射击的 Laika；
-- Observation schema 8：地图不再携带整条 path mask；导航只提供当前 waypoint 四方向
-  one-hot 和剩余格子数；
-- 动作仍为冻结的 `Discrete(130)`；方向动作同一帧瞬间对准并前进，没有原地转向动作；
-- 撞墙/侧滑、无位移、偏离当前 waypoint 方向、位移与车头不一致、开火均 `-10` 并终止；
-- 最佳连续路径进度累计最多 `+5`，合法帧 `-0.002`，到达终点 `+10`，300 帧超时 `-10`；
-- v4 从头 1,015,808 步，v5/v6 各继续 507,904 步，不设 gate；
-- v6 同图恰好 100 局：100 到达、0 失败、0 超时，平均 208 帧；固定 Laika 旁路报告
-  恰好 100 局：5 胜、92 负、3 双亡，胜率 5%。
-- 地图 v2 是未参与训练的固定 `7×4` 单通道道路，seed `20260826`，路线依次为
-  右→上→左→上→右（22 格、5 次转弯）。v6 零样本恰好 100 局：100 到达、0 失败、
-  0 超时、0 开火，平均 257 帧。Viewer 当前默认在地图 v2 上验收。
-
-## 固定配置
-
-| 项目 | 配置 |
+| 项 | 值 |
 |---|---|
-| 模型名 | `ppo-static-target-fixed-v1-joystick130-nomem-s11` |
-| 训练对手 | 固定 seed `20260824`，静止且不能开火 |
-| 最终评估 | 固定 Laika，恰好 100 局 |
-| 网络 | schema-7 frame encoder + MLP-256 Actor-Critic，无记忆；单一 `Discrete(130)` head |
-| Action | `0..127` 轮盘方向、`128` 原地开火、`129` 停止；方向瞬转，支持轮盘倒车分区 |
-| 动作频率 | 25 Hz，每引擎帧一次 |
-| 并行环境 | 64 |
-| rollout | 每环境 256 步 |
-| 总步数 | 5,000,000 |
-| seed | 11 |
-| PPO | lr `3e-4`、gamma `0.9975`、GAE `0.95`、clip `0.2` |
+| Observation | schema 20，`1010` 维（+ 10 位 bullet mask） |
+| Action | `Discrete(18)`：`[throttle, turn, fire]`，引擎自身转速 |
+| 决策频率 | 25 Hz，每引擎帧一次，无动作承诺、无帧跳 |
+| 地图 | 每局 `setup_battle` 随机生成 4-12 × 4-10 |
+| 终局 | `Event::RoundEnd`；750 帧（30 秒）未分胜负判平 |
+| 对手池 | Laika 40% / MPC 40% / 冻结自我 20%，每局每槽独立掷骰 |
 
 ## Reward
 
-- 新最短路径纪录：累计最多 `+0.5`；
-- 实际发弹：即时 `+0.1`，每局最多 `+0.5`，失败时全部扣回；
-- 干净击杀：`10 + 2 × (1 - t_kill/750)`；
-- 自杀、双亡、超时：最终严格 `-10`；
-- 保留击杀后 75 帧残弹结算，击杀后自杀仍为失败；
-- 无 paint、LOS、瞄准答案或 MPC 未来信息。
+只在终局结算一次：
+
+| 结果 | 值 |
+|---|---|
+| 赢 | ≤10 秒 `+1.0`，10→30 秒对数衰减到 `+0.5` |
+| 双亡 | `0.0` |
+| 输 | `-1.0` |
+| 30 秒平局 | `-1.0` |
+| 平滑分（叠加在任意结果上） | 变更率 ≤13% 得 `+0.25`，对数衰减到每帧都换时归零 |
+
+无逐帧塑形、无 BFS 距离项、无 LOS / 瞄准答案 / MPC 未来信息。
+
+## 训练配置
+
+| 项 | 值 | 依据 |
+|---|---|---|
+| 网络 | 迷宫 CNN + 子弹共享编码器（mean/max 掩码池化）+ 标量 MLP → trunk 256 | 226,227 参数 |
+| device | 启动时实测 CPU vs MPS 取快的 | 这个网络 MPS 快 36 倍；但 batch=1 的推理服务 CPU 更快，已分别写死 |
+| 并行环境 | 256 | |
+| rollout | 每环境 128 步（batch 32,768） | |
+| epochs / minibatch | 4 / 8 | |
+| gamma | `0.999` | 奖励只在终局，回合最长 875 帧；`0.999^875 = 0.42` |
+| GAE lambda | `0.95` | |
+| clip | `0.2` | |
+| **lr** | `3e-4` **线性衰减到 0** | P16：恒定 lr 续训约 2M 步后性能崩塌且永不恢复 |
+| **entropy** | `0.01`，随 lr 同步衰减 | 稀疏奖励需要更久的探索 |
+| **critic 预热** | 前 20 次 update 冻结 policy 只训 critic | 稀疏终局下 critic 是慢的一半 |
+| seed | 11 | |
+
+引擎侧用 `std::thread::scope` 按槽分块并行（不引入 rayon，保持 crate 零依赖）。
+
+## 吞吐实测（M5，10 核 / 4 性能核）
+
+| 配置 | steps/s |
+|---|---:|
+| 纯环境 100% Laika | 356,892 |
+| 纯环境 50/50 Laika/MPC | 33,021 |
+| 纯环境 100% MPC | 19,511 |
+| **端到端训练**（含策略前向 + PPO 更新） | **10,000–15,000** |
+
+单帧成本：引擎 0.003 ms，观测编码 0.024 ms，MPC 决策 0.79 ms（wasm）/ 0.23 ms
+（原生），策略前向 0.285 ms（CPU batch 1）/ 4.8 µs（MPS batch 256）。
+
+## 各 run 的改动与结果
+
+每改一次奖励就开一个新 run，好让数字可归因。步数在代际间下降是因为每代都热启动
+重新计数，不是能力下降。
+
+| run | 相对上一版 | 冻结档 | 对 Laika（argmax） | 双亡 |
+|---|---|---|---:|---:|
+| v1 | duel 首版：双亡 `-1`、平 `-0.3` | 无 | 50.0% | 32.5% |
+| v2 | 双亡 `+0.3`、平 `-1`（v1 把这两个写反了） | gen0 | 52.0% | 32.8% |
+| v3 | 冻结档升到 gen1 | gen1 | — | — |
+| v4 | 赢改为时间折扣 | gen1 | — | — |
+| v5 | 双亡 `+0.2 → 0` | gen1 | **57.9%** | 26.2% |
+| v6 | 加平滑分 `STYLE_MAX = 0.25` | gen2 | 跑着 | — |
+
+v5 的完整评估（300 局 argmax，对手池 0.4/0.4/0.2）：
+
+| 对手 | 胜 | 负 | 双亡 | 平 |
+|---|---:|---:|---:|---:|
+| Laika | 57.9% | 15.9% | 26.2% | 0.0% |
+| MPC | 35.5% | 33.6% | 29.1% | 1.8% |
+| 冻结档 gen1 | 25.0% | 9.4% | 62.5% | 3.1% |
+
+动作切换率 41.2%、转向反向率 12.1%（Laika 分别是 12.9% 和 1.0%）。
+
+参照线：MPC 规划器对 Laika **90.2%**（500 局 512 rays）；
+`LESSONS.md` 记的纯 PPO 历史天花板 **36.4%**，本分支近期 checkpoint 是 9% / 7% /
+5% / 1%。
 
 ## 命令
 
 ```sh
-# hunt-v1：真实迷宫 + 自由跑动的无武器 Laika
-.venv/bin/python training/train_ppo_paint_v1.py --model nomem --seed 11 --curriculum hunt
+# 训练（每约 22.9 万步原子发布 live.pt + live.json）
+.venv/bin/python training/duel_ppo.py --seed 11 --envs 256 --mix 0.4 0.4 0.2 \
+  --init-from outputs/pool/duel_gen2.pt --frozen-from outputs/pool/duel_gen2.pt \
+  --save-every 200000 --output outputs/ppo_duel_v6
 
-# 两次 update 的工程 smoke，不作为行为结论
-zsh training/run_ppo_paint_v1.sh smoke
+# 网页 + 推理服务（同一进程同源提供，RUN / FROZEN 是变量）
+bash viewer/serve.sh                     # http://127.0.0.1:8000/
 
-# 正式 500 万步；macOS 自动使用 caffeinate -dimsu
-zsh training/run_ppo_paint_v1.sh train
+# 确定性评估：argmax，并报动作切换率与转向反向率
+.venv/bin/python training/eval_duel.py --run outputs/ppo_duel_v6/s11 \
+  --frozen outputs/pool/duel_gen2.pt --mix 0.4 0.4 0.2 --episodes 300
+
+# 工程 smoke，两次 update，不作为行为结论
+.venv/bin/python training/duel_ppo.py --steps 8192 --envs 32 --output /tmp/smoke
 ```
+
+训练日志里的 `chg=` 是**采样**策略的变更率，天然高于 argmax。判断平滑分是否起效
+要看 `eval_duel.py` 报的那个数。
 
 ## 强制交付方式
 
-不设置评测 gate，不以指标阻止模型上网页。正式训练结束后，只对固定 Laika 运行恰好
-100 局，记录胜率，然后将 checkpoint 直接接入网页 review 行为。
+见 [`AGENTS.md`](../AGENTS.md)。要点：不设评估门槛、不因指标阻断部署；每个完成的
+run 必须在网页 viewer 里可直接观看；胜率报告用恰好 100 局对固定 Laika。
 
-每次交付必须明确写出模型名、Reward、Observation、Action、Laika 100 局胜率以及网页
-启动命令和 URL。根目录 `AGENTS.md` 对所有 agent 重复声明了这条规则。
-
-## 当前训练结果
-
-- schema-9 `ppo-pursuit-v10-room-exp-bfs-joystick722-nomem-s22`：16,384 PPO 步；
-  右上房间动态图恰好 100 局均完成 300 帧，平均 BFS `1.67`，固定 Laika恰好 100 局
-  胜率 9%；
-- schema-9 `ppo-pursuit-v9-two-cell-exp-bfs-joystick722-nomem-s22`：上一版两格往返对照；
-  动态图恰好 100 局均完成 300 帧，平均 BFS `5.60`，固定 Laika 恰好 100 局胜率 5%；
-- schema-8 `ppo-pursuit-v8-two-cell-exp-bfs-joystick130-nomem-s11`：旧 128 方向协议的
-  已完成对照，动态图 100 局均在第 211 帧路线翻向失败；仍保留在 Viewer 供行为对照；
-- schema-8 `ppo-walking-v6-transition-context-serpentine-joystick130-nomem-s11`：固定图
-  恰好 100 局全部到达，平均 208 帧；未训练地图 v2 零样本恰好 100 局全部到达，
-  平均 257 帧；
-- schema-8 `ppo-walking-v5-waypoint-direction-serpentine-joystick130-nomem-s11`：固定图
-  100 局均在第 138 帧 waypoint 方向错误；
-- schema-8 `ppo-walking-v4-next-direction-serpentine-joystick130-nomem-s11`：固定图
-  100 局全部超时；
-- schema-7 `ppo-walking-v2-no-stop-serpentine-joystick130-nomem-s11`：507,904 步；固定
-  曲折道路恰好 100 局全部在第 33 帧撞墙；STOP/无位移已是立即失败；已直接接入 Viewer；
-- schema-7 `ppo-walking-v1-serpentine-joystick130-nomem-s11`：507,904 步；固定曲折道路
-  恰好 100 局全部超时，模型学会不撞墙、不倒车、不射击，但利用了 STOP；已直接接入 Viewer；
-- schema-7 `ppo-static-target-fixed-v1-joystick130-nomem-s11`：5,013,504 步；固定 Laika
-  恰好 100 局为 7 胜、85 负、8 双亡、0 超时，胜率 7%。训练完成后直接接入 Viewer，
-  本结果不作为部署 gate；
-- 历史 schema-5 `ppo-paint-v1-directional128-nomem-s11`：5,013,504 步；固定 Laika 恰好
-  100 局为 1 胜、90 负、9 双亡、0 超时，胜率 1%。因旧双 head 动作协议已取消，不再
-  出现在 Viewer 模型列表；
-- 历史 schema-3 `ppo-paint-v1-nomem-s11`：5,013,504 步；固定 Laika 100 局为
-  0 胜、95 负、5 双亡；它使用已取消的联合 18 动作，不再出现在网页模型选项中。
+> 当前缺口：`eval_duel.py` 按对手池比例分配局数，还没有「纯 Laika 恰好 100 局」
+> 的模式。这是 `AGENTS.md` 的硬要求，需要补。

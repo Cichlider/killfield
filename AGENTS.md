@@ -1,5 +1,16 @@
 # Project rules for every agent
 
+## Start here
+
+**Read [`docs/HANDOFF.md`](docs/HANDOFF.md) before anything else.** It is the
+authoritative description of what this branch currently trains: the duel
+curriculum, schema 20, `Discrete(18)`, the reward, the opponent pool, where the
+checkpoints are, and what has already been verified so you do not re-verify it.
+
+`README.md`, `docs/DESIGN.md` and `docs/TRAINING.md` describe the same current
+design. `docs/LESSONS.md` is history: every curriculum it names is retired, and
+it is kept for the conclusions those experiments falsified, not as a spec.
+
 ## Mandatory training handoff
 
 For the current PPO route:
