@@ -1,10 +1,21 @@
 /**
  * Keyboard and touch input, ported from killfield/src/input.js.
  *
- * Keyboard control keeps the current pressed set plus a bounded history of
- * edges from the latest 25 FPS simulation window. Physics can therefore apply
- * the fraction of the current 40ms frame for which a key was really held.
- * Nothing older than that window is queued or replayed after keyup.
+ * Keyboard movement is sampled as the fraction of the current 40 ms physics
+ * frame each key was really held, reconstructed from timestamped edges. A key
+ * tapped for 5 ms moves the tank a twentieth of a frame instead of being
+ * rounded to a whole frame or, if it fell between two samples, discarded.
+ *
+ * The window spans exactly one frame and nothing older is kept, which is the
+ * distinction from the pre-2026-08-24 accumulator: that one banked whatever
+ * held time exceeded a frame and replayed it on later ticks, so releasing a
+ * key left the tank driving for two or three more frames before snapping to a
+ * stop. Held time beyond the current frame is dropped here, not queued.
+ *
+ * Fire is exempt. It is edge-triggered, applied off the instantaneous pressed
+ * state through `kf_set_fire_immediate`, and a time-weighted trigger would
+ * still read as held for the remainder of the frame it was released in — which
+ * fires a second shot nobody asked for.
  *
  * The one deliberate change from killfield: instead of writing
  * forward/backup/turnLeft/turnRight/fire straight onto a JS tank object,
@@ -33,6 +44,9 @@ const SWALLOW = new Set([
   "arrowup", "arrowdown", "arrowleft", "arrowright", " ",
 ]);
 
+/** Actions whose strength is time-weighted. Fire is deliberately absent. */
+const WINDOWED = ["forward", "backup", "turnLeft", "turnRight"];
+
 export class Keyboard {
   constructor(target = window, clock = () => performance.now()) {
     this.pressed = new Set();
@@ -40,9 +54,8 @@ export class Keyboard {
     this.onReroll = null;
     this.onPause = null;
     this.onFireChange = null;
-    // Keep only enough edge history to reconstruct the current physics frame.
-    // This is deliberately a sliding window, not a command queue: old input is
-    // never consumed by a later catch-up tick.
+    // Enough edge history to reconstruct the current physics frame and no
+    // more. A sliding window, never a command queue.
     this.transitions = [{ at: this.clock(), strengths: this.sampleStrengths() }];
 
     this._down = (e) => {
@@ -95,21 +108,21 @@ export class Keyboard {
   }
 
   /**
-   * Average the real key state over the most recent fixed-step interval.
+   * Movement strengths as the share of the last `windowMs` each key was held.
    *
-   * A press at 10ms and release at 30ms in a 40ms frame therefore produces
-   * strength 0.5 for that one frame, then zero on the next frame. This keeps
-   * presentation prediction and authoritative physics on the same timeline
-   * without ever replaying an old key state after release.
+   * A press at 10 ms and a release at 30 ms inside a 40 ms frame yields 0.5 for
+   * that frame and 0 for the next. Fire is passed through from the live pressed
+   * set, never averaged, so a released trigger reads as released immediately.
    */
   sampleWindowStrengths(windowMs, now = this.clock()) {
+    const live = this.sampleStrengths();
     const span = Number.isFinite(windowMs) ? Math.max(0, windowMs) : 0;
+    if (span === 0) return live;
     const end = Number.isFinite(now) ? now : this.clock();
-    if (span === 0) return this.sampleStrengths();
     const start = end - span;
-    const totals = Object.fromEntries(Object.keys(BINDINGS).map((action) => [action, 0]));
+    const totals = Object.fromEntries(WINDOWED.map((action) => [action, 0]));
 
-    let state = this.transitions[0]?.strengths ?? this.sampleStrengths();
+    let state = this.transitions[0]?.strengths ?? live;
     let cursor = start;
     let keep = 0;
     for (let i = 0; i < this.transitions.length; i++) {
@@ -121,18 +134,18 @@ export class Keyboard {
       }
       if (transition.at > end) break;
       const duration = Math.max(0, transition.at - cursor);
-      for (const action of Object.keys(BINDINGS)) totals[action] += state[action] * duration;
+      for (const action of WINDOWED) totals[action] += state[action] * duration;
       state = transition.strengths;
       cursor = transition.at;
     }
     const tail = Math.max(0, end - cursor);
-    for (const action of Object.keys(BINDINGS)) totals[action] += state[action] * tail;
+    for (const action of WINDOWED) totals[action] += state[action] * tail;
 
-    // Retain the state immediately before the next window plus newer edges.
-    // Memory stays bounded even if sampleWindowStrengths is called every rAF.
+    // Drop edges older than the window. Bounded even when called every rAF.
     if (keep > 0) this.transitions.splice(0, keep);
-    for (const action of Object.keys(BINDINGS)) totals[action] /= span;
-    return totals;
+    const out = { ...live };
+    for (const action of WINDOWED) out[action] = Math.min(1, totals[action] / span);
+    return out;
   }
 
   _recordTransition(before) {
@@ -149,7 +162,7 @@ export class Keyboard {
     return false;
   }
 
-  /** Push this fixed frame's bounded, edge-aware input to the wasm tank. */
+  /** Push this frame's time-weighted movement and live trigger to the tank. */
   applyTo(wasm, handle, tank, windowMs = 1000 / C.FPS, now = this.clock()) {
     const s = this.sampleWindowStrengths(windowMs, now);
     wasm.kf_set_input(handle, tank, s.forward, s.backup, s.turnLeft, s.turnRight,
@@ -171,7 +184,7 @@ const FORWARD_ALIGNMENT_KEY = "killfield-forward-alignment-degrees";
 const JOYSTICK_TURN_FULL = 0.10;
 const JOYSTICK_DRIVE_START = 0.25;
 const JOYSTICK_FULL_SPEED = 0.33;
-const JOYSTICK_DIRECTIONS = 360;
+const JOYSTICK_DIRECTIONS = 128;
 const JOYSTICK_STEP_DEG = 360 / JOYSTICK_DIRECTIONS;
 const JOYSTICK_TURN_DEADBAND_DEG = C.TANK_TURN_SPEED / 2;
 export const DEFAULT_FORWARD_ALIGNMENT_DEGREES = 270;

@@ -44,6 +44,11 @@ const ACTIVE_KILL_SCORE: f64 = 12000.0;
 const OPPONENT_SELF_SCORE: f64 = 1500.0;
 const DEATH_SCORE: f64 = -12000.0;
 pub const NO_EFFECT_REPEAT_PENALTY: f64 = 600.0;
+/// Maximum cost of spending an entire candidate rollout pushing or sliding
+/// against walls. A brief scrape costs proportionally little; a rollout that
+/// grinds the wall for every frame pays 300 points. The separate delayed
+/// no-effect guard remains stronger at 600 for a completely stuck live action.
+pub const WALL_CONTACT_ROLLOUT_PENALTY: f64 = 300.0;
 pub const MOVING_FIRE_SCORE: f64 = -1.0e9;
 const SCORE_SCALE: f64 = 12000.0;
 const POST_KILL_FIRE_PENALTY: f64 = 3000.0;
@@ -136,6 +141,17 @@ pub fn predicted_hit_bonus(
     let scarcity = 1.0 - slots / cap;
     let time_weight = tuning.shot_flight_time_weight * (1.0 + tuning.ammo_flight_pressure * scarcity);
     tuning.good_fire_bonus - time_weight * time
+}
+
+/// Bounded wall-contact cost for one candidate rollout.
+///
+/// Using the fraction of the horizon rather than a flat per-frame constant
+/// keeps the score comparable when diagnostics shorten the MPC horizon.
+#[inline]
+pub fn wall_contact_penalty(contact_frames: i32, horizon: i32) -> f64 {
+    let total = i32::max(1, horizon) as f64;
+    let contact = i32::max(0, i32::min(contact_frames, horizon.max(0))) as f64;
+    WALL_CONTACT_ROLLOUT_PENALTY * contact / total
 }
 
 #[inline]
@@ -292,6 +308,7 @@ pub fn density_rollout(
     let mut chain = opts.chain_state.cloned().unwrap_or_default();
     let mut fired = false;
     let mut active_hit = false;
+    let mut wall_contact_frames = 0i32;
     let plan = RolloutPlan { first_action: action, continuation_action: opts.continuation_action };
 
     for frame in 0..opts.horizon {
@@ -316,6 +333,15 @@ pub fn density_rollout(
                 return ACTIVE_KILL_SCORE - tuning.active_kill_time_weight * frame as f64 + reserve;
             }
             return OPPONENT_SELF_SCORE - 2.0 * frame as f64 + reserve;
+        }
+
+        // Collision is already resolved by the authoritative tank solver, so
+        // count its explicit result rather than guessing from distance to a
+        // wall. `hit_something` catches a head-on stop; `wall_sliding` catches
+        // the subtle failure mode where tiny tangential movement used to keep
+        // buying field/guidance score while thrust remained pointed into it.
+        if sb.tanks[0].hit_something || sb.tanks[0].wall_sliding {
+            wall_contact_frames += 1;
         }
 
         chain.advance(1);
@@ -352,6 +378,7 @@ pub fn density_rollout(
     // against a wall must not pay the same as actually getting somewhere.
     let travelled = (sb.tanks[0].x - start_x).hypot(sb.tanks[0].y - start_y);
     score += tuning.mobility_weight * (travelled / f64::max(sb.scale, 1e-6));
+    score -= wall_contact_penalty(wall_contact_frames, opts.horizon);
 
     if fired {
         // Actual kills returned their terminal score inside the rollout loop.
@@ -450,4 +477,19 @@ pub fn argmax(values: &[f64]) -> usize {
         }
     }
     best
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn wall_contact_penalty_is_proportional_and_bounded() {
+        assert_eq!(wall_contact_penalty(0, MPC_HORIZON), 0.0);
+        assert_eq!(wall_contact_penalty(1, MPC_HORIZON), 300.0 / 36.0);
+        assert_eq!(wall_contact_penalty(18, MPC_HORIZON), 150.0);
+        assert_eq!(wall_contact_penalty(36, MPC_HORIZON), 300.0);
+        assert_eq!(wall_contact_penalty(100, MPC_HORIZON), 300.0);
+        assert_eq!(wall_contact_penalty(-1, MPC_HORIZON), 0.0);
+    }
 }

@@ -30,6 +30,16 @@ pub const AIM_BINS: usize = 72;
 const SAMPLE_STEP_CELLS: f64 = 0.20;
 const MIN_SHOOTER_DISTANCE_CELLS: f64 = 0.70;
 const GUIDANCE_DISTANCE_DECAY: f64 = 0.18;
+/// Share of the best eligible cell's ray count a cell must carry before it may
+/// seed a guidance bump.
+///
+/// The envelope is an upper bound over per-source exponential bumps, so any
+/// admitted source no other source dominates is a strict local maximum — a
+/// cell the planner can walk into and then find no uphill move from. Admitting
+/// on `counts > 0` made 55% of reachable cells a source (2048 rays over two
+/// bounces graze nearly everything) and left 8.5% of the maze sitting on one
+/// of those maxima. Gating on a share of the best count cuts that to 0.7%.
+const GUIDANCE_SOURCE_SHARE: f64 = 0.65;
 const TWO_PI: f64 = std::f64::consts::PI * 2.0;
 
 #[inline]
@@ -415,17 +425,34 @@ impl InverseDensityFieldBuilder {
         (nearest, flip_x, flip_y)
     }
 
-    /// Spread each firing cell's quality outwards along maze distance and keep
-    /// the elementwise maximum.
+    /// Spread each admitted firing cell's quality outwards along maze distance
+    /// and keep the elementwise maximum.
     ///
     /// The point is that every reachable cell ends up with a positive value,
     /// and stepping one shortest-path move toward whichever source currently
     /// dominates strictly increases the maximum. That gives the hunt chain a
     /// dense run of collectible uphill events instead of a sparse one.
     ///
-    /// It is also, structurally, a potential function: positive everywhere
-    /// reachable and strictly increasing along the shortest path to the
-    /// dominant source.
+    /// Distance is `Game::dist_map`, a flood fill over open maze edges, so the
+    /// spread is already wall-aware: a cell one wall away from a source is as
+    /// far from it as the walk around. What is *not* automatic is the number of
+    /// maxima. An upper envelope of exponential bumps has one local maximum per
+    /// locally dominant source, and a tank that reaches one has no uphill move
+    /// left — it stops. Two gates keep the source set small enough that those
+    /// maxima are places worth stopping at:
+    ///
+    ///   - `GUIDANCE_SOURCE_SHARE` of the best eligible ray count, so a cell a
+    ///     couple of stray ricochets grazed cannot become an attractor;
+    ///   - degree above one, so a cul-de-sac tip cannot. These were every one
+    ///     of the traps sampled while diagnosing this: high ricochet count, a
+    ///     single exit, and over half of them in the enemy's wall shadow —
+    ///     straight-line near, maze-far. That is the "drives to the nearest
+    ///     spot on the wrong side of a wall, then freezes" report.
+    ///
+    /// If no cell clears both gates — a reachable region that is one long
+    /// corridor, say — the degree gate is dropped and the share is measured
+    /// against the best count overall, so such a map still gets a gradient
+    /// rather than a flat zero.
     fn guidance_envelope(&self, g: &Game, counts: &[i32], min_frames: &[f32]) -> Vec<f32> {
         let size = self.width * self.height;
         let mut guidance = vec![0.0f32; size];
@@ -434,11 +461,45 @@ impl InverseDensityFieldBuilder {
             return guidance;
         }
 
+        // Orthogonal open edges. A diagonal step needs both of its orthogonals
+        // open, so degree one here means degree one in the distance map too.
+        let degree = |x: i64, y: i64| -> usize {
+            let (w, h) = (g.maze.w as i64, g.maze.h as i64);
+            let mut d = 0;
+            if g.maze.v_open(x, y) && x > 0 { d += 1; }
+            if g.maze.v_open(x + 1, y) && x < w - 1 { d += 1; }
+            if g.maze.h_open(x, y - 1) && y > 0 { d += 1; }
+            if g.maze.h_open(x, y) && y < h - 1 { d += 1; }
+            d
+        };
+        let eligible = |sx: usize, sy: usize| -> bool {
+            counts[sx * self.height + sy] > 0 && degree(sx as i64, sy as i64) > 1
+        };
+
+        // Threshold against the best *eligible* count, not the best count
+        // overall: the loudest cell on the map is very often a dead-end pocket,
+        // and measuring the bar from there can leave nothing able to clear it.
+        let mut reference = 0i32;
+        for &(sx, sy) in g.reachable.iter() {
+            let c = counts[sx * self.height + sy];
+            if c > reference && eligible(sx, sy) {
+                reference = c;
+            }
+        }
+        let gated = reference > 0;
+        if !gated {
+            reference = max_count;
+        }
+        let cutoff = i32::max(1, (GUIDANCE_SOURCE_SHARE * reference as f64).ceil() as i32);
+
         let denominator = (max_count as f64).ln_1p();
         for &(sx, sy) in g.reachable.iter() {
             let si = sx * self.height + sy;
             let count = counts[si];
-            if count <= 0 {
+            if count < cutoff {
+                continue;
+            }
+            if gated && !eligible(sx, sy) {
                 continue;
             }
             let count_quality = (count as f64).ln_1p() / denominator;
