@@ -85,6 +85,18 @@ curl -s localhost:8000/api/model | jq   # 服务端当前在服务哪个 checkpo
 pgrep -f "duel_ppo.py|serve_live.py"    # 还活着吗
 ```
 
+**睡眠。** 息屏不影响训练，系统睡眠会把它冻住。这台机器 AC 下 `sleep 0`（永不睡）、
+电池下 `sleep 1`（闲置一分钟就睡），而让 AC 显示「prevented」的那条断言是 powerd 的
+"Prevent sleep while display is on"——息屏那一刻就没了。所以起训练之后挂一个跟着它
+生命周期走的 caffeinate：
+
+```python
+subprocess.Popen(["caffeinate", "-ims", "-w", str(train_pid)],
+                 start_new_session=True)      # 训练退出时它自己退出
+```
+
+`caffeinate` 挡不住**合盖**——那是强制睡眠，不是闲置睡眠。要长跑就别合盖。
+
 起进程的配方（`&` 起的会随工具调用的 shell 一起死，必须走这个）：
 
 ```python
