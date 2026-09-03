@@ -20,13 +20,23 @@
 //! is no version of this game where running out the clock is a result, and
 //! nothing a passive policy can do is better than engaging and being beaten.
 //!
-//! **Why a mutual kill pays.** `+0.3` is not a consolation prize, it is the
+//! **Why a win is worth less the longer it takes.** Full value inside ten
+//! seconds, decaying logarithmically to `0.5` at the clock. Winning is still
+//! the only thing worth doing, but a round that took twenty-five seconds to
+//! close was won badly, and the scale now says so. The log shape puts the
+//! pressure where a decision can still respond to it: the eleventh second
+//! costs far more than the twenty-ninth.
+//!
+//! **Why a mutual kill pays.** `+0.2` is not a consolation prize, it is the
 //! ordering the rest of the scale needs. Trading kills sits above losing and
 //! far above stalling, so a policy that cannot win yet is still paid for
 //! closing distance and pulling the trigger — which is the behaviour every
 //! later skill has to be built on. It stays well below `+1.0`, so a winnable
 //! round is never worth trading away: at these numbers a trade only beats
-//! playing on once the chance of winning drops below 60%.
+//! playing on once the chance of winning drops below 60% — 80% once the round
+//! has run long enough for the win to be worth only its floor. That drift is a
+//! real consequence of the time discount and worth watching: it makes trading
+//! relatively more attractive late in a round.
 //!
 //! **Why the terminal is `RoundEnd` and nothing earlier.** A kill does not
 //! settle a round. `destroy_tank` arms a 125-frame counter and the engine
@@ -52,6 +62,11 @@ pub const DUEL_FRAMES: u32 = 750;
 pub const DUEL_GRACE_FRAMES: u32 = crate::constants::NUMBEROFFRAMESBEFOREEND as u32;
 
 pub const REWARD_WIN: f64 = 1.0;
+/// A win settled inside ten seconds is worth the full amount. Past that the
+/// value decays to `WIN_FLOOR` at the clock.
+pub const WIN_FULL_FRAMES: u32 = 10 * crate::constants::FPS as u32;
+/// What a win is worth if it arrives at the thirty-second mark.
+pub const WIN_FLOOR: f64 = 0.5;
 pub const REWARD_LOSS: f64 = -1.0;
 /// A mutual kill pays a little. You did not win, but you closed, you took the
 /// shot and you took the opponent with you — all of which a policy that has
@@ -109,11 +124,34 @@ pub enum Outcome {
     Draw,
 }
 
+/// What a win is worth after `frames`.
+///
+/// Full value inside ten seconds, then a logarithmic decay to `WIN_FLOOR` at
+/// the thirty-second clock. Logarithmic rather than linear because the shape
+/// says something: the cost of the eleventh second is much larger than the
+/// cost of the twenty-ninth. Once a round is already long, dragging it out
+/// further is nearly free, so the pressure lands where it can still change a
+/// decision — early — instead of being spread evenly over a window where the
+/// policy has usually already committed.
+///
+/// A win recorded during the settlement overrun is clamped to the clock, so
+/// the floor is a floor.
+pub fn win_reward(frames: u32) -> f64 {
+    if frames <= WIN_FULL_FRAMES {
+        return REWARD_WIN;
+    }
+    let elapsed = frames.min(DUEL_FRAMES) as f64 / WIN_FULL_FRAMES as f64;
+    let span = (DUEL_FRAMES as f64 / WIN_FULL_FRAMES as f64).ln();
+    (REWARD_WIN - (REWARD_WIN - WIN_FLOOR) * elapsed.ln() / span)
+        .clamp(WIN_FLOOR, REWARD_WIN)
+}
+
 impl Outcome {
-    pub fn reward(self) -> f64 {
+    /// `frames` is the length of the round; only a win reads it.
+    pub fn reward(self, frames: u32) -> f64 {
         match self {
             Outcome::Running => 0.0,
-            Outcome::Win => REWARD_WIN,
+            Outcome::Win => win_reward(frames),
             Outcome::Loss => REWARD_LOSS,
             Outcome::DoubleDeath => REWARD_DOUBLE_DEATH,
             Outcome::Draw => REWARD_DRAW,
@@ -331,7 +369,7 @@ pub fn duel_settle(game: &Game, state: &mut DuelState, events: &[Event]) -> Duel
     };
 
     state.outcome = outcome;
-    DuelStep { reward: outcome.reward(), outcome, fired, hit }
+    DuelStep { reward: outcome.reward(state.frames), outcome, fired, hit }
 }
 
 #[cfg(test)]
@@ -413,10 +451,12 @@ mod tests {
     fn standing_still_against_laika_is_decided_and_paid_once() {
         let (step, frames) = play(21, Opponent::Laika, 8, DUEL_FRAMES + DUEL_GRACE_FRAMES);
         assert!(step.outcome.terminal());
+        let expected = step.outcome.reward(frames);
         assert!(
-            [REWARD_WIN, REWARD_LOSS, REWARD_DOUBLE_DEATH, REWARD_DRAW].contains(&step.reward),
-            "terminal paid {} which is not one of the four results",
-            step.reward
+            (step.reward - expected).abs() < 1e-9,
+            "terminal paid {} but {:?} at {frames} frames is worth {expected}",
+            step.reward,
+            step.outcome
         );
         assert!(frames <= DUEL_FRAMES + DUEL_GRACE_FRAMES);
     }
@@ -437,7 +477,42 @@ mod tests {
         }
         assert_eq!(last, Outcome::Draw);
         assert_eq!(state.frames, DUEL_FRAMES);
-        assert!((last.reward() - REWARD_DRAW).abs() < 1e-9);
+        assert!((last.reward(state.frames) - REWARD_DRAW).abs() < 1e-9);
+    }
+
+    #[test]
+    fn a_win_is_worth_less_the_longer_it_takes() {
+        let fps = crate::constants::FPS as u32;
+        // Anything inside ten seconds is a full win, including an instant one.
+        for seconds in [0, 1, 5, 9, 10] {
+            assert_eq!(win_reward(seconds * fps), REWARD_WIN, "{seconds}s");
+        }
+        // Then strictly decreasing to the floor at the clock.
+        let mut previous = REWARD_WIN;
+        for seconds in 11..=30 {
+            let value = win_reward(seconds * fps);
+            assert!(value < previous, "{seconds}s did not decrease");
+            assert!((WIN_FLOOR..=REWARD_WIN).contains(&value));
+            previous = value;
+        }
+        assert!((win_reward(DUEL_FRAMES) - WIN_FLOOR).abs() < 1e-9);
+
+        // The settlement overrun cannot push it below the floor.
+        assert!((win_reward(DUEL_FRAMES + DUEL_GRACE_FRAMES) - WIN_FLOOR).abs() < 1e-9);
+
+        // Logarithmic, not linear: the curve is below the straight line
+        // between its endpoints everywhere in between, so the early seconds
+        // cost more than the late ones.
+        for seconds in 12..30 {
+            let t = (seconds * fps) as f64;
+            let a = WIN_FULL_FRAMES as f64;
+            let b = DUEL_FRAMES as f64;
+            let linear = REWARD_WIN - (REWARD_WIN - WIN_FLOOR) * (t - a) / (b - a);
+            assert!(
+                win_reward(seconds * fps) < linear,
+                "{seconds}s is not below the linear interpolation"
+            );
+        }
     }
 
     #[test]
@@ -445,6 +520,9 @@ mod tests {
         // Pins the pricing, not a behaviour. Every one of these orderings is a
         // decision about what the policy is being asked to prefer.
         assert!(REWARD_WIN > REWARD_DOUBLE_DEATH, "winning must beat trading");
+        // Even the slowest possible win must still beat trading, or a policy
+        // that has run the clock down would rather die than finish.
+        assert!(WIN_FLOOR > REWARD_DOUBLE_DEATH, "a late win must beat a trade");
         assert!(REWARD_DOUBLE_DEATH > 0.0, "a trade must pay, or closing is never worth it");
         assert!(REWARD_DOUBLE_DEATH > REWARD_LOSS, "a trade must beat being beaten");
         assert!(REWARD_DRAW <= REWARD_LOSS, "stalling must be no better than losing");
@@ -452,14 +530,18 @@ mod tests {
         // The break-even that keeps a trade from swallowing a winnable round:
         // playing on is worth p*WIN + (1-p)*LOSS, so a trade only wins out
         // below 60%. Guard the band rather than the exact number.
-        let break_even =
-            (REWARD_DOUBLE_DEATH - REWARD_LOSS) / (REWARD_WIN - REWARD_LOSS);
-        assert!(
-            (0.5..0.8).contains(&break_even),
-            "a trade beats playing on below a {:.0}% win chance, which is \
-             outside the band this scale was chosen for",
-            break_even * 100.0
-        );
+        // It moves with the clock now, because the win it is measured against
+        // does. Both ends have to stay sane: high enough early that trading is
+        // not the default, low enough late that finishing still beats dying.
+        for (label, win) in [("fresh", REWARD_WIN), ("at the clock", WIN_FLOOR)] {
+            let break_even = (REWARD_DOUBLE_DEATH - REWARD_LOSS) / (win - REWARD_LOSS);
+            assert!(
+                (0.5..0.9).contains(&break_even),
+                "{label}: a trade beats playing on below a {:.0}% win chance, \
+                 which is outside the band this scale was chosen for",
+                break_even * 100.0
+            );
+        }
     }
 
     #[test]

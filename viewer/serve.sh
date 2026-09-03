@@ -31,7 +31,7 @@ echo
 # trainer publishes live.pt into; it re-reads the manifest on every request, so
 # training can start after the server and the page still picks it up.
 ROOT="$(cd .. && pwd)"
-RUN="${RUN:-outputs/ppo_duel_v3/s11}"
+RUN="${RUN:-outputs/ppo_duel_v4/s11}"
 PYTHON="${PYTHON:-$ROOT/.venv/bin/python}"
 if [[ ! -x "$PYTHON" ]]; then
   echo "找不到 $PYTHON；先建虚拟环境：" >&2
