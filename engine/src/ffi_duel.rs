@@ -479,23 +479,35 @@ mod tests {
 
     #[test]
     fn a_round_is_paid_once_and_only_at_the_end() {
+        // Note what this can no longer assert: that a terminal pays something
+        // nonzero. A mutual kill is worth exactly zero, so the reward alone
+        // does not tell a finished round from a live one. `terminals` does,
+        // and that is what the trainer's GAE cuts the bootstrap on — nothing
+        // in the training path infers the end of an episode from the reward.
         let mut env = DuelVecEnv::new(8, 100, 1.0, 0.0, 0.0, 2);
         let mut rng = Rng::new(1);
         let actions: Vec<u16> = (0..8).map(|_| (rng.random() * 18.0) as u16).collect();
+        let mut terminals_seen = 0;
         for _ in 0..400 {
             env.step(&actions, &[]);
             for i in 0..8 {
                 if env.dones[i] == 0 {
                     assert_eq!(env.rewards[i], 0.0, "a live round paid {}", env.rewards[i]);
                 } else if env.terminals[i] == 1 {
+                    terminals_seen += 1;
+                    let outcome = crate::duel::Outcome::from_u8(env.outcomes[i]);
+                    let expected = outcome.reward(env.episode_frames[i]) as f32;
                     assert!(
-                        env.rewards[i].abs() > 0.0,
-                        "a finished round paid nothing"
+                        (env.rewards[i] - expected).abs() < 1e-6,
+                        "{outcome:?} at {} frames paid {} not {expected}",
+                        env.episode_frames[i],
+                        env.rewards[i]
                     );
                 }
             }
             env.reset_done();
         }
+        assert!(terminals_seen > 0, "nothing finished, so nothing was checked");
     }
 
     #[test]

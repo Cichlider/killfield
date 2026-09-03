@@ -27,16 +27,21 @@
 //! pressure where a decision can still respond to it: the eleventh second
 //! costs far more than the twenty-ninth.
 //!
-//! **Why a mutual kill pays.** `+0.2` is not a consolation prize, it is the
-//! ordering the rest of the scale needs. Trading kills sits above losing and
-//! far above stalling, so a policy that cannot win yet is still paid for
-//! closing distance and pulling the trigger — which is the behaviour every
-//! later skill has to be built on. It stays well below `+1.0`, so a winnable
-//! round is never worth trading away: at these numbers a trade only beats
-//! playing on once the chance of winning drops below 60% — 80% once the round
-//! has run long enough for the win to be worth only its floor. That drift is a
-//! real consequence of the time discount and worth watching: it makes trading
-//! relatively more attractive late in a round.
+//! **Why a mutual kill is worth nothing.** Zero, not a small positive: a round
+//! you did not win. An earlier version paid `+0.2` for it, on the theory that
+//! a policy which cannot win yet still needs paying for closing distance and
+//! pulling the trigger. It does not — that pressure already comes from the
+//! other end of the scale, because refusing to engage runs the clock out and
+//! a draw costs exactly what losing costs. Paying for the trade as well just
+//! bought trades.
+//!
+//! The ordering the scale needs is `draw = loss < trade < win`, and zero
+//! satisfies it. What it also does is move the break-even: playing on beats
+//! trading whenever the chance of winning exceeds `(TRADE - LOSS) /
+//! (WIN - LOSS)`, which at zero is 50% against a fresh win and 67% against one
+//! worth only its floor. Both are stricter than the 60/80 the `+0.2` version
+//! implied, so a winnable round is harder to trade away — and the late-round
+//! drift the time discount introduces is smaller.
 //!
 //! **Why the terminal is `RoundEnd` and nothing earlier.** A kill does not
 //! settle a round. `destroy_tank` arms a 125-frame counter and the engine
@@ -68,10 +73,10 @@ pub const WIN_FULL_FRAMES: u32 = 10 * crate::constants::FPS as u32;
 /// What a win is worth if it arrives at the thirty-second mark.
 pub const WIN_FLOOR: f64 = 0.5;
 pub const REWARD_LOSS: f64 = -1.0;
-/// A mutual kill pays a little. You did not win, but you closed, you took the
-/// shot and you took the opponent with you — all of which a policy that has
-/// not learned to win yet needs to be paid for attempting.
-pub const REWARD_DOUBLE_DEATH: f64 = 0.2;
+/// A mutual kill is worth exactly nothing: not a win, not a loss, no credit
+/// for having tried. The pressure to close comes from the clock instead —
+/// refusing to engage runs into `REWARD_DRAW`, which costs as much as losing.
+pub const REWARD_DOUBLE_DEATH: f64 = 0.0;
 /// Thirty seconds of nothing costs exactly as much as losing. There is no
 /// version of this game where running out the clock is a result.
 pub const REWARD_DRAW: f64 = -1.0;
@@ -169,6 +174,16 @@ impl Outcome {
             Outcome::Loss => 2,
             Outcome::DoubleDeath => 3,
             Outcome::Draw => 4,
+        }
+    }
+
+    pub fn from_u8(value: u8) -> Self {
+        match value {
+            1 => Outcome::Win,
+            2 => Outcome::Loss,
+            3 => Outcome::DoubleDeath,
+            4 => Outcome::Draw,
+            _ => Outcome::Running,
         }
     }
 }
@@ -523,7 +538,10 @@ mod tests {
         // Even the slowest possible win must still beat trading, or a policy
         // that has run the clock down would rather die than finish.
         assert!(WIN_FLOOR > REWARD_DOUBLE_DEATH, "a late win must beat a trade");
-        assert!(REWARD_DOUBLE_DEATH > 0.0, "a trade must pay, or closing is never worth it");
+        assert!(
+            REWARD_DOUBLE_DEATH >= 0.0,
+            "a trade must not be a punishment, or the policy learns to avoid contact"
+        );
         assert!(REWARD_DOUBLE_DEATH > REWARD_LOSS, "a trade must beat being beaten");
         assert!(REWARD_DRAW <= REWARD_LOSS, "stalling must be no better than losing");
 
@@ -536,7 +554,7 @@ mod tests {
         for (label, win) in [("fresh", REWARD_WIN), ("at the clock", WIN_FLOOR)] {
             let break_even = (REWARD_DOUBLE_DEATH - REWARD_LOSS) / (win - REWARD_LOSS);
             assert!(
-                (0.5..0.9).contains(&break_even),
+                (0.45..0.9).contains(&break_even),
                 "{label}: a trade beats playing on below a {:.0}% win chance, \
                  which is outside the band this scale was chosen for",
                 break_even * 100.0

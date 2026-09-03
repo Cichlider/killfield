@@ -518,7 +518,7 @@ function setOpponent(next) {
 }
 
 async function main() {
-  const response = await fetch("kf_engine.wasm?v=7bd76c7d");
+  const response = await fetch("kf_engine.wasm?v=9953ea41");
   const { instance } = await WebAssembly.instantiate(await response.arrayBuffer(), {});
   wasm = instance.exports;
   episodeFrames = wasm.kf_episode_frames();
