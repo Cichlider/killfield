@@ -25,12 +25,12 @@
  */
 
 import * as C from "./src/constants.js";
-import { STRINGS, loadLang, saveLang } from "./src/i18n.js";
+import { STRINGS, loadLang, saveLang } from "./src/i18n.js?v=b854eb9c";
 import { Keyboard, TouchControls } from "./src/input.js";
 import { SoundEffects } from "./src/audio.js";
 import { Rng } from "./src/rng.js";
 import { interpolatePredictedPose, simulationBudget } from "./src/low-latency.js";
-import { HybridPolicy } from "./src/hybrid.js";
+import { HybridPolicy } from "./src/hybrid.js?v=4be8a6e2";
 
 const STEP_MS = 1000 / C.FPS; // 40 ms
 const MAX_CATCHUP_MS = 250;
@@ -944,7 +944,7 @@ async function boot() {
   const [wasmResult, hybrid] = await Promise.all([
     fetch("kf_engine.wasm?v=7aea2a29").then((res) => res.arrayBuffer())
       .then((bytes) => WebAssembly.instantiate(bytes, {})),
-    HybridPolicy.load(),
+    HybridPolicy.load("assets/hybrid.json?v=942cb5c9", "assets/hybrid.bin?v=a6919c8f"),
   ]);
   wasm = wasmResult.instance.exports;
   hybridPolicy = hybrid;

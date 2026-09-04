@@ -61,13 +61,13 @@ function toChw(observation) {
 }
 
 export class HybridPolicy {
-  static async load(manifestUrl = "assets/hybrid.json") {
+  static async load(manifestUrl = "assets/hybrid.json", weightsUrl = "assets/hybrid.bin") {
     const manifest = await fetch(manifestUrl).then((response) => {
       if (!response.ok) throw new Error(`Hybrid manifest: HTTP ${response.status}`);
       return response.json();
     });
-    const weightsUrl = new URL("hybrid.bin", new URL(manifestUrl, location.href));
-    const weights = new Float32Array(await fetch(weightsUrl).then((response) => {
+    const resolvedWeightsUrl = new URL(weightsUrl, location.href);
+    const weights = new Float32Array(await fetch(resolvedWeightsUrl).then((response) => {
       if (!response.ok) throw new Error(`Hybrid weights: HTTP ${response.status}`);
       return response.arrayBuffer();
     }));
