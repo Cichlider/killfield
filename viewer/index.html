@@ -13,7 +13,7 @@
 <link rel="icon" type="image/png" sizes="192x192" href="assets/brand/icon-192.png">
 <link rel="apple-touch-icon" sizes="180x180" href="assets/brand/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="stylesheet" href="style.css?v=e17a2e67">
+<link rel="stylesheet" href="style.css?v=13b4f84f">
 </head>
 <body>
 <main>
@@ -28,7 +28,7 @@
   </nav>
 
   <section class="config-row watch-config" id="watch-config" aria-label="Watch match">
-    <div class="controller-picker role-red" data-controller-picker>
+    <div class="controller-picker role-red" data-theme-picker data-select-id="controller-0" data-label-id="watch-left-label">
       <span id="watch-left-label">Left</span>
       <button type="button" class="controller-trigger" aria-haspopup="listbox" aria-expanded="false"><span>Hybrid</span><i aria-hidden="true"></i></button>
       <div class="controller-menu" role="listbox" aria-hidden="true">
@@ -39,7 +39,7 @@
       <select id="controller-0" class="native-controller-select" tabindex="-1" aria-hidden="true"><option value="hybrid" selected>Hybrid</option><option value="laika">Laika</option><option value="killfield">Killfield</option></select>
     </div>
     <span class="versus">vs</span>
-    <div class="controller-picker role-black" data-controller-picker>
+    <div class="controller-picker role-black" data-theme-picker data-select-id="controller-1" data-label-id="watch-right-label">
       <span id="watch-right-label">Right</span>
       <button type="button" class="controller-trigger" aria-haspopup="listbox" aria-expanded="false"><span>Laika</span><i aria-hidden="true"></i></button>
       <div class="controller-menu" role="listbox" aria-hidden="true">
@@ -71,21 +71,9 @@
       </div>
     </div>
     <div id="touch-controls" class="touch-controls" hidden>
-      <div class="control-style-switch" role="group" aria-label="Touch control style">
-        <button id="control-style-joystick" type="button">Joystick</button>
-        <button id="control-style-dpad" type="button">Forward / turn</button>
-      </div>
       <div class="touch-left-control">
         <div id="touch-joystick" class="touch-joystick" role="application" aria-label="128-direction movement joystick">
-          <span class="joystick-axis axis-n">▲</span><span class="joystick-axis axis-e">▶</span>
-          <span class="joystick-axis axis-s">▼</span><span class="joystick-axis axis-w">◀</span>
           <span id="touch-knob" class="touch-knob"></span>
-        </div>
-        <div id="touch-dpad" class="touch-dpad" role="group" aria-label="Forward, reverse, left and right">
-          <button type="button" class="dpad-up" data-control="forward" aria-label="Forward">▲</button>
-          <button type="button" class="dpad-left" data-control="turnLeft" aria-label="Turn left">◀</button>
-          <button type="button" class="dpad-right" data-control="turnRight" aria-label="Turn right">▶</button>
-          <button type="button" class="dpad-down" data-control="backup" aria-label="Reverse">▼</button>
         </div>
       </div>
       <button id="touch-fire" type="button" class="touch-fire">FIRE</button>
@@ -98,17 +86,35 @@
   </section>
 
   <section class="config-row play-config" id="play-config" hidden aria-label="Player match settings">
-    <label class="select-field role-black"><span id="play-opponent-label">Opponent</span>
-      <select id="play-opponent"><option value="laika">Laika</option><option value="hybrid" selected>Hybrid</option><option value="killfield">Killfield</option></select>
-    </label>
+    <div class="controller-picker role-black" data-theme-picker data-select-id="play-opponent" data-label-id="play-opponent-label">
+      <span id="play-opponent-label">Opponent</span>
+      <button type="button" class="controller-trigger" aria-haspopup="listbox" aria-expanded="false"><span>Hybrid</span><i aria-hidden="true"></i></button>
+      <div class="controller-menu" role="listbox" aria-hidden="true">
+        <button type="button" role="option" data-value="laika" aria-selected="false">Laika</button>
+        <button type="button" role="option" data-value="hybrid" aria-selected="true">Hybrid</button>
+        <button type="button" role="option" data-value="killfield" aria-selected="false">Killfield</button>
+      </div>
+      <select id="play-opponent" class="native-controller-select" tabindex="-1" aria-hidden="true"><option value="laika">Laika</option><option value="hybrid" selected>Hybrid</option><option value="killfield">Killfield</option></select>
+    </div>
     <button id="instant-turn" type="button" aria-pressed="false" class="toggle">No turn-rate limit: off</button>
     <label class="range-field"><span id="forward-alignment-label">Wheel forward region</span><input id="forward-alignment" type="range" min="0" max="360" step="2.8125" value="270"><output id="forward-alignment-value" for="forward-alignment">270°</output></label>
-    <label class="select-field" id="reaction-delay-field"><span id="reaction-delay-label">Opponent delay</span><select id="reaction-delay"><option value="0">0 frames</option><option value="1">1 frame</option><option value="2">2 frames</option><option value="3">3 frames</option></select></label>
+    <div class="controller-picker" id="reaction-delay-field" data-theme-picker data-select-id="reaction-delay" data-label-id="reaction-delay-label">
+      <span id="reaction-delay-label">Opponent delay</span>
+      <button type="button" class="controller-trigger" aria-haspopup="listbox" aria-expanded="false"><span>0 frames</span><i aria-hidden="true"></i></button>
+      <div class="controller-menu" role="listbox" aria-hidden="true">
+        <button type="button" role="option" data-value="0" aria-selected="true">0 frames</button>
+        <button type="button" role="option" data-value="1" aria-selected="false">1 frame</button>
+        <button type="button" role="option" data-value="2" aria-selected="false">2 frames</button>
+        <button type="button" role="option" data-value="3" aria-selected="false">3 frames</button>
+      </div>
+      <select id="reaction-delay" class="native-controller-select" tabindex="-1" aria-hidden="true"><option value="0">0 frames</option><option value="1">1 frame</option><option value="2">2 frames</option><option value="3">3 frames</option></select>
+    </div>
     <label class="range-field" id="opening-delay-field"><span id="opening-delay-label">Opening pause</span><input id="opening-delay" type="range" min="0" max="3" step="0.1" value="0.5"><output id="opening-delay-value" for="opening-delay">0.5 s</output></label>
   </section>
 
   <div class="actions"><button id="reroll" type="button" class="ghost-btn">New maze</button><button id="reset-score" type="button" class="ghost-btn">Reset score</button></div>
+  <footer class="site-footer"><a href="https://github.com/Cichlider/killfield" target="_blank" rel="noreferrer">github.com/Cichlider/killfield</a><span>© 2026 Cichlider. All rights reserved.</span></footer>
 </main>
-<script type="module" src="viewer.js?v=da4af0c2"></script>
+<script type="module" src="viewer.js?v=05f9d3db"></script>
 </body>
 </html>

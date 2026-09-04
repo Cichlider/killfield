@@ -179,7 +179,6 @@ export class Keyboard {
   }
 }
 
-const CONTROL_STYLE_KEY = "killfield-touch-control-style";
 const FORWARD_ALIGNMENT_KEY = "killfield-forward-alignment-degrees";
 const JOYSTICK_TURN_FULL = 0.10;
 const JOYSTICK_DRIVE_START = 0.25;
@@ -257,20 +256,16 @@ export class TouchControls {
     this.visibilityButton = visibilityButton;
     this.joystick = root.querySelector("#touch-joystick");
     this.knob = root.querySelector("#touch-knob");
-    this.dpad = root.querySelector("#touch-dpad");
     this.fireButton = root.querySelector("#touch-fire");
     this.joystickPointer = null;
     this.joystickVector = { x: 0, y: 0 };
-    this.dpadPointers = new Map();
     this.firePointers = new Set();
     this.onFireChange = null;
     this.available = false;
     this.userVisible = true;
     this.labels = null;
-    this.style = "joystick";
     this.forwardAlignmentDegrees = DEFAULT_FORWARD_ALIGNMENT_DEGREES;
     try {
-      this.style = localStorage.getItem(CONTROL_STYLE_KEY) === "dpad" ? "dpad" : "joystick";
       this.forwardAlignmentDegrees = normaliseForwardAlignmentDegrees(
         localStorage.getItem(FORWARD_ALIGNMENT_KEY) ?? DEFAULT_FORWARD_ALIGNMENT_DEGREES,
       );
@@ -278,12 +273,6 @@ export class TouchControls {
       // Defaults remain usable when storage is unavailable.
     }
 
-    root.querySelector("#control-style-joystick").addEventListener("click", () => {
-      this.setStyle("joystick");
-    });
-    root.querySelector("#control-style-dpad").addEventListener("click", () => {
-      this.setStyle("dpad");
-    });
     visibilityButton.addEventListener("click", () => {
       this.userVisible = !this.userVisible;
       this.syncVisibility();
@@ -317,22 +306,6 @@ export class TouchControls {
       this.joystick.addEventListener(type, releaseJoystick);
     }
 
-    for (const button of this.dpad.querySelectorAll("[data-control]")) {
-      const release = (event) => {
-        this.dpadPointers.delete(event.pointerId);
-        button.classList.toggle("active", [...this.dpadPointers.values()].includes(button.dataset.control));
-      };
-      button.addEventListener("pointerdown", (event) => {
-        event.preventDefault();
-        button.setPointerCapture(event.pointerId);
-        this.dpadPointers.set(event.pointerId, button.dataset.control);
-        button.classList.add("active");
-      });
-      for (const type of ["pointerup", "pointercancel", "lostpointercapture"]) {
-        button.addEventListener(type, release);
-      }
-    }
-
     const releaseFire = (event) => {
       const hadPointer = this.firePointers.delete(event.pointerId);
       this.fireButton.classList.toggle("active", this.firePointers.size > 0);
@@ -351,17 +324,6 @@ export class TouchControls {
     for (const type of ["pointerup", "pointercancel", "lostpointercapture"]) {
       this.fireButton.addEventListener(type, releaseFire);
     }
-    this.setStyle(this.style);
-  }
-
-  setStyle(style) {
-    this.style = style === "dpad" ? "dpad" : "joystick";
-    this.clearMovement();
-    this.joystick.hidden = this.style !== "joystick";
-    this.dpad.hidden = this.style !== "dpad";
-    this.root.querySelector("#control-style-joystick").classList.toggle("active", this.style === "joystick");
-    this.root.querySelector("#control-style-dpad").classList.toggle("active", this.style === "dpad");
-    try { localStorage.setItem(CONTROL_STYLE_KEY, this.style); } catch { /* optional */ }
   }
 
   setForwardAlignmentDegrees(raw) {
@@ -393,14 +355,7 @@ export class TouchControls {
 
   setLabels(strings) {
     this.labels = strings;
-    const joystick = this.root.querySelector("#control-style-joystick");
-    const dpad = this.root.querySelector("#control-style-dpad");
-    joystick.textContent = strings.joystick;
-    dpad.textContent = strings.dpad;
-    joystick.setAttribute("aria-label", strings.joystickAria);
-    dpad.setAttribute("aria-label", strings.dpadAria);
     this.joystick.setAttribute("aria-label", strings.joystickAria);
-    this.dpad.setAttribute("aria-label", strings.dpadAria);
     this.fireButton.textContent = strings.fire;
     this.fireButton.setAttribute("aria-label", strings.fire);
     this.syncVisibility();
@@ -434,18 +389,16 @@ export class TouchControls {
       turnRight: keyboardStrengths.turnRight,
       targetRotation: null,
     };
-    if (this.style === "joystick" && this.joystickPointer !== null) {
+    if (this.joystickPointer !== null) {
       movement = joystickButtons(
         this.joystickVector.x, this.joystickVector.y, rotation, this.forwardAlignmentDegrees,
       );
-    } else if (this.style === "dpad") {
-      for (const control of this.dpadPointers.values()) movement[control] = 1;
     }
     return movement;
   }
 
   /**
-   * Resolve this frame's movement (touch style, falling back to keyboard
+   * Resolve this frame's movement (joystick, falling back to keyboard
    * strengths) and push it straight to the wasm tank.
    *
    * `rotation` is the tank's current heading in degrees, needed by the
@@ -454,7 +407,7 @@ export class TouchControls {
   applyTo(wasm, handle, tank, keyboardStrengths, rotation, instantTurn = false) {
     const movement = this.resolveMovement(keyboardStrengths, rotation);
     let snappedRotation = null;
-    if (instantTurn && this.style === "joystick" && this.joystickPointer !== null
+    if (instantTurn && this.joystickPointer !== null
         && movement.targetRotation !== null
         && wasm.kf_set_rotation_if_clear(handle, tank, movement.targetRotation)) {
       movement.turnLeft = 0;
@@ -470,11 +423,9 @@ export class TouchControls {
   clearMovement() {
     this.joystickPointer = null;
     this.joystickVector = { x: 0, y: 0 };
-    this.dpadPointers.clear();
     this.joystick.classList.remove("active");
     this.knob.style.left = "50%";
     this.knob.style.top = "50%";
-    for (const button of this.dpad.querySelectorAll(".active")) button.classList.remove("active");
   }
 
   clear() {

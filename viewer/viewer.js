@@ -109,7 +109,7 @@ const playConfig = document.getElementById("play-config");
 const watchLeftLabel = document.getElementById("watch-left-label");
 const watchRightLabel = document.getElementById("watch-right-label");
 const controllerSelects = [0, 1].map((i) => document.getElementById(`controller-${i}`));
-const controllerPickers = [...document.querySelectorAll("[data-controller-picker]")];
+const themedPickers = [...document.querySelectorAll("[data-theme-picker]")];
 const playOpponentSelect = document.getElementById("play-opponent");
 const playOpponentLabel = document.getElementById("play-opponent-label");
 const reactionDelaySelect = document.getElementById("reaction-delay");
@@ -470,7 +470,7 @@ function syncOpeningDelayControl() {
   );
 }
 
-function setControllerPickerOpen(picker, open) {
+function setThemedPickerOpen(picker, open) {
   picker.classList.toggle("open", open);
   const trigger = picker.querySelector(".controller-trigger");
   const menu = picker.querySelector(".controller-menu");
@@ -479,48 +479,53 @@ function setControllerPickerOpen(picker, open) {
   menu.querySelectorAll("button").forEach((button) => { button.tabIndex = open ? 0 : -1; });
 }
 
-function closeControllerPickers(except = null) {
-  controllerPickers.forEach((picker) => {
-    if (picker !== except) setControllerPickerOpen(picker, false);
+function closeThemedPickers(except = null) {
+  themedPickers.forEach((picker) => {
+    if (picker !== except) setThemedPickerOpen(picker, false);
   });
 }
 
-function syncControllerPicker(picker, seat) {
-  const select = controllerSelects[seat];
+function syncThemedPicker(picker) {
+  const select = document.getElementById(picker.dataset.selectId);
+  const label = document.getElementById(picker.dataset.labelId);
   const value = select.value;
+  const selected = [...select.options].find((option) => option.value === value);
   const trigger = picker.querySelector(".controller-trigger");
-  trigger.querySelector("span").textContent = CONTROLLER_NAMES[value];
-  trigger.setAttribute("aria-label", `${seat === 0 ? t().watchLeftLabel : t().watchRightLabel}: ${CONTROLLER_NAMES[value]}`);
+  trigger.querySelector("span").textContent = selected.textContent;
+  trigger.setAttribute("aria-label", `${label.textContent}: ${selected.textContent}`);
   picker.querySelectorAll("[role=option]").forEach((option) => {
+    const nativeOption = [...select.options].find((candidate) => candidate.value === option.dataset.value);
+    if (nativeOption) option.textContent = nativeOption.textContent;
     option.setAttribute("aria-selected", String(option.dataset.value === value));
   });
 }
 
-function initialiseControllerPickers() {
-  controllerPickers.forEach((picker, seat) => {
+function initialiseThemedPickers() {
+  themedPickers.forEach((picker) => {
+    const select = document.getElementById(picker.dataset.selectId);
     const trigger = picker.querySelector(".controller-trigger");
-    setControllerPickerOpen(picker, false);
-    syncControllerPicker(picker, seat);
+    setThemedPickerOpen(picker, false);
+    syncThemedPicker(picker);
     trigger.addEventListener("click", () => {
       const open = !picker.classList.contains("open");
-      closeControllerPickers(picker);
-      setControllerPickerOpen(picker, open);
+      closeThemedPickers(picker);
+      setThemedPickerOpen(picker, open);
     });
     picker.querySelectorAll("[data-value]").forEach((option) => {
       option.addEventListener("click", () => {
-        controllerSelects[seat].value = option.dataset.value;
-        syncControllerPicker(picker, seat);
-        setControllerPickerOpen(picker, false);
-        controllerSelects[seat].dispatchEvent(new Event("change"));
+        select.value = option.dataset.value;
+        syncThemedPicker(picker);
+        setThemedPickerOpen(picker, false);
+        select.dispatchEvent(new Event("change"));
         trigger.focus();
       });
     });
   });
   document.addEventListener("pointerdown", (event) => {
-    if (!event.target.closest("[data-controller-picker]")) closeControllerPickers();
+    if (!event.target.closest("[data-theme-picker]")) closeThemedPickers();
   });
   document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") closeControllerPickers();
+    if (event.key === "Escape") closeThemedPickers();
   });
 }
 
@@ -533,7 +538,6 @@ function applyLanguage() {
   playButton.textContent = s.modePlay;
   watchLeftLabel.textContent = s.watchLeftLabel;
   watchRightLabel.textContent = s.watchRightLabel;
-  controllerPickers.forEach(syncControllerPicker);
   playOpponentLabel.textContent = s.opponentLabel;
   rerollButton.textContent = s.reroll;
   resetScoreButton.textContent = s.resetScore;
@@ -541,6 +545,7 @@ function applyLanguage() {
   syncForwardAlignmentControl();
   syncReactionDelayControl();
   syncOpeningDelayControl();
+  themedPickers.forEach(syncThemedPicker);
   touchControls.setLabels(s.touchControls);
   orientationTitle.textContent = s.orientationTitle;
   orientationBody.textContent = s.orientationBody;
@@ -687,7 +692,7 @@ function newGame() {
 
 function setMode(next) {
   mode = next;
-  closeControllerPickers();
+  closeThemedPickers();
   keyboard.clear();
   touchControls.clear();
   stage.classList.toggle("play-mode", next === "play");
@@ -1013,7 +1018,7 @@ async function boot() {
   if (wasm.kf_hybrid_schema_version() !== 24 || wasm.kf_hybrid_observation_len() !== HYBRID_OBS_DIM + HYBRID_BULLET_SLOTS) {
     throw new Error("Hybrid observation layout mismatch between engine and viewer");
   }
-  initialiseControllerPickers();
+  initialiseThemedPickers();
 
   fullscreenButton.addEventListener("click", toggleFullscreen);
   document.addEventListener("fullscreenchange", syncFullscreenButton);

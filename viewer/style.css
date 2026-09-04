@@ -301,7 +301,7 @@ canvas { display: block; width: 100%; height: auto; }
   margin-top: 15px;
 }
 
-.play-config .select-field, .play-config .range-field {
+.play-config .select-field, .play-config .range-field, .play-config .controller-picker {
   min-width: 0;
   background: rgba(255,255,255,.48);
 }
@@ -344,6 +344,20 @@ canvas { display: block; width: 100%; height: auto; }
   background: transparent;
   font-size: 11px;
 }
+
+.site-footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px 12px;
+  margin-top: 20px;
+  color: var(--muted);
+  font-size: 10px;
+  letter-spacing: .01em;
+}
+
+.site-footer a { color: inherit; text-decoration-color: rgba(119,118,111,.42); text-underline-offset: 3px; }
+.site-footer a:hover { color: var(--accent); }
 
 /* Fullscreen keeps the score and all existing player controls inside the
    selected stage subtree. */
@@ -408,7 +422,7 @@ canvas { display: block; width: 100%; height: auto; }
    prediction paths stay unchanged; only presentation is restyled. */
 .touch-controls { display: none; }
 .touch-controls:not([hidden]) { position: absolute; inset: 0; z-index: 6; pointer-events: none; }
-.touch-joystick[hidden], .touch-dpad[hidden] { display: none !important; }
+.touch-joystick[hidden] { display: none !important; }
 .orientation-hint[hidden] { display: none !important; }
 
 .orientation-hint {
@@ -457,46 +471,21 @@ canvas { display: block; width: 100%; height: auto; }
 
 @media (pointer: coarse), (max-width: 980px) {
   .touch-controls:not([hidden]) { display: block; }
-  .touch-controls button, .touch-joystick, .touch-dpad { pointer-events: auto; touch-action: none; user-select: none; -webkit-user-select: none; }
-
-  .control-style-switch {
-    position: absolute;
-    left: 50%;
-    bottom: max(8px, env(safe-area-inset-bottom));
-    display: flex;
-    padding: 3px;
-    border-radius: 999px;
-    background: rgba(255,255,255,.88);
-    box-shadow: 0 2px 12px rgba(0,0,0,.22);
-    transform: translateX(-50%);
-    pointer-events: auto;
-  }
-
-  .control-style-switch button { min-height: 32px; padding: 4px 10px; border: 0; border-radius: 999px; background: transparent; color: #343a40; font-size: 11px; }
-  .control-style-switch button.active { color: #fff; background: var(--accent); }
-  .touch-left-control { position: absolute; left: max(14px, env(safe-area-inset-left)); bottom: max(50px, calc(env(safe-area-inset-bottom) + 44px)); }
+  .touch-controls button, .touch-joystick { pointer-events: auto; touch-action: none; user-select: none; -webkit-user-select: none; }
+  .touch-left-control { position: absolute; left: max(14px, env(safe-area-inset-left)); bottom: max(16px, calc(env(safe-area-inset-bottom) + 10px)); }
 
   .touch-joystick {
     position: relative;
     width: clamp(126px, 30vw, 178px);
     aspect-ratio: 1;
     overflow: hidden;
-    border: 2px solid rgba(49,95,98,.72);
-    background: radial-gradient(circle closest-side at center, transparent 0 24%, rgba(49,95,98,.45) 24.5% 25.5%, transparent 26%), repeating-conic-gradient(from -1.40625deg, rgba(49,95,98,.19) 0 .18deg, transparent .18deg 2.8125deg), rgba(255,255,255,.72);
-    clip-path: polygon(50% 0,69.13% 3.81%,85.36% 14.64%,96.19% 30.87%,100% 50%,96.19% 69.13%,85.36% 85.36%,69.13% 96.19%,50% 100%,30.87% 96.19%,14.64% 85.36%,3.81% 69.13%,0 50%,3.81% 30.87%,14.64% 14.64%,30.87% 3.81%);
-    filter: drop-shadow(0 3px 8px rgba(0,0,0,.2));
+    border: 1px solid rgba(36,38,36,.28);
+    border-radius: 50%;
+    background: rgba(255,255,255,.58);
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,.48), 0 3px 14px rgba(0,0,0,.12);
   }
 
-  .joystick-axis { position: absolute; z-index: 1; color: #25353a; font: 700 10px/1 sans-serif; pointer-events: none; }
-  .axis-n { top: 9%; left: 50%; transform: translateX(-50%); }
-  .axis-e { right: 7%; top: 50%; transform: translateY(-50%); }
-  .axis-s { bottom: 8%; left: 50%; transform: translateX(-50%); }
-  .axis-w { left: 7%; top: 50%; transform: translateY(-50%); }
-  .touch-knob { position: absolute; z-index: 2; left: 50%; top: 50%; width: 34%; aspect-ratio: 1; border: 2px solid var(--accent); border-radius: 50%; background: rgba(255,255,255,.94); transform: translate(-50%,-50%); pointer-events: none; }
-  .touch-dpad { position: relative; display: grid; grid-template: repeat(3,1fr)/repeat(3,1fr); gap: 4px; width: clamp(126px,30vw,178px); aspect-ratio: 1; }
-  .touch-dpad button { min-width: 44px; min-height: 44px; padding: 0; color: #25353a; border: 1px solid rgba(49,95,98,.65); background: rgba(255,255,255,.84); font-size: 20px; }
-  .touch-dpad button.active { color: #fff; background: var(--accent); }
-  .dpad-up { grid-area: 1/2; } .dpad-left { grid-area: 2/1; } .dpad-right { grid-area: 2/3; } .dpad-down { grid-area: 3/2; }
+  .touch-knob { position: absolute; z-index: 2; left: 50%; top: 50%; width: 21%; aspect-ratio: 1; border: 0; border-radius: 50%; background: rgba(28,30,28,.72); box-shadow: 0 2px 6px rgba(0,0,0,.16); transform: translate(-50%,-50%); pointer-events: none; }
   .touch-fire { position: absolute; right: max(18px,env(safe-area-inset-right)); bottom: max(64px,calc(env(safe-area-inset-bottom) + 58px)); width: clamp(78px,19vw,112px); aspect-ratio: 1; padding: 0; color: var(--red); border: 3px solid rgba(184,46,54,.82); border-radius: 50%; background: rgba(255,255,255,.84); font-weight: 800; box-shadow: 0 3px 12px rgba(0,0,0,.24); }
   .touch-fire.active { color: #fff; background: var(--red); }
   .stage:fullscreen .icon-btn, .stage:-webkit-full-screen .icon-btn, .stage.pseudo-fullscreen .icon-btn { width: 42px; height: 42px; }
@@ -504,8 +493,8 @@ canvas { display: block; width: 100%; height: auto; }
 
 @media (max-width: 430px) {
   .watch-config { gap: 6px; }
-  .watch-config .select-field { padding: 8px 9px; }
-  .watch-config .select-field select { min-width: 92px; }
+  .watch-config .controller-picker { min-width: 0; padding: 8px 9px; }
+  .watch-config .controller-trigger { min-width: 92px; }
   .play-config { grid-template-columns: 1fr; }
   .play-config .range-field { grid-column: 1; grid-template-columns: 1fr auto; }
   .range-field > span { grid-column: 1; }
@@ -521,11 +510,11 @@ canvas { display: block; width: 100%; height: auto; }
   .stage.play-mode:fullscreen,
   .stage.play-mode:-webkit-full-screen,
   .stage.play-mode.pseudo-fullscreen {
-    --record-left-rail: clamp(210px, 25vw, 340px);
+    --record-left-rail: clamp(170px, 22vw, 260px);
     --record-right-rail: clamp(180px, 22vw, 300px);
     --record-joystick-size: min(
       calc(var(--record-left-rail) - 20px - env(safe-area-inset-left)),
-      clamp(190px, 22vw, 300px)
+      clamp(150px, 19vw, 220px)
     );
     display: grid;
     grid-template-columns: var(--record-left-rail) minmax(0, 1fr) var(--record-right-rail);
@@ -551,7 +540,7 @@ canvas { display: block; width: 100%; height: auto; }
     z-index: 5;
     top: max(10px, env(safe-area-inset-top));
     left: max(10px, env(safe-area-inset-left));
-    width: calc(var(--record-left-rail) - 20px - env(safe-area-inset-left));
+    width: min(148px, calc(var(--record-left-rail) - 20px - env(safe-area-inset-left)));
     margin: 0;
     padding: 7px 8px 8px;
     overflow: hidden;
@@ -672,35 +661,7 @@ canvas { display: block; width: 100%; height: auto; }
 
   .stage.play-mode:fullscreen .touch-joystick,
   .stage.play-mode:-webkit-full-screen .touch-joystick,
-  .stage.play-mode.pseudo-fullscreen .touch-joystick,
-  .stage.play-mode:fullscreen .touch-dpad,
-  .stage.play-mode:-webkit-full-screen .touch-dpad,
-  .stage.play-mode.pseudo-fullscreen .touch-dpad { width: var(--record-joystick-size); }
-
-  .stage.play-mode:fullscreen .touch-dpad button,
-  .stage.play-mode:-webkit-full-screen .touch-dpad button,
-  .stage.play-mode.pseudo-fullscreen .touch-dpad button { min-width: 0; min-height: 0; }
-
-  .stage.play-mode:fullscreen .control-style-switch,
-  .stage.play-mode:-webkit-full-screen .control-style-switch,
-  .stage.play-mode.pseudo-fullscreen .control-style-switch {
-    top: auto;
-    bottom: calc(max(10px, env(safe-area-inset-bottom)) + var(--record-joystick-size) + 8px);
-    left: max(10px, env(safe-area-inset-left));
-    justify-content: center;
-    width: calc(var(--record-left-rail) - 20px - env(safe-area-inset-left));
-    padding: 2px;
-    transform: none;
-  }
-
-  .stage.play-mode:fullscreen .control-style-switch button,
-  .stage.play-mode:-webkit-full-screen .control-style-switch button,
-  .stage.play-mode.pseudo-fullscreen .control-style-switch button {
-    min-width: 0;
-    min-height: 27px;
-    padding: 3px 6px;
-    font-size: 9px;
-  }
+  .stage.play-mode.pseudo-fullscreen .touch-joystick { width: var(--record-joystick-size); }
 
   .stage.play-mode:fullscreen .touch-fire,
   .stage.play-mode:-webkit-full-screen .touch-fire,
