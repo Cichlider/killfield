@@ -540,15 +540,21 @@ canvas { display: block; width: 100%; height: auto; }
     z-index: 5;
     top: max(10px, env(safe-area-inset-top));
     left: max(10px, env(safe-area-inset-left));
-    width: calc(var(--record-left-rail) - 28px - env(safe-area-inset-left));
+    width: min(
+      156px,
+      calc(33.333vw - 20px),
+      calc(var(--record-left-rail) - 28px - env(safe-area-inset-left))
+    );
+    max-width: calc(33.333vw - 20px);
     margin: 0;
-    padding: 2px;
-    overflow: hidden;
+    padding: 7px 8px 8px;
+    overflow: clip;
+    contain: layout paint;
     color: #fff;
-    border: 0;
-    border-radius: 0;
-    background: transparent;
-    backdrop-filter: none;
+    border: 1px solid rgba(255,255,255,.12);
+    border-radius: 8px;
+    background: rgba(18,18,18,.78);
+    backdrop-filter: blur(5px);
   }
 
   .stage.play-mode:fullscreen .scoreboard,
@@ -557,17 +563,23 @@ canvas { display: block; width: 100%; height: auto; }
     display: flex;
     flex-direction: column;
     align-items: stretch;
+    width: 100%;
+    min-width: 0;
+    overflow: hidden;
     gap: 1px;
-    margin: 0;
+    margin: 0 0 5px;
   }
 
   .stage.play-mode:fullscreen .scoreboard .side,
   .stage.play-mode:-webkit-full-screen .scoreboard .side,
   .stage.play-mode.pseudo-fullscreen .scoreboard .side {
     display: grid;
-    grid-template-columns: 11px minmax(0, 1fr) auto;
+    grid-template-columns: 10px minmax(0, 1fr) minmax(1ch, auto);
     gap: 6px;
     width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
   }
 
   .stage.play-mode:fullscreen .side-right .swatch,
@@ -580,7 +592,10 @@ canvas { display: block; width: 100%; height: auto; }
 
   .stage.play-mode:fullscreen .side-score,
   .stage.play-mode:-webkit-full-screen .side-score,
-  .stage.play-mode.pseudo-fullscreen .side-score { justify-self: end; }
+  .stage.play-mode.pseudo-fullscreen .side-score {
+    min-width: 0;
+    justify-self: end;
+  }
 
   .stage.play-mode:fullscreen .swatch,
   .stage.play-mode:-webkit-full-screen .swatch,
@@ -615,7 +630,19 @@ canvas { display: block; width: 100%; height: auto; }
   .stage.play-mode.pseudo-fullscreen .roundline,
   .stage.play-mode:fullscreen .streakline,
   .stage.play-mode:-webkit-full-screen .streakline,
-  .stage.play-mode.pseudo-fullscreen .streakline { display: none; }
+  .stage.play-mode.pseudo-fullscreen .streakline {
+    display: block;
+    margin: 0;
+    overflow-wrap: anywhere;
+    color: rgba(255,255,255,.72);
+    font-size: clamp(9px, 1.15vw, 11px);
+    line-height: 1.3;
+    white-space: normal;
+  }
+
+  .stage.play-mode:fullscreen .roundline,
+  .stage.play-mode:-webkit-full-screen .roundline,
+  .stage.play-mode.pseudo-fullscreen .roundline { margin-bottom: 2px; }
 
   .stage.play-mode:fullscreen .stage-toolbar,
   .stage.play-mode:-webkit-full-screen .stage-toolbar,
