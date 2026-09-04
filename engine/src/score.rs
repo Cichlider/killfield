@@ -469,6 +469,77 @@ pub fn post_kill_survival_scores(g: &Game, me: usize, horizon: i32) -> Vec<f64> 
     scores
 }
 
+/// How many frames a dodge candidate is rolled forward. Cheap on purpose:
+/// `bench_survival` measures the whole 9-candidate sweep at ~7.4 µs, three
+/// times less than the observation encoder it feeds and nowhere near the
+/// 0.23 ms a real MPC decision costs — this deliberately never touches the
+/// ray-cast density field, only physics.
+pub const DODGE_HORIZON: i32 = 24;
+
+/// Per-candidate survival outlook for the 9 no-fire moves, as a clean
+/// `[-1, 1]` value for the observation rather than `post_kill_survival_scores`'
+/// own scale (tuned for combining with MPC's attack scoring, not for standing
+/// alone). Sign is the headline: negative means this candidate is rolled
+/// forward into a death, positive means it survives the whole horizon.
+/// Magnitude is the nuance — how much clearance if it survives, how long it
+/// bought if it doesn't.
+///
+/// Deliberately field-independent: no ray casting, no `DensityField`, just
+/// `me`'s own candidate rollout against bullets already in flight. That is
+/// what makes this cheap enough to run on every frame rather than only when
+/// MPC is the one deciding.
+pub fn dodge_safety(g: &Game, me: usize, horizon: i32) -> [f32; 9] {
+    // Every candidate here fires nothing (`apply_action` below hardcodes
+    // fire=0), so the only way a bullet can appear during the rollout is the
+    // *other* tank spawning one. With none already in flight and the other
+    // tank not currently holding the trigger, every candidate provably
+    // survives the whole horizon at full clearance — that is the answer
+    // whether or not we spend 9 x `horizon` frames of physics confirming it.
+    // The guard is conservative on purpose: it only ever skips work when the
+    // full simulation is guaranteed to agree, never the other way around, so
+    // a case this misses just falls through to the slow-but-always-correct
+    // path below rather than returning a wrong answer.
+    if g.bullets.iter().all(|b| b.removed) && !g.tanks[1 - me].fire {
+        return [1.0; 9];
+    }
+    let mut out = [0.0f32; 9];
+    for move_index in 0..9usize {
+        let a = CANDIDATES[move_index * 2];
+        let (throttle, turn) = (a[0], a[1]);
+        let mut sb = make_sandbox(g, me, OppModel::L1, 0);
+        apply_action(&mut sb, [throttle, turn, 0]);
+
+        let mut min_clearance = 8.0f64;
+        let mut survived = true;
+        let mut elapsed = 0i32;
+        while elapsed < horizon {
+            let events = sb.step();
+            if !sb.tanks[0].alive {
+                survived = false;
+                break;
+            }
+            for b in &sb.bullets {
+                let d = (b.x - sb.tanks[0].x).hypot(b.y - sb.tanks[0].y)
+                    / f64::max(sb.scale, 1e-6);
+                if d < min_clearance {
+                    min_clearance = d;
+                }
+            }
+            if sb.frozen || events.iter().any(|e| matches!(e, Event::RoundEnd(_))) {
+                break;
+            }
+            elapsed += 1;
+        }
+
+        out[move_index] = if survived {
+            (min_clearance / 8.0).clamp(0.0, 1.0) as f32
+        } else {
+            (-1.0 + 0.5 * (elapsed as f64 / horizon as f64)) as f32
+        };
+    }
+    out
+}
+
 pub fn argmax(values: &[f64]) -> usize {
     let mut best = 0usize;
     for i in 1..values.len() {
@@ -482,6 +553,7 @@ pub fn argmax(values: &[f64]) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::duel::{duel_game, Opponent};
 
     #[test]
     fn wall_contact_penalty_is_proportional_and_bounded() {
@@ -491,5 +563,39 @@ mod tests {
         assert_eq!(wall_contact_penalty(36, MPC_HORIZON), 300.0);
         assert_eq!(wall_contact_penalty(100, MPC_HORIZON), 300.0);
         assert_eq!(wall_contact_penalty(-1, MPC_HORIZON), 0.0);
+    }
+
+    #[test]
+    fn dodge_safety_short_circuits_when_nothing_can_reach_me() {
+        // Fresh round: no bullets, nobody holding fire. Every candidate must
+        // read as the same known-safe answer the full rollout would give,
+        // without this test proving anything about *how* it got there.
+        let game = duel_game(20260904, Opponent::Laika);
+        assert!(game.bullets.iter().all(|b| b.removed));
+        assert!(!game.tanks[1].fire);
+        assert_eq!(dodge_safety(&game, 0, DODGE_HORIZON), [1.0f32; 9]);
+    }
+
+    #[test]
+    fn a_held_trigger_next_door_is_not_waved_through_by_the_short_circuit() {
+        // Still zero bullets in flight *right now*, but the other tank is
+        // standing on top of mine with the trigger already down and a full
+        // magazine — a bullet is one engine frame away. The short-circuit
+        // must decline (its guard checks the trigger, not just the bullet
+        // list) and fall through to the real rollout, which should catch it.
+        let mut game = duel_game(20260904, Opponent::Laika);
+        assert!(game.bullets.iter().all(|b| b.removed));
+        let (x, y, rotation) = (game.tanks[0].x, game.tanks[0].y, game.tanks[0].rotation);
+        game.tanks[1].x = x;
+        game.tanks[1].y = y;
+        game.tanks[1].rotation = rotation + 180.0;
+        game.tanks[1].fire = true;
+        assert!(game.weapon_ready(1), "test setup needs a loaded opponent");
+
+        let out = dodge_safety(&game, 0, DODGE_HORIZON);
+        assert!(
+            out.iter().any(|&v| v < 1.0),
+            "point-blank with the trigger down should cost somebody clearance, got {out:?}"
+        );
     }
 }

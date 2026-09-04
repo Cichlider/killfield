@@ -1,8 +1,9 @@
 # Killfield
 
-Killfield 是一个用于 Tank Trouble 风格迷宫坦克对战的实时 MPC（Model Predictive
-Control）智能体。游戏引擎、物理、弹道和规划器使用 Rust 编写；网页加载同一份
-Rust/WASM 引擎，用来观看 Killfield 对战、亲自与它交手，以及观察 AI 自对弈。
+这是一个 Tank Trouble 风格的迷宫坦克智能体实验：**Killfield** 是实时 MPC
+规划器，**Hybrid** 是由 PPO 学得、并读取少量物理搜索特征的策略。游戏引擎、物理、
+弹道和规划器使用 Rust 编写；网页加载同一份 Rust/WASM 引擎，并在浏览器本地执行
+Hybrid 网络。
 
 **当前基准：** 512 rays 对固定 Laika 运行 2000 局（种子 `20262814–20264813`），
 取得 **1813 胜 / 92 负 / 95 双杀 / 0 超时，胜率 90.7%**。
@@ -11,6 +12,25 @@ Rust/WASM 引擎，用来观看 Killfield 对战、亲自与它交手，以及�
 上一版在同一批种子与射线数下为 1774 胜 / 122 负 / 103 双杀 / 1 超时（胜率 88.7%，
 最大零封 68）。差异来自 guidance 的来源准入（见下文）：负局 122 → 92，超时 1 → 0。
 
+### Hybrid 部署验收（2026-09-05）
+
+- **模型：** `outputs/ppo_duel_v16/s11/final.pt`，run step `29,982,720`，血统累计
+  `477,528,064`；网页导出为 `viewer/assets/hybrid.bin`。
+- **固定 Laika，恰好 100 局：** **91 胜 / 3 负 / 6 双亡 / 0 平局，胜率 91%**。
+- **观测：** schema 24，`1028` 个有界浮点数，加 `10` 位子弹 mask。依次为
+  `12×10×7` 迷宫栅格、16 墙射线、自身 12、对手 12、导航 10、双方瞄准辅助各 5、
+  `10×10` 子弹、威胁 3、回合阶段与时钟 4、上一动作 3、威胁弹数 1、更早动作 6、
+  动作变更率 1、九个 `dodge_safety` 以及连续原地计数 1。
+- **动作：** `Discrete(18)` = 3 种油门 × 3 种转向 × 是否开火；25 Hz 每帧决策，
+  不跳帧、不承诺固定动作时长。
+- **奖励：** 仅终局结算。10 秒内获胜 `+1.0`，10–30 秒对数衰减至 `+0.5`；
+  双亡 `-0.1`，失败与 30 秒平局 `-1.0`；另叠加动作变更率平滑分，≤13% 得
+  `+0.25`，之后对数衰减至 0。
+- **浏览器迁移校验：** PyTorch 与 JavaScript 固定输入最大 logit 误差
+  `9.54e-7`；修复历史帧时钟后，网页同 seed 诊断 100 局为 97/0/3，动作变更率
+  12.57%。这是部署一致性检查，不替代上面的固定 Laika 正式口径。
+- **行为审阅：** <https://cichlider.github.io/killfield/>。
+
 > 一句话概括：Killfield 通常每 4 帧重规划一次，在当前局面的沙盒副本中推演 18 个动作，
 > 计算每条未来轨迹的 score；终局结果立即返回，最后执行 score 最高的动作。
 
@@ -18,16 +38,14 @@ Rust/WASM 引擎，用来观看 Killfield 对战、亲自与它交手，以及�
 
 <https://cichlider.github.io/killfield/>
 
-Page 当前提供三种模式：
+Page 只保留两个入口：
 
-- **Watch it play**：观看 Killfield 对战固定脚本对手 Laika；
-- **Play against it**：使用键盘或手机触控轮盘亲自对战 Killfield；
-- **AI vs AI**：观看两个 Killfield MPC 智能体自对弈。
+- **Watch**：双方可独立选择 Laika / Hybrid / Killfield，默认 Hybrid vs Laika；
+- **Play**：玩家可选择 Laika / Hybrid / Killfield 作为对手，默认 Hybrid。保留瞬间转向、
+  轮盘区域规划、对手 0–3 帧延迟和开局停顿；默认延迟为 0 帧。
 
-页面还提供 512/256 射线精度、对手预测模型、可保存的摇杆前向对齐范围、玩家轮盘瞬间
-转向开关、实时 MPC telemetry 和参数面板。手机端支持横屏、全屏、左侧移动轮盘和右侧
-开火。游戏物理以 25 Hz（每帧 40 ms）运行，页面按显示器
-刷新率绘制并在相邻物理状态之间插值。
+Killfield 固定使用 512 射线，不开放内部调参。手机端支持横屏、全屏、左侧移动轮盘和右侧
+开火。游戏物理以 25 Hz（每帧 40 ms）运行，页面按显示器刷新率绘制并在相邻物理状态之间插值。
 
 玩家的移动输入按**该键在当前 40 ms 帧内实际按住的时长比例**采样，而不是在帧边界上取
 按下/未按下：按住 25 ms 得到 0.625，5 ms 的轻点得到 0.125，落在两次采样之间的短按不会
@@ -216,9 +234,9 @@ bash viewer/build.sh
 
 ```text
 engine/     Rust 游戏引擎、弹道密度场、MPC sandbox 与 score
-viewer/     GitHub Page、本地网页、手机控制和实时参数面板
+viewer/     GitHub Page、本地网页、Hybrid 浏览器推理与手机控制
 docs/       设计、开发记录与历史实验结论
-training/   暂存的 PPO 基础设施；不是当前 main 分支的开发重点
+training/   PPO 训练、评估与浏览器权重导出工具
 data/       当前无需离线数据
 outputs/    本地实验输出说明；checkpoint 默认不提交 Git
 ```
@@ -240,8 +258,8 @@ cargo run --release --manifest-path engine/Cargo.toml --bin bench_mpc -- 2000 51
 
 ## PPO 状态
 
-当前 `main` 到此结束 PPO 方向的探索，不在本 README 展开。后续 PPO 工作会从独立 branch
-重新开始，避免把训练实验与当前可运行、可解释的 Killfield MPC 混在一起。
+当前部署模型为上面验收的 Hybrid。训练仍在独立 `rl` 分支迭代；`main` 只接收冻结、验收过的
+权重和与其 schema 完全对应的浏览器运行时。
 
 ## License
 

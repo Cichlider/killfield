@@ -5,12 +5,23 @@
  * the wasm module is the same crate the trainer links, so what you watch is
  * byte-for-byte what training sees. This file pushes input into wasm, reads
  * the flat f32 render buffer straight out of wasm memory, draws it, and wires
- * the surrounding page (mode switches, tuning panel, sound, fullscreen, i18n).
+ * the surrounding page (mode switches, sound, fullscreen, i18n).
  *
- * The fixed-timestep loop, tuning schema, i18n strings, audio and input
- * handling are ported close to verbatim from killfield; only the points where
- * killfield talked to a JS `Game`/tank object now cross the wasm FFI instead
- * (see the doc comments on src/input.js and the tuning-push helper below).
+ * The fixed-timestep loop, i18n strings, audio and input handling are ported
+ * close to verbatim from killfield; only the points where killfield talked to
+ * a JS `Game`/tank object now cross the wasm FFI instead (see the doc
+ * comments on src/input.js and the tuning-push helper below).
+ *
+ * Two modes only:
+ *   - Watch: either seat is Laika, Hybrid, or Killfield (the MPC planner),
+ *     picked independently per seat. Laika and Killfield are driven inside
+ *     `kf_step` with no per-frame JS involvement; a Hybrid seat is driven
+ *     from here — see `driveHybridSeats()` — by running the exported policy
+ *     (src/hybrid.js) against the observation `kf_hybrid_observation` builds,
+ *     then handing the chosen action back with `kf_set_hybrid_action`.
+ *   - Play: you against Killfield, fixed. The four controls here are the only
+ *     tuning surface this page exposes; Killfield's own search parameters and
+ *     ray count (512, always) are not user-facing.
  */
 
 import * as C from "./src/constants.js";
@@ -19,18 +30,26 @@ import { Keyboard, TouchControls } from "./src/input.js";
 import { SoundEffects } from "./src/audio.js";
 import { Rng } from "./src/rng.js";
 import { interpolatePredictedPose, simulationBudget } from "./src/low-latency.js";
-import {
-  TUNING_SCHEMA, applyTuning, resetTuning, setTuning, tuning, tuningSnapshot,
-} from "./src/tuning.js";
+import { HybridPolicy } from "./src/hybrid.js";
 
 const STEP_MS = 1000 / C.FPS; // 40 ms
 const MAX_CATCHUP_MS = 250;
-const SELFPLAY_TIMEOUT_FRAMES = 30 * C.FPS;
 const STREAK_STORAGE_KEY = "killfield-streak";
-const TUNING_STORAGE_KEY = "killfield-ai-tuning";
 const INSTANT_TURN_STORAGE_KEY = "killfield-human-instant-turn";
 const OPENING_DELAY_STORAGE_KEY = "killfield-opening-delay-seconds";
+const REACTION_DELAY_STORAGE_KEY = "killfield-reaction-delay-frames";
 const DEFAULT_OPENING_DELAY_SECONDS = 0.5;
+const KILLFIELD_RAYS = 512;
+
+// engine/src/duel_obs.rs: the Hybrid observation is schema 24, 1028 semantic
+// floats then 10 bullet-mask floats. DODGE_OFFSET/DODGE_DIM are the 9-value
+// per-movement survival block `dodge_scale` biases the actor with — see
+// src/hybrid.js's `logits()`, which needs it as a separate argument because
+// that bias bypasses the shared trunk entirely.
+const HYBRID_OBS_DIM = 1028;
+const HYBRID_BULLET_SLOTS = 10;
+const HYBRID_DODGE_OFFSET = 1018;
+const HYBRID_DODGE_DIM = 9;
 
 // Render buffer layout, matching engine/src/wasm.rs's build_render() doc
 // comment: 18 header slots, then 120 paint flags (unused here — killfield has
@@ -45,31 +64,31 @@ const THEME = {
   wall: "#3F4550",
   bullet: "#101214",
   outline: "#08090B",
-  tanks: [
-    { base: "#17191C", turret: "#35383D" }, // tank 0: killfield AI
-    { base: "#9E101B", turret: "#D82432" }, // tank 1: player / Laika
-  ],
 };
-const WATCH_TANK_COLORS = [THEME.tanks[1], THEME.tanks[0]];
+// Exactly two colours, by role rather than by tank index — a seat can be any
+// controller in Watch mode, so "tank 0 is always killfield" no longer holds.
+// Laika can only ever be selected on the "black" side (see index.html's
+// controller-0, which has no Laika option), so this pairing is enforced by
+// the option lists, not by a runtime rule that would need to override a
+// seat's colour depending on who happens to be in it.
+const ROLE_COLORS = {
+  red: { base: "#9E101B", turret: "#D82432" },
+  black: { base: "#17191C", turret: "#35383D" },
+};
+const CONTROLLER_NAMES = { killfield: "Killfield", laika: "Laika", hybrid: "Hybrid" };
 
-// Tank 0 is always killfield. Only watch mode puts classic-black Laika in
-// tank 1, so that presentation swaps the two colours without changing either
-// tank's engine identity. Play and self-play keep the default number palette.
-function tankColorsForMode(mode) {
-  return mode === "watch" ? WATCH_TANK_COLORS : THEME.tanks;
+/** Which role (red/black) each tank plays this mode. Watch: seat 0 (Left) is
+ *  always red, seat 1 (Right) always black. Play: the human is red (the
+ *  original "player" colour), the selectable opponent is black — matching
+ *  the original Killfield-is-black convention regardless of which of the
+ *  three controllers is standing in for it. */
+function roleForSeat(seat) {
+  if (mode === "play") return seat === 1 ? "red" : "black";
+  return seat === 0 ? "red" : "black";
 }
-
-const DECISION_NAMES = [
-  "hold", "plan", "plan:fire", "post_kill_hold", "post_kill_plan", "own_bullet_guard",
-];
-
-// The agent always drives tank 0. In watch mode the scripted opponent (kf_new's
-// laika_mask) drives tank 1; in play mode you do; in self-play a second MPC
-// agent does.
 const MODES = {
   watch: { humanTank: null },
   play: { humanTank: 1 },
-  selfplay: { humanTank: null },
 };
 
 // ---------------------------------------------------------------- DOM refs
@@ -79,47 +98,33 @@ const streakline = document.getElementById("streakline");
 const nameLabels = [0, 1].map((i) => document.getElementById(`name-${i}`));
 const scoreLabels = [0, 1].map((i) => document.getElementById(`score-${i}`));
 const swatches = [0, 1].map((i) => document.getElementById(`swatch-${i}`));
-const telemetryBox = document.getElementById("telemetry");
-const keyhelp = document.getElementById("keyhelp");
 const rerollButton = document.getElementById("reroll");
 const resetScoreButton = document.getElementById("reset-score");
 const instantTurnButton = document.getElementById("instant-turn");
-const seedInput = document.getElementById("seed");
-const raysSelect = document.getElementById("rays");
 const forwardAlignmentInput = document.getElementById("forward-alignment");
 const forwardAlignmentLabel = document.getElementById("forward-alignment-label");
 const forwardAlignmentValue = document.getElementById("forward-alignment-value");
-const matchSettingsPanel = document.getElementById("match-settings-panel");
-const matchSettingsTitle = document.getElementById("match-settings-title");
+const watchConfig = document.getElementById("watch-config");
+const playConfig = document.getElementById("play-config");
+const watchLeftLabel = document.getElementById("watch-left-label");
+const watchRightLabel = document.getElementById("watch-right-label");
+const controllerSelects = [0, 1].map((i) => document.getElementById(`controller-${i}`));
+const playOpponentSelect = document.getElementById("play-opponent");
+const playOpponentLabel = document.getElementById("play-opponent-label");
+const reactionDelaySelect = document.getElementById("reaction-delay");
+const reactionDelayLabel = document.getElementById("reaction-delay-label");
+const reactionDelayField = document.getElementById("reaction-delay-field");
 const openingDelayInput = document.getElementById("opening-delay");
 const openingDelayLabel = document.getElementById("opening-delay-label");
 const openingDelayValue = document.getElementById("opening-delay-value");
-const openingDelayHint = document.getElementById("opening-delay-hint");
-const oppModelSelect = document.getElementById("oppmodel");
-const oppModelHint = document.getElementById("oppmodel-hint");
+const openingDelayField = document.getElementById("opening-delay-field");
 const watchButton = document.getElementById("mode-watch");
 const playButton = document.getElementById("mode-play");
-const selfplayButton = document.getElementById("mode-selfplay");
 const stage = document.getElementById("stage");
 const pauseButton = document.getElementById("pause");
 const soundButton = document.getElementById("sound");
 const fullscreenButton = document.getElementById("fullscreen");
 const langToggle = document.getElementById("lang-toggle");
-const tagline = document.getElementById("tagline");
-const seedLabel = document.getElementById("seed-label");
-const raysLabel = document.getElementById("rays-label");
-const rays512 = document.getElementById("rays-512");
-const rays256 = document.getElementById("rays-256");
-const oppModelLabel = document.getElementById("oppmodel-label");
-const oppModelLaikaOption = document.getElementById("oppmodel-laika");
-const oppModelHumanOption = document.getElementById("oppmodel-human");
-const note = document.getElementById("note");
-const tuningEyebrow = document.getElementById("tuning-eyebrow");
-const tuningTitle = document.getElementById("tuning-title");
-const tuningDescription = document.getElementById("tuning-description");
-const tuningControls = document.getElementById("tuning-controls");
-const tuningResetButton = document.getElementById("tuning-reset");
-const tuningStatus = document.getElementById("tuning-status");
 const touchControlsRoot = document.getElementById("touch-controls");
 const touchVisibilityButton = document.getElementById("touch-visibility");
 const orientationHint = document.getElementById("orientation-hint");
@@ -134,10 +139,17 @@ let touchFirePressed = false;
 let immediateFirePressed = false;
 
 let wasm = null;
+let hybridPolicy = null;
 let scratchPtr = null;
 let openingDelaySeconds = DEFAULT_OPENING_DELAY_SECONDS;
 try {
   openingDelaySeconds = normaliseOpeningDelay(localStorage.getItem(OPENING_DELAY_STORAGE_KEY));
+} catch {
+  // Keep the default when browser storage is unavailable.
+}
+let reactionDelayFrames = 0;
+try {
+  reactionDelayFrames = normaliseReactionDelay(localStorage.getItem(REACTION_DELAY_STORAGE_KEY));
 } catch {
   // Keep the default when browser storage is unavailable.
 }
@@ -147,6 +159,12 @@ function normaliseOpeningDelay(raw) {
   const value = Number(raw);
   if (!Number.isFinite(value)) return DEFAULT_OPENING_DELAY_SECONDS;
   return Math.max(0, Math.min(3, Math.round(value * 10) / 10));
+}
+
+function normaliseReactionDelay(raw) {
+  const value = Number(raw);
+  if (!Number.isInteger(value)) return 0;
+  return Math.max(0, Math.min(3, value));
 }
 
 function openingDelayFrameCount() {
@@ -234,15 +252,6 @@ function interpolateAngle(from, to, alpha) {
   if (delta > 180) delta -= 360;
   else if (delta <= -180) delta += 360;
   return from + delta * alpha;
-}
-
-/** 12 f32 of scratch, written by wasm and copied straight back out. */
-function agentInfo(tank) {
-  const out = new Float32Array(12);
-  if (scratchPtr === null || handle === null) return out;
-  wasm.kf_agent_info(handle, tank, scratchPtr);
-  out.set(new Float32Array(wasm.memory.buffer, scratchPtr, 12));
-  return out;
 }
 
 // ------------------------------------------------------------------ render
@@ -405,12 +414,6 @@ function playSoundsForFlags(flags) {
 let lang = loadLang();
 function t() { return STRINGS[lang]; }
 
-function opponentLabel() {
-  if (mode === "watch") return "Laika";
-  if (mode === "selfplay") return "killfield AI";
-  return t().nameYou;
-}
-
 function loadStreak() {
   try {
     const raw = localStorage.getItem(STREAK_STORAGE_KEY);
@@ -434,109 +437,6 @@ function saveStreak() {
   }
 }
 
-function loadTuningPreferences() {
-  try {
-    const raw = localStorage.getItem(TUNING_STORAGE_KEY);
-    if (raw) applyTuning(JSON.parse(raw));
-  } catch {
-    // Invalid or unavailable local storage falls back to committed defaults.
-  }
-}
-
-function saveTuningPreferences() {
-  try {
-    localStorage.setItem(TUNING_STORAGE_KEY, JSON.stringify(tuningSnapshot()));
-  } catch {
-    // Live tuning still works for this session when persistence is unavailable.
-  }
-}
-
-function tuningDecimals(step) {
-  const text = String(step);
-  return text.includes(".") ? text.length - text.indexOf(".") - 1 : 0;
-}
-
-function formatTuningValue(spec, value) {
-  return Number(value).toFixed(tuningDecimals(spec.step));
-}
-
-/** Every tank index that currently has an MPC agent attached (see newGame). */
-let mpcTanks = [];
-
-/** Push the full current tuning snapshot to every attached agent. Needed
- *  after newGame() (kf_attach_mpc resets tuning to Tuning::default()) and
- *  after any tuning-panel edit. */
-function pushTuningToEngine() {
-  if (!wasm || handle === null) return;
-  for (const tankIndex of mpcTanks) {
-    for (let i = 0; i < TUNING_SCHEMA.length; i++) {
-      wasm.kf_set_tuning(handle, tankIndex, i, tuning[TUNING_SCHEMA[i].key]);
-    }
-  }
-}
-
-function renderTuningPanel() {
-  const copy = t().tuning;
-  tuningEyebrow.textContent = copy.eyebrow;
-  tuningTitle.textContent = copy.title;
-  tuningDescription.textContent = copy.description;
-  tuningResetButton.textContent = copy.reset;
-  tuningStatus.textContent = copy.status;
-  tuningControls.innerHTML = "";
-
-  for (const groupName of ["navigation", "fire", "safety"]) {
-    const fieldset = document.createElement("fieldset");
-    fieldset.className = "tuning-group";
-    const legend = document.createElement("legend");
-    legend.textContent = copy.groups[groupName];
-    fieldset.appendChild(legend);
-
-    for (const spec of TUNING_SCHEMA.filter((item) => item.group === groupName)) {
-      const control = document.createElement("div");
-      control.className = "tuning-control";
-      const label = document.createElement("label");
-      label.className = "tuning-label";
-      label.htmlFor = `tuning-range-${spec.key}`;
-      label.textContent = copy.labels[spec.key];
-
-      const inputs = document.createElement("div");
-      inputs.className = "tuning-inputs";
-      const range = document.createElement("input");
-      range.id = `tuning-range-${spec.key}`;
-      range.type = "range";
-      range.min = String(spec.min);
-      range.max = String(spec.max);
-      range.step = String(spec.step);
-      range.value = String(tuning[spec.key]);
-      range.setAttribute("aria-label", copy.labels[spec.key]);
-
-      const number = document.createElement("input");
-      number.type = "number";
-      number.min = String(spec.min);
-      number.max = String(spec.max);
-      number.step = String(spec.step);
-      number.value = formatTuningValue(spec, tuning[spec.key]);
-      number.setAttribute("aria-label", copy.labels[spec.key]);
-
-      const update = (raw, persist) => {
-        const value = setTuning(spec.key, raw);
-        range.value = String(value);
-        number.value = formatTuningValue(spec, value);
-        pushTuningToEngine();
-        if (persist) saveTuningPreferences();
-      };
-      range.addEventListener("input", () => update(range.value, false));
-      range.addEventListener("change", () => update(range.value, true));
-      number.addEventListener("change", () => update(number.value, true));
-
-      inputs.append(range, number);
-      control.append(label, inputs);
-      fieldset.appendChild(control);
-    }
-    tuningControls.appendChild(fieldset);
-  }
-}
-
 function syncForwardAlignmentControl() {
   const forward = touchControls.forwardAlignmentDegrees;
   const reverse = 360 - forward;
@@ -549,12 +449,20 @@ function syncForwardAlignmentControl() {
   );
 }
 
+function syncReactionDelayControl() {
+  const s = t();
+  reactionDelayLabel.textContent = s.reactionDelayLabel;
+  reactionDelaySelect.querySelectorAll("option").forEach((option, i) => {
+    option.textContent = s.reactionDelayOptions[i];
+  });
+  reactionDelaySelect.value = String(reactionDelayFrames);
+  reactionDelaySelect.setAttribute("aria-label", s.reactionDelayLabel);
+}
+
 function syncOpeningDelayControl() {
   const s = t();
-  matchSettingsTitle.textContent = s.matchSettingsTitle;
   openingDelayLabel.textContent = s.openingDelayLabel;
   openingDelayValue.textContent = s.openingDelayValue(openingDelaySeconds);
-  openingDelayHint.textContent = s.openingDelayHint;
   openingDelayInput.value = String(openingDelaySeconds);
   openingDelayInput.setAttribute(
     "aria-label", `${s.openingDelayLabel}: ${s.openingDelayValue(openingDelaySeconds)}`,
@@ -566,29 +474,20 @@ function applyLanguage() {
   document.documentElement.lang = s.htmlLang;
   langToggle.textContent = s.langToggleLabel;
   langToggle.setAttribute("aria-label", s.langToggleAria);
-  tagline.textContent = s.tagline;
   watchButton.textContent = s.modeWatch;
   playButton.textContent = s.modePlay;
-  selfplayButton.textContent = s.modeSelfplay;
+  watchLeftLabel.textContent = s.watchLeftLabel;
+  watchRightLabel.textContent = s.watchRightLabel;
+  playOpponentLabel.textContent = s.opponentLabel;
   rerollButton.textContent = s.reroll;
   resetScoreButton.textContent = s.resetScore;
   syncInstantTurnButton();
-  seedLabel.textContent = s.seedLabel;
-  raysLabel.textContent = s.raysLabel;
-  rays512.textContent = s.rays512;
-  rays256.textContent = s.rays256;
   syncForwardAlignmentControl();
+  syncReactionDelayControl();
   syncOpeningDelayControl();
-  oppModelLabel.textContent = s.oppModelLabel;
-  oppModelLaikaOption.textContent = s.oppModelLaika;
-  oppModelHumanOption.textContent = s.oppModelHuman;
-  oppModelHint.textContent = s.oppModelHint;
-  keyhelp.innerHTML = s.keyhelpHtml;
   touchControls.setLabels(s.touchControls);
-  note.textContent = s.note;
   orientationTitle.textContent = s.orientationTitle;
   orientationBody.textContent = s.orientationBody;
-  renderTuningPanel();
   syncFullscreenButton();
   syncPauseButton();
   syncSoundButton();
@@ -602,20 +501,37 @@ let handle = null;
 let paused = false;
 let currentRound = 1;
 let frozen = false;
-const SELFPLAY_TIMEOUT_MS = SELFPLAY_TIMEOUT_FRAMES; // frames, matches C.FPS-based clock below
 let roundFrames = 0;
 let killfieldDelayFrames = 0;
 let previousRenderState = null;
+/** Watch-mode controller assignment per seat, refreshed by newGame(). */
+let seatController = ["hybrid", "laika"];
+/** Seats a Hybrid policy must drive this tick — see driveHybridSeats(). */
+let hybridSeats = [];
+/** One pending-action queue per Hybrid seat, for the Play-mode opponent
+ *  delay — mirrors kf_set_mpc_delay's semantics for Killfield exactly, since
+ *  the engine has no equivalent hook for a JS-driven seat. */
+let hybridQueues = {};
+const HYBRID_NEUTRAL_ACTION = 8; // stationary, no fire — CANDIDATES[1*6 + 1*2 + 0]
 
 // Match score and win streak are tallied here, outside the engine: rebuilding
-// the handle via kf_new (reroll, seed/rays/oppmodel change) resets the
+// the handle via kf_new (reroll or mode/controller change) resets the
 // engine's own internal scores to 0. Only an explicit mode switch or the
 // reset button clears our own tally on purpose.
 let matchScore = [0, 0];
 let streak = loadStreak();
 
+function controllerForSeat(seat) {
+  return mode === "play" ? (seat === 1 ? "human" : playOpponentSelect.value) : seatController[seat];
+}
+
 function activeTankColors() {
-  return tankColorsForMode(mode);
+  return [0, 1].map((seat) => ROLE_COLORS[roleForSeat(seat)]);
+}
+
+function seatDisplayName(seat) {
+  const c = controllerForSeat(seat);
+  return c === "human" ? t().nameYou : CONTROLLER_NAMES[c];
 }
 
 function syncTeamColors() {
@@ -646,36 +562,63 @@ function applyRoundEnd(winner) {
   saveStreak();
 }
 
+/** Neither delay control has any effect on Laika, which kf_step drives
+ *  unconditionally — hide both rather than let them sit there inert. */
+function syncPlayOpponentControls() {
+  const hideDelays = mode === "play" && playOpponentSelect.value === "laika";
+  reactionDelayField.hidden = hideDelays;
+  openingDelayField.hidden = hideDelays;
+}
+
+function openingDelayApplies() {
+  return mode === "play" && playOpponentSelect.value !== "laika";
+}
+
 function newGame() {
-  const raw = seedInput.value.trim();
-  const parsed = Number(raw);
-  // kf_new always wants a concrete seed; a blank box means "fresh random maze
-  // every time" rather than "null", so roll one here without writing it back.
-  const seed = (raw === "" || !Number.isFinite(parsed))
-    ? (Math.random() * 0xffffffff) >>> 0
-    : (parsed >>> 0);
-
+  const seed = (Math.random() * 0xffffffff) >>> 0;
   if (handle !== null) wasm.kf_free(handle);
-  const laikaMask = mode === "watch" ? 2 : 0;
-  handle = wasm.kf_new(seed, laikaMask);
 
-  const rayCount = Number(raysSelect.value);
-  const oppL1 = oppModelSelect.value === "L1" ? 1 : 0;
-  if (mode === "selfplay") {
-    wasm.kf_attach_mpc(handle, 0, 7, rayCount, oppL1);
-    wasm.kf_attach_mpc(handle, 1, 11, rayCount, oppL1);
-    mpcTanks = [0, 1];
+  syncPlayOpponentControls();
+  hybridQueues = {};
+  if (mode === "play") {
+    // Tank 1 is always the human; tank 0 is whichever opponent is selected.
+    // The planner's opponent model must be honest here — a human is not
+    // Laika's script — so opp_l1 is always on when Killfield is playing.
+    const opponent = playOpponentSelect.value;
+    handle = wasm.kf_new(seed, opponent === "laika" ? 1 : 0);
+    hybridSeats = opponent === "hybrid" ? [0] : [];
+    if (opponent === "killfield") wasm.kf_attach_mpc(handle, 0, 7, KILLFIELD_RAYS, 1);
   } else {
-    // watch and play both put a single MPC agent on tank 0.
-    wasm.kf_attach_mpc(handle, 0, 7, rayCount, oppL1);
-    mpcTanks = [0];
+    seatController = controllerSelects.map((select) => select.value);
+    let laikaMask = 0;
+    seatController.forEach((c, i) => { if (c === "laika") laikaMask |= (1 << i); });
+    handle = wasm.kf_new(seed, laikaMask);
+    hybridSeats = [];
+    seatController.forEach((c, i) => {
+      if (c === "killfield") {
+        // Only Laika's script is worth simulating exactly; a Hybrid or
+        // another Killfield opponent gets the honest "assume it holds its
+        // current buttons" model instead.
+        const otherIsLaika = seatController[1 - i] === "laika";
+        wasm.kf_attach_mpc(handle, i, i === 0 ? 7 : 11, KILLFIELD_RAYS, otherIsLaika ? 0 : 1);
+      } else if (c === "hybrid") {
+        hybridSeats.push(i);
+      }
+    });
   }
-  pushTuningToEngine();
+  syncTeamColors();
 
-  // In human play the world and human controls start immediately. Only tank 0's
-  // MPC waits, giving the player genuine reaction/movement time.
-  killfieldDelayFrames = mode === "play" ? openingDelayFrameCount() : 0;
-  wasm.kf_set_mpc_enabled(handle, 0, killfieldDelayFrames === 0 ? 1 : 0);
+  // In human play the world and human controls start immediately. Only the
+  // opponent's tank waits, giving the player genuine reaction/movement time;
+  // the same seat also carries the configurable reaction delay. Laika has
+  // neither hook — the engine drives it unconditionally inside kf_step — so
+  // both controls are hidden for that choice (see syncPlayOpponentControls).
+  const playsAsKillfield = mode === "play" && playOpponentSelect.value === "killfield";
+  killfieldDelayFrames = openingDelayApplies() ? openingDelayFrameCount() : 0;
+  if (playsAsKillfield) {
+    wasm.kf_set_mpc_enabled(handle, 0, killfieldDelayFrames === 0 ? 1 : 0);
+    wasm.kf_set_mpc_delay(handle, 0, reactionDelayFrames);
+  }
   roundFrames = 0;
   previousRenderState = captureRenderState(renderBuffer());
   const buf = renderBuffer();
@@ -685,15 +628,13 @@ function newGame() {
 
 function setMode(next) {
   mode = next;
-  syncTeamColors();
   keyboard.clear();
   touchControls.clear();
   watchButton.classList.toggle("active", next === "watch");
   playButton.classList.toggle("active", next === "play");
-  selfplayButton.classList.toggle("active", next === "selfplay");
-  keyhelp.style.display = next === "play" ? "" : "none";
+  watchConfig.hidden = next !== "watch";
+  playConfig.hidden = next !== "play";
   touchControls.setAvailable(next === "play");
-  matchSettingsPanel.hidden = next !== "play";
   syncInstantTurnButton();
   // A mode switch changes who tank 1 even is, so treat it as a fresh match.
   matchScore = [0, 0];
@@ -704,7 +645,6 @@ function setMode(next) {
 
 function syncInstantTurnButton() {
   const s = t();
-  instantTurnButton.hidden = mode !== "play";
   instantTurnButton.classList.toggle("active", instantTurn);
   instantTurnButton.textContent = instantTurn ? s.instantTurnOn : s.instantTurnOff;
   instantTurnButton.setAttribute("aria-label", s.instantTurnAria);
@@ -721,17 +661,13 @@ function toggleInstantTurn() {
 function updateScoreboard() {
   if (handle === null) return;
   const s = t();
-  const labels = ["killfield AI", opponentLabel()];
   for (let i = 0; i < 2; i++) {
-    if (nameLabels[i].textContent !== labels[i]) nameLabels[i].textContent = labels[i];
+    const label = seatDisplayName(i);
+    if (nameLabels[i].textContent !== label) nameLabels[i].textContent = label;
     const score = String(matchScore[i]);
     if (scoreLabels[i].textContent !== score) scoreLabels[i].textContent = score;
   }
   let text = frozen ? s.roundOver(currentRound) : s.round(currentRound);
-  if (mode === "selfplay" && !frozen) {
-    const left = Math.max(0, SELFPLAY_TIMEOUT_MS - roundFrames) / C.FPS;
-    text += ` · ${left.toFixed(0)}s`;
-  }
   if (mode === "play" && killfieldDelayFrames > 0 && !frozen) {
     text += ` · ${s.openingDelayCountdown(killfieldDelayFrames / C.FPS)}`;
   }
@@ -741,32 +677,43 @@ function updateScoreboard() {
   if (streakline.textContent !== streakText) streakline.textContent = streakText;
 }
 
-let telemetryTick = 0;
-
-function updateTelemetry() {
-  // Throttled: this is a debug readout, not part of the frame budget.
-  if (telemetryTick++ % 10 !== 0) return;
-  const s = t();
-  const info = agentInfo(0);
-  if (info[3] < 0) {
-    telemetryBox.innerHTML = "";
-    return;
+/** Run the Hybrid policy for every seat assigned to it and hand its action
+ *  back to the engine, before kf_step consumes this frame's controls. */
+function driveHybridSeats() {
+  if (hybridPolicy === null) return;
+  // Mirrors kf_step's own agent_queue/agent_delay handling for a Killfield
+  // seat (see engine/src/wasm.rs) so the Play-mode opponent delay behaves
+  // identically whether the opponent is Killfield or Hybrid: while the
+  // opening pause holds, nothing is planned or queued and the seat sits
+  // neutral; once it lifts, actions are pushed to a FIFO and only the
+  // oldest one is actuated once the queue is deep enough.
+  const opponentPaused = mode === "play" && killfieldDelayFrames > 0;
+  for (const seat of hybridSeats) {
+    if (opponentPaused) {
+      wasm.kf_set_hybrid_action(handle, seat, HYBRID_NEUTRAL_ACTION);
+      continue;
+    }
+    const ptr = wasm.kf_hybrid_observation(handle, seat);
+    const len = wasm.kf_hybrid_observation_len();
+    const buf = new Float32Array(wasm.memory.buffer, ptr, len);
+    const mask = new Array(HYBRID_BULLET_SLOTS);
+    for (let i = 0; i < HYBRID_BULLET_SLOTS; i++) mask[i] = buf[HYBRID_OBS_DIM + i] > 0.5;
+    const dodge = buf.subarray(HYBRID_DODGE_OFFSET, HYBRID_DODGE_OFFSET + HYBRID_DODGE_DIM);
+    const rawAction = hybridPolicy.act(buf, mask, dodge);
+    let action = rawAction;
+    if (mode === "play") {
+      const queue = hybridQueues[seat] || (hybridQueues[seat] = []);
+      queue.push(rawAction);
+      action = queue.length > reactionDelayFrames ? queue.shift() : HYBRID_NEUTRAL_ACTION;
+    }
+    wasm.kf_set_hybrid_action(handle, seat, action);
   }
-  const decision = DECISION_NAMES[info[3]] ?? "?";
-  const rows = [
-    [s.telemetryLabels.decision, decision],
-    [s.telemetryLabels.planP95, s.telemetryValue.planP95(info[5].toFixed(1))],
-    [s.telemetryLabels.fieldBuilds, s.telemetryValue.fieldBuilds(info[7], info[8].toFixed(1))],
-    [s.telemetryLabels.huntChain, s.telemetryValue.huntChain(info[6], info[9].toFixed(0))],
-    [s.telemetryLabels.ownBulletGuard, info[10]],
-    [s.telemetryLabels.stuckEvents, info[11]],
-  ];
-  telemetryBox.innerHTML = rows.map(([k, v]) => `<div>${k} <b>${v}</b></div>`).join("");
 }
 
 function tick() {
-  // kf_step drives any attached MPC agent internally, so unlike killfield's
-  // JS loop this only needs to push human input before stepping.
+  // kf_step drives any attached Laika/MPC agent internally, so unlike
+  // killfield's JS loop this only needs to push human input and any Hybrid
+  // seat's chosen action before stepping.
   const human = MODES[mode].humanTank;
   if (human !== null) {
     // Movement is the share of this 40 ms frame each key was really held, so a
@@ -784,30 +731,26 @@ function tick() {
       previousRenderState.tanks[human].rotation = snappedRotation;
     }
   }
+  driveHybridSeats();
   roundFrames += 1;
   const flags = wasm.kf_step(handle);
   playSoundsForFlags(flags);
   const buf = renderBuffer();
   currentRound = buf[9];
   frozen = buf[14] > 0.5;
+  const playsAsKillfield = mode === "play" && playOpponentSelect.value === "killfield";
   if (flags & 1) { // new_round
     roundFrames = 0;
-    killfieldDelayFrames = mode === "play" ? openingDelayFrameCount() : 0;
-    wasm.kf_set_mpc_enabled(handle, 0, killfieldDelayFrames === 0 ? 1 : 0);
+    hybridQueues = {};
+    killfieldDelayFrames = openingDelayApplies() ? openingDelayFrameCount() : 0;
+    if (playsAsKillfield) wasm.kf_set_mpc_enabled(handle, 0, killfieldDelayFrames === 0 ? 1 : 0);
   }
   if (mode === "play" && killfieldDelayFrames > 0 && !(flags & 1)) {
     killfieldDelayFrames -= 1;
-    if (killfieldDelayFrames === 0) wasm.kf_set_mpc_enabled(handle, 0, 1);
+    if (killfieldDelayFrames === 0 && playsAsKillfield) wasm.kf_set_mpc_enabled(handle, 0, 1);
   }
   if (flags & 64) { // round_end
     applyRoundEnd(buf[15]);
-  }
-  // Two copies of the same policy can circle each other indefinitely. The
-  // engine exposes no "new round without a new maze" call, so the watchdog
-  // falls back to a full newGame() — this reshuffles the maze when the seed
-  // box is blank, unlike killfield's exact same-maze restart. See README/report.
-  if (mode === "selfplay" && !frozen && roundFrames >= SELFPLAY_TIMEOUT_FRAMES) {
-    newGame();
   }
 }
 
@@ -875,7 +818,6 @@ function frame(now) {
   const localPlayer = predictHumanForRender(buf, renderAlpha);
   draw(buf, activeTankColors(), previousRenderState, renderAlpha, localPlayer);
   updateScoreboard();
-  updateTelemetry();
   requestAnimationFrame(frame);
 }
 
@@ -999,13 +941,16 @@ function toggleLanguage() {
 // -------------------------------------------------------------------- boot
 
 async function boot() {
-  const res = await fetch("kf_engine.wasm?v=e4e6909c");
-  const { instance } = await WebAssembly.instantiate(await res.arrayBuffer(), {});
-  wasm = instance.exports;
+  const [wasmResult, hybrid] = await Promise.all([
+    fetch("kf_engine.wasm?v=7aea2a29").then((res) => res.arrayBuffer())
+      .then((bytes) => WebAssembly.instantiate(bytes, {})),
+    HybridPolicy.load(),
+  ]);
+  wasm = wasmResult.instance.exports;
+  hybridPolicy = hybrid;
   scratchPtr = wasm.kf_scratch_ptr();
-  const paramCount = wasm.kf_tuning_param_count();
-  if (paramCount !== TUNING_SCHEMA.length) {
-    throw new Error(`Tuning schema mismatch: wasm reports ${paramCount}, viewer has ${TUNING_SCHEMA.length}`);
+  if (wasm.kf_hybrid_schema_version() !== 24 || wasm.kf_hybrid_observation_len() !== HYBRID_OBS_DIM + HYBRID_BULLET_SLOTS) {
+    throw new Error("Hybrid observation layout mismatch between engine and viewer");
   }
 
   fullscreenButton.addEventListener("click", toggleFullscreen);
@@ -1028,11 +973,18 @@ async function boot() {
   instantTurnButton.addEventListener("click", toggleInstantTurn);
   pauseButton.addEventListener("click", () => { togglePause(); pauseButton.blur(); });
   soundButton.addEventListener("click", () => { toggleSound(); soundButton.blur(); });
-  seedInput.addEventListener("change", newGame);
-  raysSelect.addEventListener("change", newGame);
+  controllerSelects.forEach((select) => select.addEventListener("change", newGame));
+  playOpponentSelect.addEventListener("change", newGame);
   forwardAlignmentInput.addEventListener("input", () => {
     touchControls.setForwardAlignmentDegrees(forwardAlignmentInput.value);
     syncForwardAlignmentControl();
+  });
+  reactionDelaySelect.addEventListener("change", () => {
+    reactionDelayFrames = normaliseReactionDelay(reactionDelaySelect.value);
+    try {
+      localStorage.setItem(REACTION_DELAY_STORAGE_KEY, String(reactionDelayFrames));
+    } catch { /* optional */ }
+    if (handle !== null && mode === "play") wasm.kf_set_mpc_delay(handle, 0, reactionDelayFrames);
   });
   openingDelayInput.addEventListener("input", () => {
     openingDelaySeconds = normaliseOpeningDelay(openingDelayInput.value);
@@ -1041,21 +993,8 @@ async function boot() {
     } catch { /* optional */ }
     syncOpeningDelayControl();
   });
-  oppModelSelect.addEventListener("change", newGame);
-  tuningResetButton.addEventListener("click", () => {
-    resetTuning();
-    pushTuningToEngine();
-    try {
-      localStorage.removeItem(TUNING_STORAGE_KEY);
-    } catch {
-      // Defaults still apply immediately when storage is unavailable.
-    }
-    renderTuningPanel();
-    tuningResetButton.blur();
-  });
   watchButton.addEventListener("click", () => setMode("watch"));
   playButton.addEventListener("click", () => setMode("play"));
-  selfplayButton.addEventListener("click", () => setMode("selfplay"));
   langToggle.addEventListener("click", toggleLanguage);
   window.addEventListener("resize", () => {
     renderer.resize();
@@ -1067,11 +1006,6 @@ async function boot() {
   window.addEventListener("pointerdown", () => sounds.unlock(), { once: true, capture: true });
   window.addEventListener("keydown", () => sounds.unlock(), { once: true, capture: true });
 
-  loadTuningPreferences();
-  // The 256-ray option already exists specifically for mobile. Selecting it
-  // by default prevents synchronous AI planning from starving display
-  // refreshes; players can still choose the 512-ray maximum manually.
-  if (window.matchMedia?.("(pointer: coarse)").matches) raysSelect.value = "256";
   setMode("watch");
   applyLanguage();
   requestAnimationFrame(frame);
@@ -1080,6 +1014,7 @@ async function boot() {
 boot().catch((err) => {
   document.body.insertAdjacentHTML("afterbegin",
     `<pre style="color:#a13a3a;padding:16px">Failed to load: ${err}\n\n`
-    + `Must be served over HTTP (not file://), with kf_engine.wasm next to index.html.\n`
+    + `Must be served over HTTP (not file://), with kf_engine.wasm and `
+    + `assets/hybrid.{json,bin} next to index.html.\n`
     + `Run: bash viewer/build.sh, then: cd viewer && python3 -m http.server 8000</pre>`);
 });

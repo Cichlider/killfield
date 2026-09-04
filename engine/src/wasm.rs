@@ -10,16 +10,52 @@
 //! to wasm rather than keeping a second engine in JS.
 
 use crate::directional::{apply_direction, apply_human_direction};
+use crate::duel::{apply_duel_action, inflated_boxes, DUEL_ACTIONS};
+use crate::duel_obs::{
+    encode as encode_duel, DuelObservation, SeatHistory, BULLET_SLOTS as DUEL_BULLET_SLOTS,
+    DODGE_DIM, DODGE_OFFSET, OBS_DIM as DUEL_OBS_DIM, OBS_SCHEMA_VERSION,
+};
 use crate::game::{Event, Game};
 use crate::reward::{
     RewardConfig, RewardTracker, CH_STYLE, CH_TERMINAL, REWARD_CHANNELS, REWARD_INFO_LEN,
 };
 use crate::sandbox::{preview_human_input, OppModel};
+use crate::score::{dodge_safety, DODGE_HORIZON};
 use crate::semantic_obs::{
     encode as encode_semantic, SemanticObsState, SemanticObservation, BULLET_SLOTS, OBS_DIM,
 };
 use crate::teacher::KillFieldAgent;
 use crate::tuning::Tuning;
+use std::collections::VecDeque;
+
+#[derive(Clone, Copy, Default)]
+struct TankControls {
+    forward: bool,
+    backup: bool,
+    left: bool,
+    right: bool,
+    fire: bool,
+}
+
+impl TankControls {
+    fn read(game: &Game, tank: usize) -> Self {
+        let t = &game.tanks[tank];
+        Self { forward: t.forward, backup: t.backup, left: t.turn_left, right: t.turn_right, fire: t.fire }
+    }
+
+    fn apply(self, game: &mut Game, tank: usize) {
+        let t = &mut game.tanks[tank];
+        t.forward = self.forward;
+        t.backup = self.backup;
+        t.turn_left = self.left;
+        t.turn_right = self.right;
+        t.fire = self.fire;
+        t.forward_amount = None;
+        t.backup_amount = None;
+        t.turn_left_amount = None;
+        t.turn_right_amount = None;
+    }
+}
 
 /// Layout of the render buffer, in `f32` slots.
 ///
@@ -43,6 +79,8 @@ pub struct Handle {
     game: Game,
     agents: Vec<Option<KillFieldAgent>>,
     agent_enabled: Vec<bool>,
+    agent_delay: Vec<usize>,
+    agent_queue: Vec<VecDeque<TankControls>>,
     render: Vec<f32>,
     last_winner: f32,
     reward: RewardTracker,
@@ -54,6 +92,12 @@ pub struct Handle {
     semantic_state: SemanticObsState,
     semantic: SemanticObservation,
     semantic_buffer: Vec<f32>,
+    hybrid_obs: [DuelObservation; 2],
+    hybrid_history: [SeatHistory; 2],
+    hybrid_prev_pose: [[f64; 3]; 2],
+    hybrid_boxes: Vec<[f64; 4]>,
+    hybrid_buffer: [Vec<f32>; 2],
+    hybrid_dodge: [[f32; DODGE_DIM]; 2],
 }
 
 fn build_render(h: &mut Handle) {
@@ -103,14 +147,26 @@ fn build_render(h: &mut Handle) {
     }
 }
 
+fn tank_poses(game: &Game) -> [[f64; 3]; 2] {
+    std::array::from_fn(|i| {
+        let t = &game.tanks[i];
+        [t.x, t.y, t.rotation]
+    })
+}
+
 /// `laika_mask` is a bitmask of tanks driven by the scripted opponent.
 #[no_mangle]
 pub extern "C" fn kf_new(seed: u32, laika_mask: u32) -> *mut Handle {
     let ai: Vec<usize> = (0..2usize).filter(|i| laika_mask & (1 << i) != 0).collect();
+    let game = Game::with_ai(seed, 2, &ai);
+    let hybrid_prev_pose = tank_poses(&game);
+    let hybrid_boxes = inflated_boxes(&game);
     let mut h = Box::new(Handle {
-        game: Game::with_ai(seed, 2, &ai),
+        game,
         agents: vec![None, None],
         agent_enabled: vec![true, true],
+        agent_delay: vec![0, 0],
+        agent_queue: vec![VecDeque::new(), VecDeque::new()],
         render: Vec::new(),
         last_winner: -1.0,
         reward: RewardTracker::new(0),
@@ -122,6 +178,12 @@ pub extern "C" fn kf_new(seed: u32, laika_mask: u32) -> *mut Handle {
         semantic_state: SemanticObsState::default(),
         semantic: SemanticObservation::default(),
         semantic_buffer: vec![0.0; OBS_DIM + BULLET_SLOTS],
+        hybrid_obs: std::array::from_fn(|_| DuelObservation::default()),
+        hybrid_history: [SeatHistory::default(), SeatHistory::default()],
+        hybrid_prev_pose,
+        hybrid_boxes,
+        hybrid_buffer: std::array::from_fn(|_| vec![0.0; DUEL_OBS_DIM + DUEL_BULLET_SLOTS]),
+        hybrid_dodge: [[0.0; DODGE_DIM]; 2],
     });
     build_render(&mut h);
     Box::into_raw(h)
@@ -170,6 +232,38 @@ pub unsafe extern "C" fn kf_set_mpc_enabled(h: *mut Handle, tank: u32, enabled: 
     let h = &mut *h;
     if let Some(value) = h.agent_enabled.get_mut(tank as usize) {
         *value = enabled != 0;
+        if enabled == 0 {
+            h.agent_queue[tank as usize].clear();
+        }
+    }
+}
+
+/// Delay a search agent's chosen controls by 0..3 physics frames. The planner
+/// still observes and plans every frame; only actuation is queued. This is a
+/// player-facing fairness control, not a planner tuning parameter.
+#[no_mangle]
+pub unsafe extern "C" fn kf_set_mpc_delay(h: *mut Handle, tank: u32, frames: u32) {
+    let h = &mut *h;
+    let i = tank as usize;
+    if i < h.agent_delay.len() {
+        h.agent_delay[i] = frames.min(3) as usize;
+        h.agent_queue[i].clear();
+    }
+}
+
+/// Apply one Hybrid `Discrete(18)` action to either seat.
+#[no_mangle]
+pub unsafe extern "C" fn kf_set_hybrid_action(h: *mut Handle, tank: u32, action: u32) {
+    let h = &mut *h;
+    let i = (tank as usize).min(1);
+    let a = (action as u16).min(DUEL_ACTIONS as u16 - 1);
+    h.hybrid_history[i].record(a);
+    // DuelState supplies this counter separately in the native training path.
+    // The browser owns a standalone SeatHistory, so it must advance the same
+    // clock here or CHANGE_RATE_OFFSET remains zero forever.
+    h.hybrid_history[i].frames = h.hybrid_history[i].frames.saturating_add(1);
+    if !h.game.frozen && h.game.tanks[i].alive {
+        apply_duel_action(&mut h.game, i, a);
     }
 }
 
@@ -315,11 +409,21 @@ pub unsafe extern "C" fn kf_set_human_direction_input(
 #[no_mangle]
 pub unsafe extern "C" fn kf_step(h: *mut Handle) -> u32 {
     let h = &mut *h;
+    // The next observation recovers velocity from this pre-step pose.
+    h.hybrid_prev_pose = tank_poses(&h.game);
     for i in 0..2usize {
         if h.agent_enabled[i] {
             if let Some(mut a) = h.agents[i].take() {
                 a.drive(&mut h.game);
                 h.agents[i] = Some(a);
+                let planned = TankControls::read(&h.game, i);
+                h.agent_queue[i].push_back(planned);
+                let applied = if h.agent_queue[i].len() > h.agent_delay[i] {
+                    h.agent_queue[i].pop_front().unwrap_or_default()
+                } else {
+                    TankControls::default()
+                };
+                applied.apply(&mut h.game, i);
             }
         } else if let Some(tank) = h.game.tanks.get_mut(i) {
             // Do not leave the last MPC action latched while the planner is paused.
@@ -343,6 +447,10 @@ pub unsafe extern "C" fn kf_step(h: *mut Handle) -> u32 {
             Event::NewRound(_) => {
                 flags |= 1;
                 new_round = true;
+                h.hybrid_history = [SeatHistory::default(), SeatHistory::default()];
+                h.hybrid_prev_pose = tank_poses(&h.game);
+                h.hybrid_boxes = inflated_boxes(&h.game);
+                for queue in &mut h.agent_queue { queue.clear(); }
             }
             Event::Fire(_) => flags |= 2,
             Event::Bounce(_) => flags |= 4,
@@ -598,4 +706,68 @@ pub unsafe extern "C" fn kf_semantic_observation(
 #[no_mangle]
 pub extern "C" fn kf_semantic_observation_len() -> u32 {
     (OBS_DIM + BULLET_SLOTS) as u32
+}
+
+/// Encode the schema-24 Hybrid observation for either seat. The returned
+/// buffer contains 1028 semantic floats followed by ten bullet-mask floats.
+#[no_mangle]
+pub unsafe extern "C" fn kf_hybrid_observation(h: *mut Handle, tank: u32) -> *const f32 {
+    let h = &mut *h;
+    let i = (tank as usize).min(1);
+    let history = h.hybrid_history[i];
+    encode_duel(
+        &h.game,
+        i,
+        &h.hybrid_prev_pose,
+        &h.hybrid_boxes,
+        &history,
+        &mut h.hybrid_obs[i],
+    );
+    h.hybrid_dodge[i] = dodge_safety(&h.game, i, DODGE_HORIZON);
+    h.hybrid_obs[i].values[DODGE_OFFSET..DODGE_OFFSET + DODGE_DIM]
+        .copy_from_slice(&h.hybrid_dodge[i]);
+    h.hybrid_buffer[i][..DUEL_OBS_DIM].copy_from_slice(&h.hybrid_obs[i].values);
+    for slot in 0..DUEL_BULLET_SLOTS {
+        h.hybrid_buffer[i][DUEL_OBS_DIM + slot] =
+            h.hybrid_obs[i].bullet_mask[slot] as u8 as f32;
+    }
+    h.hybrid_buffer[i].as_ptr()
+}
+
+#[no_mangle]
+pub extern "C" fn kf_hybrid_observation_len() -> u32 {
+    (DUEL_OBS_DIM + DUEL_BULLET_SLOTS) as u32
+}
+
+#[no_mangle]
+pub extern "C" fn kf_hybrid_schema_version() -> u32 {
+    OBS_SCHEMA_VERSION
+}
+
+#[no_mangle]
+pub extern "C" fn kf_hybrid_action_count() -> u32 {
+    DUEL_ACTIONS as u32
+}
+
+#[cfg(test)]
+mod hybrid_tests {
+    use super::*;
+    use crate::duel_obs::CHANGE_RATE_OFFSET;
+
+    #[test]
+    fn browser_history_uses_the_same_frame_clock_as_training() {
+        unsafe {
+            let handle = kf_new(123, 2);
+            kf_set_hybrid_action(handle, 0, 14);
+            kf_step(handle);
+            assert_eq!((*handle).hybrid_history[0].frames, 1);
+
+            kf_set_hybrid_action(handle, 0, 12);
+            kf_step(handle);
+            assert_eq!((*handle).hybrid_history[0].frames, 2);
+            let observation = kf_hybrid_observation(handle, 0);
+            assert_eq!(*observation.add(CHANGE_RATE_OFFSET), 1.0);
+            kf_free(handle);
+        }
+    }
 }

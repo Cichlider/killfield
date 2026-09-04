@@ -1,0 +1,165 @@
+{
+  "format": "killfield-hybrid-f32-v1",
+  "checkpoint": "final.pt",
+  "schema": 24,
+  "observation": 1028,
+  "bullet_slots": 10,
+  "actions": 18,
+  "floats": 228280,
+  "tensors": {
+    "dodge_scale": {
+      "shape": [],
+      "offset": 0,
+      "length": 1
+    },
+    "ammo_scale": {
+      "shape": [],
+      "offset": 1,
+      "length": 1
+    },
+    "shot_quality_scale": {
+      "shape": [],
+      "offset": 2,
+      "length": 1
+    },
+    "ammo_lock_scale": {
+      "shape": [],
+      "offset": 3,
+      "length": 1
+    },
+    "suicide_scale": {
+      "shape": [],
+      "offset": 4,
+      "length": 1
+    },
+    "idle_logit_penalty": {
+      "shape": [],
+      "offset": 5,
+      "length": 1
+    },
+    "map.0.weight": {
+      "shape": [
+        16,
+        7,
+        3,
+        3
+      ],
+      "offset": 6,
+      "length": 1008
+    },
+    "map.0.bias": {
+      "shape": [
+        16
+      ],
+      "offset": 1014,
+      "length": 16
+    },
+    "map.2.weight": {
+      "shape": [
+        32,
+        16,
+        3,
+        3
+      ],
+      "offset": 1030,
+      "length": 4608
+    },
+    "map.2.bias": {
+      "shape": [
+        32
+      ],
+      "offset": 5638,
+      "length": 32
+    },
+    "map.5.weight": {
+      "shape": [
+        128,
+        960
+      ],
+      "offset": 5670,
+      "length": 122880
+    },
+    "map.5.bias": {
+      "shape": [
+        128
+      ],
+      "offset": 128550,
+      "length": 128
+    },
+    "bullets.0.weight": {
+      "shape": [
+        32,
+        10
+      ],
+      "offset": 128678,
+      "length": 320
+    },
+    "bullets.0.bias": {
+      "shape": [
+        32
+      ],
+      "offset": 128998,
+      "length": 32
+    },
+    "bullets.2.weight": {
+      "shape": [
+        32,
+        32
+      ],
+      "offset": 129030,
+      "length": 1024
+    },
+    "bullets.2.bias": {
+      "shape": [
+        32
+      ],
+      "offset": 130054,
+      "length": 32
+    },
+    "scalars.0.weight": {
+      "shape": [
+        128,
+        88
+      ],
+      "offset": 130086,
+      "length": 11264
+    },
+    "scalars.0.bias": {
+      "shape": [
+        128
+      ],
+      "offset": 141350,
+      "length": 128
+    },
+    "trunk.0.weight": {
+      "shape": [
+        256,
+        320
+      ],
+      "offset": 141478,
+      "length": 81920
+    },
+    "trunk.0.bias": {
+      "shape": [
+        256
+      ],
+      "offset": 223398,
+      "length": 256
+    },
+    "actor.weight": {
+      "shape": [
+        18,
+        256
+      ],
+      "offset": 223654,
+      "length": 4608
+    },
+    "actor.bias": {
+      "shape": [
+        18
+      ],
+      "offset": 228262,
+      "length": 18
+    }
+  }
+}

@@ -420,6 +420,10 @@ pub struct Bullet {
     /// A bullet is harmless to whoever fired it until it has bounced at least
     /// once. That is the actual rule, not a workaround for the muzzle overlap.
     pub has_bounced: bool,
+    /// Set on range-curriculum barrage bullets. They are owned by the target so
+    /// the observation reads them as hostile, but a shooting range whose own
+    /// barrage destroys the targets makes no sense — so they pass through it.
+    pub injected: bool,
 }
 
 impl Bullet {
@@ -442,6 +446,7 @@ impl Bullet {
             removed: false,
             just_created: false,
             has_bounced: false,
+            injected: false,
         }
     }
 }
@@ -455,6 +460,8 @@ pub struct Game {
     pub tanks_count: usize,
 
     pub settings_max_bullets: i32,
+    /// Per-tank weapon lock. Movement controllers still run normally.
+    pub weapons_disabled: Vec<bool>,
 
     pub alive_count: i32,
     pub end_count: i32,
@@ -468,6 +475,7 @@ pub struct Game {
     pub scores: Vec<i32>,
     pub round_number: i32,
     pub frame: i64,
+    pub round_start_frame: i64,
     pub events: Vec<Event>,
     pub hit_records: Vec<HitRecord>,
 
@@ -501,6 +509,16 @@ pub struct Game {
     pub ai_enabled: Vec<bool>,
 }
 
+/// Height of each free-standing barrier, in cells. Two rows leaves the lanes
+/// above and below open on a five-row range.
+pub const RANGE_BARRIER_ROWS: usize = 2;
+
+fn barrier_rows(h: usize, span: usize) -> std::ops::Range<usize> {
+    if span == 0 { return 0..0; }
+    let start = h.saturating_sub(span) / 2;
+    start..(start + span).min(h)
+}
+
 impl Game {
     pub fn new(seed: u32, tanks: usize) -> Self {
         Game::with_ai(seed, tanks, &[])
@@ -517,6 +535,7 @@ impl Game {
             seed,
             tanks_count: tanks,
             settings_max_bullets: C::SETTINGS_MAX_BULLETS as i32,
+            weapons_disabled: vec![false; tanks],
             alive_count: 0,
             end_count: -1,
             reset_count: -1,
@@ -526,6 +545,7 @@ impl Game {
             scores: vec![0; tanks],
             round_number: 0,
             frame: 0,
+            round_start_frame: 0,
             events: Vec::new(),
             hit_records: Vec::new(),
             maze: Arc::new(empty_maze),
@@ -551,6 +571,7 @@ impl Game {
 
     pub fn setup_battle(&mut self) {
         self.round_number += 1;
+        self.round_start_frame = self.frame;
         let tanks_n = self.tanks_count;
 
         // Reroll the whole maze until the start cell's connected component is
@@ -652,7 +673,25 @@ impl Game {
 
     #[inline]
     pub fn weapon_ready(&self, tank: usize) -> bool {
-        self.tanks[tank].bullets_fired < self.settings_max_bullets
+        !self.weapons_disabled.get(tank).copied().unwrap_or(false)
+            && self.tanks[tank].bullets_fired < self.settings_max_bullets
+    }
+
+    /// Inject a bullet from an arbitrary pose without touching the owner's
+    /// ammo. Used by the range curriculum's threat injector, which needs a
+    /// projectile that is physically identical to a fired one — same muzzle
+    /// offset, same speed, same lifetime, lethal to both tanks — but is not
+    /// limited by any tank's magazine.
+    pub fn inject_bullet(&mut self, owner: usize, x: f64, y: f64, rotation: f64) {
+        self.bullet_depth += 1;
+        let mut source = self.tanks[owner];
+        source.x = x;
+        source.y = y;
+        source.rotation = rotation;
+        let mut bullet = Bullet::new(self.bullet_depth, owner, &source, self.scale);
+        bullet.just_created = true;
+        bullet.injected = true;
+        self.bullets.push(bullet);
     }
 
     pub fn fire_weapon(&mut self, tank: usize) {
@@ -735,6 +774,79 @@ impl Game {
         }
         self.tanks[idx].rotation = candidate.rotation;
         true
+    }
+
+    /// A shooting range: open floor, an outer wall, and two free-standing
+    /// barriers.
+    ///
+    /// A generated maze made navigation the dominant problem — the policy spent
+    /// its whole capacity on not scraping corners and never reached aiming. But
+    /// a bare box is not a range either: with nothing to break line of sight
+    /// there is no reason to reposition, and no geometry for a bank shot. Two
+    /// symmetric barriers spanning the middle rows give cover to break from and
+    /// surfaces to ricochet off, while the open top and bottom lanes keep every
+    /// cell reachable in a straight walk.
+    ///
+    /// This follows `setup_battle`'s own derivation chain and only substitutes
+    /// the maze. Scale is not something that can be assigned after the fact:
+    /// wall thickness, tank hull size, drive speed and turn rate are all
+    /// derived from it, so overwriting `scale` on a finished game leaves hair-
+    /// thin walls and tanks sized for a different map.
+    pub fn range_arena(seed: u32, w: usize, h: usize) -> Self {
+        let mut g = Game::with_ai(seed, 2, &[]);
+        g.scale = f64::min(
+            (C::MOVIEHEIGHT - C::HEIGHTTOBOTTOM) / (h as f64 + 0.125),
+            C::MOVIEWIDTH / (w as f64 + 0.125),
+        );
+
+        // `build_wall_segments` adds the outer ring itself, so an all-clear
+        // grid is an empty box; cell[2] raises a wall on a cell's left edge.
+        let mut maze = Maze { w, h, cells: vec![[1, 0, 0]; w * h] };
+        for &x in &[w / 3, w - w / 3] {
+            for y in barrier_rows(h, RANGE_BARRIER_ROWS) {
+                maze.cells[x * h + y][2] = 1;
+            }
+        }
+        g.maze = Arc::new(maze);
+
+        let reachable = calc_reachable(&g.maze, 0, 0);
+        g.reachable = Arc::new(reachable.cells);
+        g.reachable_index = Arc::new(reachable.index);
+        g.walls = Arc::new(build_wall_segments(&g.maze, g.scale));
+        g.wall_half_t = (g.scale / 16.0).floor();
+        g.wall_grid = Arc::new(WallGrid::new(&g.walls, g.wall_half_t, g.scale));
+
+        // Rebuild the tanks so hull size and speeds come from this scale.
+        // The shooter starts on the centre line, not in a corner: a muzzle
+        // pressed against a wall sends its own first shot straight back.
+        let spawn = [(w / 2, h - 1), (w - 1, 0usize)];
+        g.tanks = Vec::with_capacity(2);
+        g.bullets = Vec::new();
+        g.bullet_depth = 0;
+        g.round_shots_fired = vec![0; 2];
+        for (n, &cell) in spawn.iter().enumerate() {
+            let mut rng = g.rng.clone();
+            let mut tank = Tank::new(n, cell, g.scale, &mut rng);
+            g.rng = rng;
+            // Face up the range, so the opening shot has the floor in front of
+            // it rather than the wall behind.
+            tank.rotation = if n == 0 { 0.0 } else { 180.0 };
+            g.tanks.push(tank);
+        }
+        g.alive_count = 2;
+        g.end_count = -1;
+        g.reset_count = -1;
+        g.frozen = false;
+
+        let mut distances = vec![None; w * h];
+        for &(cx, cy) in g.reachable.iter() {
+            distances[cx * h + cy] = Some(calc_distances(&g.maze, cx, cy));
+        }
+        g.distances_for_maze = Arc::new(distances);
+        g.ais = vec![None, None];
+        g.tank_fields = spawn.iter().map(|&(x, y)| (x as i64, y as i64)).collect();
+        g.dead_ends = Arc::new(find_dead_ends(&g.maze, &g.reachable, C::MAXDEADENDPENALTY));
+        g
     }
 
     /// Advance one frame (1/25 s) and return this frame's events.
@@ -951,8 +1063,6 @@ pub fn tank_update(g: &mut Game, idx: usize) {
     }
 }
 
-// ----------------------------------------------------------- bullet update
-
 pub fn bullet_update(g: &mut Game, idx: usize) {
     if g.frozen {
         return;
@@ -990,6 +1100,11 @@ pub fn bullet_update(g: &mut Game, idx: usize) {
     if b.deadly == 0 {
         for i in 0..g.tanks_count {
             if i == b.owner && !b.has_bounced {
+                continue;
+            }
+            // A barrage bullet is nominally the target's, but it is scenery:
+            // it threatens the policy and passes through the thing being shot at.
+            if b.injected && i == b.owner {
                 continue;
             }
             if g.tanks[i].alive && g.tanks[i].point_in_shape(b.x, b.y) {

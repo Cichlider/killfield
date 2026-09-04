@@ -3,12 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#000000">
+<meta name="theme-color" content="#f7f7f5">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>killfield — Rust/WASM maze tank duel</title>
-<meta name="description" content="Browser maze tank duel against the killfield search agent, running on the Rust/WASM kf_engine.">
+<title>Killfield</title>
+<meta name="description" content="Play against Killfield or watch Laika, Hybrid, and Killfield duel in the browser.">
 <link rel="icon" type="image/png" sizes="48x48" href="assets/brand/favicon-48.png">
 <link rel="icon" type="image/png" sizes="192x192" href="assets/brand/icon-192.png">
 <link rel="apple-touch-icon" sizes="180x180" href="assets/brand/apple-touch-icon.png">
@@ -18,29 +18,31 @@
 <body>
 <main>
   <header>
-    <div class="header-row">
-      <h1>killfield</h1>
-      <button id="lang-toggle" type="button" class="lang-toggle" aria-label="Switch to Chinese">中文</button>
-    </div>
-    <p class="tagline" id="tagline">A search-based agent for a maze tank duel. Most of its kills are bank shots.</p>
+    <h1>killfield</h1>
+    <button id="lang-toggle" type="button" class="quiet" aria-label="Switch to Chinese">中文</button>
   </header>
 
-  <div class="play-layout">
-  <div class="game-column">
-  <div class="stage" id="stage">
-    <div class="stage-overlay" id="stage-overlay">
-      <div class="scoreboard" id="scoreboard">
-        <div class="side">
-          <span class="swatch" id="swatch-0"></span>
-          <span class="side-name" id="name-0">killfield AI</span>
-          <span class="side-score" id="score-0">0</span>
-        </div>
+  <nav class="mode-switch" aria-label="Mode">
+    <button id="mode-watch" type="button" class="mode-btn active">Watch</button>
+    <button id="mode-play" type="button" class="mode-btn">Play</button>
+  </nav>
+
+  <section class="config-row watch-config" id="watch-config" aria-label="Watch match">
+    <label class="select-field role-red"><span id="watch-left-label">Left</span>
+      <select id="controller-0"><option value="hybrid" selected>Hybrid</option><option value="laika">Laika</option><option value="killfield">Killfield</option></select>
+    </label>
+    <span class="versus">vs</span>
+    <label class="select-field role-black"><span id="watch-right-label">Right</span>
+      <select id="controller-1"><option value="laika" selected>Laika</option><option value="hybrid">Hybrid</option><option value="killfield">Killfield</option></select>
+    </label>
+  </section>
+
+  <section class="stage" id="stage">
+    <div class="stage-overlay">
+      <div class="scoreboard">
+        <div class="side"><span class="swatch" id="swatch-0"></span><span class="side-name" id="name-0">Hybrid</span><strong class="side-score" id="score-0">0</strong></div>
         <span class="vs">vs</span>
-        <div class="side side-right">
-          <span class="side-score" id="score-1">0</span>
-          <span class="side-name" id="name-1">Laika</span>
-          <span class="swatch" id="swatch-1"></span>
-        </div>
+        <div class="side side-right"><strong class="side-score" id="score-1">0</strong><span class="side-name" id="name-1">Laika</span><span class="swatch" id="swatch-1"></span></div>
       </div>
       <p class="roundline" id="roundline">round 1</p>
       <p class="streakline" id="streakline">win streak 0 · best 0</p>
@@ -48,10 +50,10 @@
     <div class="canvas-wrap">
       <canvas id="screen" width="712" height="500"></canvas>
       <div class="stage-toolbar" aria-label="Game controls">
-        <button id="touch-visibility" type="button" class="touch-visibility-toggle" aria-label="Hide touch controls" hidden>CTRL</button>
-        <button id="sound" type="button" class="sound-toggle" aria-label="Mute sound"></button>
-        <button id="pause" type="button" class="pause-toggle" aria-label="Pause (P)"></button>
-        <button id="fullscreen" type="button" class="fullscreen-toggle" aria-label="Fullscreen">⛶</button>
+        <button id="touch-visibility" type="button" class="icon-btn" aria-label="Hide touch controls" hidden>CTRL</button>
+        <button id="sound" type="button" class="icon-btn" aria-label="Mute sound"></button>
+        <button id="pause" type="button" class="icon-btn" aria-label="Pause"></button>
+        <button id="fullscreen" type="button" class="icon-btn" aria-label="Fullscreen">⛶</button>
       </div>
     </div>
     <div id="touch-controls" class="touch-controls" hidden>
@@ -61,10 +63,8 @@
       </div>
       <div class="touch-left-control">
         <div id="touch-joystick" class="touch-joystick" role="application" aria-label="128-direction movement joystick">
-          <span class="joystick-axis axis-n">▲</span>
-          <span class="joystick-axis axis-e">▶</span>
-          <span class="joystick-axis axis-s">▼</span>
-          <span class="joystick-axis axis-w">◀</span>
+          <span class="joystick-axis axis-n">▲</span><span class="joystick-axis axis-e">▶</span>
+          <span class="joystick-axis axis-s">▼</span><span class="joystick-axis axis-w">◀</span>
           <span id="touch-knob" class="touch-knob"></span>
         </div>
         <div id="touch-dpad" class="touch-dpad" role="group" aria-label="Forward, reverse, left and right">
@@ -81,104 +81,20 @@
       <strong id="orientation-title">Rotate your phone</strong>
       <span id="orientation-body">Turn off portrait lock, then rotate to landscape.</span>
     </div>
-  </div>
+  </section>
 
-  <div class="controls">
-    <div class="row modes" role="group" aria-label="Mode">
-      <button id="mode-watch" type="button" class="mode active">Watch it play</button>
-      <button id="mode-play" type="button" class="mode">Play against it</button>
-      <button id="mode-selfplay" type="button" class="mode">AI vs AI</button>
-    </div>
+  <section class="config-row play-config" id="play-config" hidden aria-label="Player match settings">
+    <label class="select-field role-black"><span id="play-opponent-label">Opponent</span>
+      <select id="play-opponent"><option value="laika">Laika</option><option value="hybrid" selected>Hybrid</option><option value="killfield">Killfield</option></select>
+    </label>
+    <button id="instant-turn" type="button" aria-pressed="false" class="toggle">No turn-rate limit: off</button>
+    <label class="range-field"><span id="forward-alignment-label">Wheel forward region</span><input id="forward-alignment" type="range" min="0" max="360" step="2.8125" value="270"><output id="forward-alignment-value" for="forward-alignment">270°</output></label>
+    <label class="select-field" id="reaction-delay-field"><span id="reaction-delay-label">Opponent delay</span><select id="reaction-delay"><option value="0">0 frames</option><option value="1">1 frame</option><option value="2">2 frames</option><option value="3">3 frames</option></select></label>
+    <label class="range-field" id="opening-delay-field"><span id="opening-delay-label">Opening pause</span><input id="opening-delay" type="range" min="0" max="3" step="0.1" value="0.5"><output id="opening-delay-value" for="opening-delay">0.5 s</output></label>
+  </section>
 
-    <div class="row">
-      <button id="reroll" type="button">New maze (R)</button>
-      <button id="reset-score" type="button">Reset score</button>
-      <button id="instant-turn" type="button" class="mode" hidden>Instant turn: off</button>
-      <label class="seedbox">
-        <span id="seed-label">seed</span>
-        <input id="seed" type="text" inputmode="numeric" placeholder="random" size="9">
-      </label>
-      <label class="seedbox">
-        <span id="rays-label">rays</span>
-        <select id="rays">
-          <option id="rays-512" value="512" selected>512 — full</option>
-          <option id="rays-256" value="256">256 — mobile</option>
-        </select>
-      </label>
-      <label class="seedbox alignment-box">
-        <span id="forward-alignment-label">forward alignment</span>
-        <input id="forward-alignment" type="range" min="0" max="360" step="2.8125" value="270">
-        <output id="forward-alignment-value" for="forward-alignment">270° / 360° · reverse 90°</output>
-      </label>
-      <label class="seedbox">
-        <span id="oppmodel-label">planner assumes opponent is</span>
-        <select id="oppmodel">
-          <option id="oppmodel-laika" value="L2" selected>Laika (scripted)</option>
-          <option id="oppmodel-human" value="L1">human (unpredictable)</option>
-        </select>
-      </label>
-    </div>
-    <section class="match-settings-panel" id="match-settings-panel" hidden>
-      <div class="match-settings-heading">
-        <h2 id="match-settings-title">Human vs Killfield</h2>
-        <output id="opening-delay-value" for="opening-delay">0.5 s</output>
-      </div>
-      <label for="opening-delay" id="opening-delay-label">Killfield opening delay</label>
-      <input id="opening-delay" type="range" min="0" max="3" step="0.1" value="0.5">
-      <p id="opening-delay-hint">The human can move immediately; only Killfield waits. Applies next round.</p>
-    </section>
-    <p class="hint" id="oppmodel-hint">
-      Only changes what the lookahead simulation predicts tank 1 will do — not who is actually
-      driving it. Pick “Laika” in watch mode, where that prediction is exact. Pick “human” in
-      play mode: scripting your moves as Laika makes the planner imagine kills that never happen,
-      and it can stall as if it had already won.
-    </p>
-
-    <p class="keys" id="keyhelp">
-      <strong>Arrow keys</strong> or <strong>ESDF</strong> to drive &middot;
-      <strong>M</strong> / <strong>Space</strong> / <strong>Q</strong> to fire &middot;
-      <strong>R</strong> for a new maze
-    </p>
-
-    <div class="telemetry" id="telemetry"></div>
-
-    <p class="note" id="note">
-      Bullets ricochet and stay lethal for ten seconds &mdash; including to whoever fired them.
-      A round is not decided the instant someone dies: the world keeps running for three more
-      seconds, so a shot already in the air can still take the apparent winner with it.
-    </p>
-  </div>
-  </div>
-
-  <aside class="tuning-panel" id="tuning-panel" aria-labelledby="tuning-title">
-    <div class="tuning-heading">
-      <p class="tuning-eyebrow" id="tuning-eyebrow">AI lab</p>
-      <h2 id="tuning-title">Live parameters</h2>
-    </div>
-    <p class="tuning-description" id="tuning-description">
-      Changes apply to the next MPC plan and are saved in this browser.
-    </p>
-    <div id="tuning-controls"></div>
-    <div class="tuning-footer">
-      <button id="tuning-reset" type="button">Reset defaults</button>
-      <span id="tuning-status">live · saved locally</span>
-    </div>
-  </aside>
-  </div>
-
-  <footer class="colophon">
-    <p>
-      &copy; 2026 <a href="https://github.com/Cichlider">Cichlider</a> &middot;
-      code under <a href="https://github.com/Cichlider/killfield/blob/main/LICENSE">MIT</a> &middot;
-      <a href="https://github.com/Cichlider/killfield">Killfield (this project)</a>
-    </p>
-    <p>
-      Unofficial, non-commercial reimplementation of the mechanics of
-      <i>Tank Trouble</i> by Mads Purup. Not affiliated with or endorsed by the
-      original author; contains none of its code.
-    </p>
-  </footer>
+  <div class="actions"><button id="reroll" type="button" class="ghost-btn">New maze</button><button id="reset-score" type="button" class="ghost-btn">Reset score</button></div>
 </main>
-<script type="module" src="viewer.js?v=429f71a5"></script>
+<script type="module" src="viewer.js?v=fef4a008"></script>
 </body>
 </html>
