@@ -37,15 +37,8 @@ main {
 header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   margin: 0 2px 24px;
-}
-
-h1 {
-  margin: 0;
-  font-size: clamp(22px, 3vw, 28px);
-  font-weight: 650;
-  letter-spacing: -.02em;
 }
 
 button, select, input { font: inherit; }
