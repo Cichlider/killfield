@@ -510,11 +510,11 @@ canvas { display: block; width: 100%; height: auto; }
   .stage.play-mode:fullscreen,
   .stage.play-mode:-webkit-full-screen,
   .stage.play-mode.pseudo-fullscreen {
-    --record-left-rail: clamp(170px, 22vw, 260px);
+    --record-left-rail: clamp(210px, 25vw, 340px);
     --record-right-rail: clamp(180px, 22vw, 300px);
     --record-joystick-size: min(
       calc(var(--record-left-rail) - 20px - env(safe-area-inset-left)),
-      clamp(150px, 19vw, 220px)
+      clamp(190px, 22vw, 300px)
     );
     display: grid;
     grid-template-columns: var(--record-left-rail) minmax(0, 1fr) var(--record-right-rail);
@@ -540,15 +540,15 @@ canvas { display: block; width: 100%; height: auto; }
     z-index: 5;
     top: max(10px, env(safe-area-inset-top));
     left: max(10px, env(safe-area-inset-left));
-    width: min(148px, calc(var(--record-left-rail) - 20px - env(safe-area-inset-left)));
+    width: calc(var(--record-left-rail) - 28px - env(safe-area-inset-left));
     margin: 0;
-    padding: 7px 8px 8px;
+    padding: 2px;
     overflow: hidden;
     color: #fff;
-    border: 1px solid rgba(255,255,255,.12);
-    border-radius: 9px;
-    background: rgba(255,255,255,.08);
-    backdrop-filter: blur(5px);
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    backdrop-filter: none;
   }
 
   .stage.play-mode:fullscreen .scoreboard,
@@ -557,8 +557,8 @@ canvas { display: block; width: 100%; height: auto; }
     display: flex;
     flex-direction: column;
     align-items: stretch;
-    gap: 2px;
-    margin: 0 0 5px;
+    gap: 1px;
+    margin: 0;
   }
 
   .stage.play-mode:fullscreen .scoreboard .side,
@@ -577,6 +577,10 @@ canvas { display: block; width: 100%; height: auto; }
   .stage.play-mode:fullscreen .side-right .side-score,
   .stage.play-mode:-webkit-full-screen .side-right .side-score,
   .stage.play-mode.pseudo-fullscreen .side-right .side-score { order: 2; }
+
+  .stage.play-mode:fullscreen .side-score,
+  .stage.play-mode:-webkit-full-screen .side-score,
+  .stage.play-mode.pseudo-fullscreen .side-score { justify-self: end; }
 
   .stage.play-mode:fullscreen .swatch,
   .stage.play-mode:-webkit-full-screen .swatch,
@@ -608,11 +612,10 @@ canvas { display: block; width: 100%; height: auto; }
 
   .stage.play-mode:fullscreen .roundline,
   .stage.play-mode:-webkit-full-screen .roundline,
-  .stage.play-mode.pseudo-fullscreen .roundline { margin-bottom: 0; font-size: clamp(10px, 1.35vw, 12px); }
-
+  .stage.play-mode.pseudo-fullscreen .roundline,
   .stage.play-mode:fullscreen .streakline,
   .stage.play-mode:-webkit-full-screen .streakline,
-  .stage.play-mode.pseudo-fullscreen .streakline { font-size: clamp(9px, 1.2vw, 11px); }
+  .stage.play-mode.pseudo-fullscreen .streakline { display: none; }
 
   .stage.play-mode:fullscreen .stage-toolbar,
   .stage.play-mode:-webkit-full-screen .stage-toolbar,
