@@ -536,17 +536,18 @@ canvas { display: block; width: 100%; height: auto; }
   .stage.play-mode:fullscreen .stage-overlay,
   .stage.play-mode:-webkit-full-screen .stage-overlay,
   .stage.play-mode.pseudo-fullscreen .stage-overlay {
-    position: fixed;
+    position: relative;
     z-index: 5;
-    top: max(10px, env(safe-area-inset-top));
-    left: max(10px, env(safe-area-inset-left));
-    width: min(
-      156px,
-      calc(33.333vw - 20px),
-      calc(var(--record-left-rail) - 28px - env(safe-area-inset-left))
-    );
-    max-width: calc(33.333vw - 20px);
-    margin: 0;
+    top: auto;
+    left: auto;
+    grid-column: 1;
+    grid-row: 1;
+    align-self: start;
+    justify-self: stretch;
+    width: auto;
+    min-width: 0;
+    max-width: none;
+    margin: max(10px, env(safe-area-inset-top)) 10px 0 max(10px, env(safe-area-inset-left));
     padding: 7px 8px 8px;
     overflow: clip;
     contain: layout paint;
