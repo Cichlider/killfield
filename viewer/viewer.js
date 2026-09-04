@@ -25,7 +25,7 @@
  */
 
 import * as C from "./src/constants.js";
-import { STRINGS, loadLang, saveLang } from "./src/i18n.js?v=b854eb9c";
+import { STRINGS, loadLang, saveLang } from "./src/i18n.js?v=91ec4451";
 import { Keyboard, TouchControls } from "./src/input.js";
 import { SoundEffects } from "./src/audio.js";
 import { Rng } from "./src/rng.js";
@@ -35,7 +35,7 @@ import { HybridPolicy } from "./src/hybrid.js?v=4be8a6e2";
 const STEP_MS = 1000 / C.FPS; // 40 ms
 const MAX_CATCHUP_MS = 250;
 const STREAK_STORAGE_KEY = "killfield-streak";
-const INSTANT_TURN_STORAGE_KEY = "killfield-human-instant-turn";
+const INSTANT_TURN_STORAGE_KEY = "killfield-human-instant-turn-v2";
 const OPENING_DELAY_STORAGE_KEY = "killfield-opening-delay-seconds";
 const REACTION_DELAY_STORAGE_KEY = "killfield-reaction-delay-frames";
 const DEFAULT_OPENING_DELAY_SECONDS = 0.5;
@@ -109,6 +109,7 @@ const playConfig = document.getElementById("play-config");
 const watchLeftLabel = document.getElementById("watch-left-label");
 const watchRightLabel = document.getElementById("watch-right-label");
 const controllerSelects = [0, 1].map((i) => document.getElementById(`controller-${i}`));
+const controllerPickers = [...document.querySelectorAll("[data-controller-picker]")];
 const playOpponentSelect = document.getElementById("play-opponent");
 const playOpponentLabel = document.getElementById("play-opponent-label");
 const reactionDelaySelect = document.getElementById("reaction-delay");
@@ -469,6 +470,60 @@ function syncOpeningDelayControl() {
   );
 }
 
+function setControllerPickerOpen(picker, open) {
+  picker.classList.toggle("open", open);
+  const trigger = picker.querySelector(".controller-trigger");
+  const menu = picker.querySelector(".controller-menu");
+  trigger.setAttribute("aria-expanded", String(open));
+  menu.setAttribute("aria-hidden", String(!open));
+  menu.querySelectorAll("button").forEach((button) => { button.tabIndex = open ? 0 : -1; });
+}
+
+function closeControllerPickers(except = null) {
+  controllerPickers.forEach((picker) => {
+    if (picker !== except) setControllerPickerOpen(picker, false);
+  });
+}
+
+function syncControllerPicker(picker, seat) {
+  const select = controllerSelects[seat];
+  const value = select.value;
+  const trigger = picker.querySelector(".controller-trigger");
+  trigger.querySelector("span").textContent = CONTROLLER_NAMES[value];
+  trigger.setAttribute("aria-label", `${seat === 0 ? t().watchLeftLabel : t().watchRightLabel}: ${CONTROLLER_NAMES[value]}`);
+  picker.querySelectorAll("[role=option]").forEach((option) => {
+    option.setAttribute("aria-selected", String(option.dataset.value === value));
+  });
+}
+
+function initialiseControllerPickers() {
+  controllerPickers.forEach((picker, seat) => {
+    const trigger = picker.querySelector(".controller-trigger");
+    setControllerPickerOpen(picker, false);
+    syncControllerPicker(picker, seat);
+    trigger.addEventListener("click", () => {
+      const open = !picker.classList.contains("open");
+      closeControllerPickers(picker);
+      setControllerPickerOpen(picker, open);
+    });
+    picker.querySelectorAll("[data-value]").forEach((option) => {
+      option.addEventListener("click", () => {
+        controllerSelects[seat].value = option.dataset.value;
+        syncControllerPicker(picker, seat);
+        setControllerPickerOpen(picker, false);
+        controllerSelects[seat].dispatchEvent(new Event("change"));
+        trigger.focus();
+      });
+    });
+  });
+  document.addEventListener("pointerdown", (event) => {
+    if (!event.target.closest("[data-controller-picker]")) closeControllerPickers();
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") closeControllerPickers();
+  });
+}
+
 function applyLanguage() {
   const s = t();
   document.documentElement.lang = s.htmlLang;
@@ -478,6 +533,7 @@ function applyLanguage() {
   playButton.textContent = s.modePlay;
   watchLeftLabel.textContent = s.watchLeftLabel;
   watchRightLabel.textContent = s.watchRightLabel;
+  controllerPickers.forEach(syncControllerPicker);
   playOpponentLabel.textContent = s.opponentLabel;
   rerollButton.textContent = s.reroll;
   resetScoreButton.textContent = s.resetScore;
@@ -495,8 +551,11 @@ function applyLanguage() {
 }
 
 let mode = "watch";
-let instantTurn = false;
-try { instantTurn = localStorage.getItem(INSTANT_TURN_STORAGE_KEY) === "1"; } catch { /* optional */ }
+let instantTurn = true;
+try {
+  const savedInstantTurn = localStorage.getItem(INSTANT_TURN_STORAGE_KEY);
+  instantTurn = savedInstantTurn === null ? true : savedInstantTurn === "1";
+} catch { /* Default stays on when browser storage is unavailable. */ }
 let handle = null;
 let paused = false;
 let currentRound = 1;
@@ -628,8 +687,10 @@ function newGame() {
 
 function setMode(next) {
   mode = next;
+  closeControllerPickers();
   keyboard.clear();
   touchControls.clear();
+  stage.classList.toggle("play-mode", next === "play");
   watchButton.classList.toggle("active", next === "watch");
   playButton.classList.toggle("active", next === "play");
   watchConfig.hidden = next !== "watch";
@@ -952,6 +1013,7 @@ async function boot() {
   if (wasm.kf_hybrid_schema_version() !== 24 || wasm.kf_hybrid_observation_len() !== HYBRID_OBS_DIM + HYBRID_BULLET_SLOTS) {
     throw new Error("Hybrid observation layout mismatch between engine and viewer");
   }
+  initialiseControllerPickers();
 
   fullscreenButton.addEventListener("click", toggleFullscreen);
   document.addEventListener("fullscreenchange", syncFullscreenButton);

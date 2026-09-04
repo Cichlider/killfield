@@ -25,7 +25,7 @@ body {
   background:
     radial-gradient(circle at 50% -22%, rgba(255,255,255,.9), transparent 43%),
     var(--paper);
-  font: 14px/1.45 Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font: 14px/1.5 ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -43,10 +43,9 @@ header {
 
 h1 {
   margin: 0;
-  font-family: Georgia, "Times New Roman", serif;
-  font-size: clamp(25px, 4vw, 33px);
-  font-weight: 500;
-  letter-spacing: -.035em;
+  font-size: clamp(22px, 3vw, 28px);
+  font-weight: 650;
+  letter-spacing: -.02em;
 }
 
 button, select, input { font: inherit; }
@@ -111,12 +110,10 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
 
 .versus {
   color: var(--muted);
-  font-family: Georgia, "Times New Roman", serif;
   font-size: 13px;
-  font-style: italic;
 }
 
-.select-field, .range-field {
+.select-field, .range-field, .controller-picker {
   display: grid;
   gap: 6px;
   min-width: 150px;
@@ -126,7 +123,7 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
   background: rgba(255,255,255,.56);
 }
 
-.select-field > span, .range-field > span {
+.select-field > span, .range-field > span, .controller-picker > span {
   color: var(--muted);
   font-size: 10px;
   font-weight: 700;
@@ -146,6 +143,54 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
 
 .role-red select { color: var(--red); }
 
+.controller-picker { position: relative; min-width: 150px; }
+.native-controller-select { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); pointer-events: none; }
+
+.controller-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  min-width: 120px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font-size: 14px;
+  font-weight: 650;
+  text-align: left;
+}
+
+.controller-trigger:hover { background: transparent; }
+.role-red .controller-trigger { color: var(--red); }
+.controller-trigger i { width: 7px; height: 7px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(45deg) translateY(-2px); transition: transform .18s ease; opacity: .65; }
+.controller-picker.open .controller-trigger i { transform: rotate(225deg) translate(-1px,-1px); }
+
+.controller-menu {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 7px);
+  left: -1px;
+  min-width: calc(100% + 2px);
+  padding: 5px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: rgba(251,250,247,.97);
+  box-shadow: 0 14px 35px rgba(34,30,20,.16), 0 2px 8px rgba(34,30,20,.08);
+  backdrop-filter: blur(16px);
+  opacity: 0;
+  transform: translateY(-5px) scale(.98);
+  transform-origin: top;
+  pointer-events: none;
+  transition: opacity .16s ease, transform .16s ease;
+}
+
+.controller-picker.open .controller-menu { opacity: 1; transform: translateY(0) scale(1); pointer-events: auto; }
+.controller-picker:last-child .controller-menu { right: -1px; left: auto; }
+.controller-menu button { display: flex; width: 100%; padding: 7px 9px; border: 0; border-radius: 7px; background: transparent; font-size: 13px; text-align: left; }
+.controller-menu button:hover { background: rgba(23,24,22,.055); }
+.controller-menu button[aria-selected="true"] { color: var(--accent); background: rgba(49,95,98,.09); font-weight: 700; }
+.role-red .controller-menu button[aria-selected="true"] { color: var(--red); background: var(--red-soft); }
+
 .stage {
   position: relative;
   width: 100%;
@@ -158,62 +203,58 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
 }
 
 .stage-overlay {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: end;
-  min-height: 56px;
-  padding: 2px 5px 11px;
+  margin: 0 0 8px;
+  padding: 1px 3px;
+  line-height: 1.4;
 }
 
 .scoreboard {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   min-width: 0;
-  gap: 12px;
+  gap: 8px 16px;
+  margin-bottom: 4px;
 }
 
-.side { display: flex; align-items: center; min-width: 0; gap: 8px; }
+.side { display: flex; align-items: center; min-width: 0; gap: 9px; }
 .side-right { flex-direction: row; }
 
 .swatch {
-  width: 9px;
-  height: 9px;
+  width: 15px;
+  height: 15px;
   flex: none;
   border: 2px solid transparent;
-  border-radius: 50%;
+  border-radius: 5px;
 }
 
 .side-name {
   overflow: hidden;
-  font-size: 13px;
-  font-weight: 650;
+  font-size: 14px;
+  font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .side-score {
   min-width: 1ch;
-  font-family: Georgia, "Times New Roman", serif;
-  font-size: 28px;
-  font-weight: 500;
+  font-size: 30px;
+  font-weight: 700;
   font-variant-numeric: tabular-nums;
   line-height: 1;
+  letter-spacing: -.02em;
 }
 
-.scoreboard > .vs { color: #aaa79e; font-size: 11px; font-style: normal; }
+.scoreboard > .vs { color: var(--muted); font-size: 13px; font-style: normal; }
 
 .roundline, .streakline {
-  grid-column: 2;
   margin: 0;
   color: var(--muted);
-  font-size: 10px;
   font-variant-numeric: tabular-nums;
-  text-align: right;
-  letter-spacing: .035em;
 }
 
-.roundline { align-self: end; }
-.streakline { margin-top: 1px; opacity: .72; }
+.roundline { margin-bottom: 2px; font-size: 13px; }
+.streakline { font-size: 12px; }
 
 .canvas-wrap {
   position: relative;
@@ -252,6 +293,7 @@ canvas { display: block; width: 100%; height: auto; }
 
 .icon-btn:hover { opacity: 1; }
 .icon-btn svg { display: block; }
+#touch-visibility { width: auto; min-width: 29px; padding: 0 8px; font-size: 10px; white-space: nowrap; }
 
 .play-config {
   display: grid;
@@ -469,4 +511,203 @@ canvas { display: block; width: 100%; height: auto; }
   .range-field > span { grid-column: 1; }
   .range-field input { grid-column: 1 / -1; grid-row: 2; }
   .range-field output { grid-column: 2; grid-row: 1; }
+}
+
+/* Player fullscreen preserves the original mobile three-rail composition:
+   score and movement on the left, an unobstructed arena in the middle, and
+   utility buttons plus fire on the right. Watch mode keeps the simpler
+   centred fullscreen layout above. */
+@media (max-width: 980px), (pointer: coarse) {
+  .stage.play-mode:fullscreen,
+  .stage.play-mode:-webkit-full-screen,
+  .stage.play-mode.pseudo-fullscreen {
+    --record-left-rail: clamp(210px, 25vw, 340px);
+    --record-right-rail: clamp(180px, 22vw, 300px);
+    --record-joystick-size: min(
+      calc(var(--record-left-rail) - 20px - env(safe-area-inset-left)),
+      clamp(190px, 22vw, 300px)
+    );
+    display: grid;
+    grid-template-columns: var(--record-left-rail) minmax(0, 1fr) var(--record-right-rail);
+    grid-template-rows: 100%;
+    align-items: stretch;
+    justify-content: stretch;
+  }
+
+  .stage.play-mode:fullscreen .canvas-wrap,
+  .stage.play-mode:-webkit-full-screen .canvas-wrap,
+  .stage.play-mode.pseudo-fullscreen .canvas-wrap {
+    grid-column: 2;
+    grid-row: 1;
+    width: 100%;
+    height: 100%;
+    min-width: 0;
+  }
+
+  .stage.play-mode:fullscreen .stage-overlay,
+  .stage.play-mode:-webkit-full-screen .stage-overlay,
+  .stage.play-mode.pseudo-fullscreen .stage-overlay {
+    position: fixed;
+    z-index: 5;
+    top: max(10px, env(safe-area-inset-top));
+    left: max(10px, env(safe-area-inset-left));
+    width: calc(var(--record-left-rail) - 20px - env(safe-area-inset-left));
+    margin: 0;
+    padding: 7px 8px 8px;
+    overflow: hidden;
+    color: #fff;
+    border: 1px solid rgba(255,255,255,.12);
+    border-radius: 9px;
+    background: rgba(255,255,255,.08);
+    backdrop-filter: blur(5px);
+  }
+
+  .stage.play-mode:fullscreen .scoreboard,
+  .stage.play-mode:-webkit-full-screen .scoreboard,
+  .stage.play-mode.pseudo-fullscreen .scoreboard {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 2px;
+    margin: 0 0 5px;
+  }
+
+  .stage.play-mode:fullscreen .scoreboard .side,
+  .stage.play-mode:-webkit-full-screen .scoreboard .side,
+  .stage.play-mode.pseudo-fullscreen .scoreboard .side {
+    display: grid;
+    grid-template-columns: 11px minmax(0, 1fr) auto;
+    gap: 6px;
+    width: 100%;
+  }
+
+  .stage.play-mode:fullscreen .side-right .swatch,
+  .stage.play-mode:-webkit-full-screen .side-right .swatch,
+  .stage.play-mode.pseudo-fullscreen .side-right .swatch { order: -1; }
+
+  .stage.play-mode:fullscreen .side-right .side-score,
+  .stage.play-mode:-webkit-full-screen .side-right .side-score,
+  .stage.play-mode.pseudo-fullscreen .side-right .side-score { order: 2; }
+
+  .stage.play-mode:fullscreen .swatch,
+  .stage.play-mode:-webkit-full-screen .swatch,
+  .stage.play-mode.pseudo-fullscreen .swatch {
+    width: 10px;
+    height: 10px;
+    border-radius: 3px;
+  }
+
+  .stage.play-mode:fullscreen .side-name,
+  .stage.play-mode:-webkit-full-screen .side-name,
+  .stage.play-mode.pseudo-fullscreen .side-name {
+    overflow: hidden;
+    color: #fff;
+    font-size: clamp(10px, 1.55vw, 13px);
+    text-overflow: ellipsis;
+  }
+
+  .stage.play-mode:fullscreen .side-score,
+  .stage.play-mode:-webkit-full-screen .side-score,
+  .stage.play-mode.pseudo-fullscreen .side-score {
+    color: #fff;
+    font-size: clamp(18px, 2.6vw, 25px);
+  }
+
+  .stage.play-mode:fullscreen .vs,
+  .stage.play-mode:-webkit-full-screen .vs,
+  .stage.play-mode.pseudo-fullscreen .vs { display: none; }
+
+  .stage.play-mode:fullscreen .roundline,
+  .stage.play-mode:-webkit-full-screen .roundline,
+  .stage.play-mode.pseudo-fullscreen .roundline { margin-bottom: 0; font-size: clamp(10px, 1.35vw, 12px); }
+
+  .stage.play-mode:fullscreen .streakline,
+  .stage.play-mode:-webkit-full-screen .streakline,
+  .stage.play-mode.pseudo-fullscreen .streakline { font-size: clamp(9px, 1.2vw, 11px); }
+
+  .stage.play-mode:fullscreen .stage-toolbar,
+  .stage.play-mode:-webkit-full-screen .stage-toolbar,
+  .stage.play-mode.pseudo-fullscreen .stage-toolbar {
+    position: fixed;
+    z-index: 6;
+    top: max(10px, env(safe-area-inset-top));
+    right: max(10px, env(safe-area-inset-right));
+    display: grid;
+    grid-template-columns: repeat(2, minmax(40px, 52px));
+    gap: 6px;
+    width: min(110px, calc(var(--record-right-rail) - 20px - env(safe-area-inset-right)));
+  }
+
+  .stage.play-mode:fullscreen .stage-toolbar > button,
+  .stage.play-mode:-webkit-full-screen .stage-toolbar > button,
+  .stage.play-mode.pseudo-fullscreen .stage-toolbar > button {
+    position: static;
+    width: 100%;
+    min-width: 0;
+    height: 40px;
+    padding: 4px;
+    color: rgba(255,255,255,.9);
+    border-color: rgba(255,255,255,.18);
+    border-radius: 9px;
+    background: rgba(255,255,255,.12);
+    font-size: 14px;
+    line-height: 1;
+    opacity: 1;
+    backdrop-filter: blur(5px);
+  }
+
+  .stage.play-mode:fullscreen .stage-toolbar > #touch-visibility,
+  .stage.play-mode:-webkit-full-screen .stage-toolbar > #touch-visibility,
+  .stage.play-mode.pseudo-fullscreen .stage-toolbar > #touch-visibility { font-size: 10px; }
+
+  .stage.play-mode:fullscreen .touch-left-control,
+  .stage.play-mode:-webkit-full-screen .touch-left-control,
+  .stage.play-mode.pseudo-fullscreen .touch-left-control {
+    left: max(10px, env(safe-area-inset-left));
+    bottom: max(10px, env(safe-area-inset-bottom));
+    display: flex;
+    justify-content: center;
+    width: calc(var(--record-left-rail) - 20px - env(safe-area-inset-left));
+  }
+
+  .stage.play-mode:fullscreen .touch-joystick,
+  .stage.play-mode:-webkit-full-screen .touch-joystick,
+  .stage.play-mode.pseudo-fullscreen .touch-joystick,
+  .stage.play-mode:fullscreen .touch-dpad,
+  .stage.play-mode:-webkit-full-screen .touch-dpad,
+  .stage.play-mode.pseudo-fullscreen .touch-dpad { width: var(--record-joystick-size); }
+
+  .stage.play-mode:fullscreen .touch-dpad button,
+  .stage.play-mode:-webkit-full-screen .touch-dpad button,
+  .stage.play-mode.pseudo-fullscreen .touch-dpad button { min-width: 0; min-height: 0; }
+
+  .stage.play-mode:fullscreen .control-style-switch,
+  .stage.play-mode:-webkit-full-screen .control-style-switch,
+  .stage.play-mode.pseudo-fullscreen .control-style-switch {
+    top: auto;
+    bottom: calc(max(10px, env(safe-area-inset-bottom)) + var(--record-joystick-size) + 8px);
+    left: max(10px, env(safe-area-inset-left));
+    justify-content: center;
+    width: calc(var(--record-left-rail) - 20px - env(safe-area-inset-left));
+    padding: 2px;
+    transform: none;
+  }
+
+  .stage.play-mode:fullscreen .control-style-switch button,
+  .stage.play-mode:-webkit-full-screen .control-style-switch button,
+  .stage.play-mode.pseudo-fullscreen .control-style-switch button {
+    min-width: 0;
+    min-height: 27px;
+    padding: 3px 6px;
+    font-size: 9px;
+  }
+
+  .stage.play-mode:fullscreen .touch-fire,
+  .stage.play-mode:-webkit-full-screen .touch-fire,
+  .stage.play-mode.pseudo-fullscreen .touch-fire {
+    right: max(12px, env(safe-area-inset-right));
+    bottom: max(14px, env(safe-area-inset-bottom));
+    width: min(calc(var(--record-right-rail) - 24px - env(safe-area-inset-right)), clamp(160px, 18vw, 240px));
+    font-size: clamp(16px, 2.4vw, 24px);
+  }
 }

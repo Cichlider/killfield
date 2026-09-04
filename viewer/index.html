@@ -13,7 +13,7 @@
 <link rel="icon" type="image/png" sizes="192x192" href="assets/brand/icon-192.png">
 <link rel="apple-touch-icon" sizes="180x180" href="assets/brand/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="stylesheet" href="style.css?v=d54b36ce">
+<link rel="stylesheet" href="style.css?v=e17a2e67">
 </head>
 <body>
 <main>
@@ -28,13 +28,27 @@
   </nav>
 
   <section class="config-row watch-config" id="watch-config" aria-label="Watch match">
-    <label class="select-field role-red"><span id="watch-left-label">Left</span>
-      <select id="controller-0"><option value="hybrid" selected>Hybrid</option><option value="laika">Laika</option><option value="killfield">Killfield</option></select>
-    </label>
+    <div class="controller-picker role-red" data-controller-picker>
+      <span id="watch-left-label">Left</span>
+      <button type="button" class="controller-trigger" aria-haspopup="listbox" aria-expanded="false"><span>Hybrid</span><i aria-hidden="true"></i></button>
+      <div class="controller-menu" role="listbox" aria-hidden="true">
+        <button type="button" role="option" data-value="hybrid" aria-selected="true">Hybrid</button>
+        <button type="button" role="option" data-value="laika" aria-selected="false">Laika</button>
+        <button type="button" role="option" data-value="killfield" aria-selected="false">Killfield</button>
+      </div>
+      <select id="controller-0" class="native-controller-select" tabindex="-1" aria-hidden="true"><option value="hybrid" selected>Hybrid</option><option value="laika">Laika</option><option value="killfield">Killfield</option></select>
+    </div>
     <span class="versus">vs</span>
-    <label class="select-field role-black"><span id="watch-right-label">Right</span>
-      <select id="controller-1"><option value="laika" selected>Laika</option><option value="hybrid">Hybrid</option><option value="killfield">Killfield</option></select>
-    </label>
+    <div class="controller-picker role-black" data-controller-picker>
+      <span id="watch-right-label">Right</span>
+      <button type="button" class="controller-trigger" aria-haspopup="listbox" aria-expanded="false"><span>Laika</span><i aria-hidden="true"></i></button>
+      <div class="controller-menu" role="listbox" aria-hidden="true">
+        <button type="button" role="option" data-value="laika" aria-selected="true">Laika</button>
+        <button type="button" role="option" data-value="hybrid" aria-selected="false">Hybrid</button>
+        <button type="button" role="option" data-value="killfield" aria-selected="false">Killfield</button>
+      </div>
+      <select id="controller-1" class="native-controller-select" tabindex="-1" aria-hidden="true"><option value="laika" selected>Laika</option><option value="hybrid">Hybrid</option><option value="killfield">Killfield</option></select>
+    </div>
   </section>
 
   <section class="stage" id="stage">
@@ -95,6 +109,6 @@
 
   <div class="actions"><button id="reroll" type="button" class="ghost-btn">New maze</button><button id="reset-score" type="button" class="ghost-btn">Reset score</button></div>
 </main>
-<script type="module" src="viewer.js?v=23fc0df0"></script>
+<script type="module" src="viewer.js?v=da4af0c2"></script>
 </body>
 </html>
