@@ -244,7 +244,7 @@ cargo run --release --manifest-path engine/Cargo.toml --bin bench_mpc -- 2000 51
 
 ## PPO 状态
 
-当前部署模型为上面验收的 Hybrid（v16）。训练在独立的 [`rl` 分支](../../tree/rl)迭代——
+当前部署模型为上面验收的 Hybrid（v16）。训练在独立的 [`rl` 分支](https://github.com/Cichlider/killfield/tree/rl)迭代——
 O/A/R 定义、训练配置与逐版结果见该分支的 `docs/DESIGN.md` / `docs/TRAINING.md` /
 `docs/HANDOFF.md`；`main` 只接收冻结、验收过的权重和与其 schema 完全对应的浏览器运行时。
 
