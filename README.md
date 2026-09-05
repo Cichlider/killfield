@@ -5,44 +5,30 @@
 弹道和规划器使用 Rust 编写；网页加载同一份 Rust/WASM 引擎，并在浏览器本地执行
 Hybrid 网络。
 
-**当前基准：** 512 rays 对固定 Laika 运行 2000 局（种子 `20262814–20264813`），
+**Killfield 基准：** 512 rays 对固定 Laika 运行 2000 局（种子 `20262814–20264813`），
 取得 **1813 胜 / 92 负 / 95 双杀 / 0 超时，胜率 90.7%**。
 **最大零封：99 连胜**；双杀/平局不中断连胜且不计入，失败时清零。
 
 上一版在同一批种子与射线数下为 1774 胜 / 122 负 / 103 双杀 / 1 超时（胜率 88.7%，
 最大零封 68）。差异来自 guidance 的来源准入（见下文）：负局 122 → 92，超时 1 → 0。
 
-### Hybrid 部署验收（2026-09-05）
-
-- **模型：** `outputs/ppo_duel_v16/s11/final.pt`，run step `29,982,720`，血统累计
-  `477,528,064`；网页导出为 `viewer/assets/hybrid.bin`。
-- **固定 Laika，恰好 100 局：** **91 胜 / 3 负 / 6 双亡 / 0 平局，胜率 91%**。
-- **观测：** schema 24，`1028` 个有界浮点数，加 `10` 位子弹 mask。依次为
-  `12×10×7` 迷宫栅格、16 墙射线、自身 12、对手 12、导航 10、双方瞄准辅助各 5、
-  `10×10` 子弹、威胁 3、回合阶段与时钟 4、上一动作 3、威胁弹数 1、更早动作 6、
-  动作变更率 1、九个 `dodge_safety` 以及连续原地计数 1。
-- **动作：** `Discrete(18)` = 3 种油门 × 3 种转向 × 是否开火；25 Hz 每帧决策，
-  不跳帧、不承诺固定动作时长。
-- **奖励：** 仅终局结算。10 秒内获胜 `+1.0`，10–30 秒对数衰减至 `+0.5`；
-  双亡 `-0.1`，失败与 30 秒平局 `-1.0`；另叠加动作变更率平滑分，≤13% 得
-  `+0.25`，之后对数衰减至 0。
-- **浏览器迁移校验：** PyTorch 与 JavaScript 固定输入最大 logit 误差
-  `9.54e-7`；修复历史帧时钟后，网页同 seed 诊断 100 局为 97/0/3，动作变更率
-  12.57%。这是部署一致性检查，不替代上面的固定 Laika 正式口径。
-- **行为审阅：** <https://cichlider.github.io/killfield/>。
+**Hybrid 基准（v16，2026-09-05 部署验收）：** `outputs/ppo_duel_v16/s11/final.pt`，
+run step `29,982,720`，血统累计 `477,528,064`。1000 局确定性 argmax 评估中，对 Laika
+**94.1%**，对 512-ray Killfield **81.8%**；并接受过该游戏资深玩家的真人长局测试。
+浏览器迁移校验：PyTorch 与 JavaScript 固定输入最大 logit 误差 `9.54e-7`。完整的
+observation / action / reward 定义、训练过程和逐版 loss / actor 改动见
+**[项目报告](https://cichlider.github.io/killfield/paper/)**。
 
 > 一句话概括：Killfield 通常每 4 帧重规划一次，在当前局面的沙盒副本中推演 18 个动作，
 > 计算每条未来轨迹的 score；终局结果立即返回，最后执行 score 最高的动作。
 
 ## 在线体验
 
-<https://cichlider.github.io/killfield/>
-
-Page 只保留两个入口：
-
-- **Watch**：双方可独立选择 Laika / Hybrid / Killfield，默认 Hybrid vs Laika；
-- **Play**：玩家可选择 Laika / Hybrid / Killfield 作为对手，默认 Hybrid。保留瞬间转向、
-  轮盘区域规划、对手 0–3 帧延迟和开局停顿；默认延迟为 0 帧。
+- **[对战客户端](https://cichlider.github.io/killfield/viewer/)** —— Watch（双方可独立选择
+  Laika / Hybrid / Killfield，默认 Hybrid vs Laika）与 Play（玩家可选任意一方为对手，默认
+  Hybrid）两个入口。
+- **[项目报告](https://cichlider.github.io/killfield/paper/)** —— 交互式：逐帧观测/动作
+  可视化、loss 与 actor 的逐版演化、16 版训练血统。
 
 Killfield 固定使用 512 射线，不开放内部调参。手机端支持横屏、全屏、左侧移动轮盘和右侧
 开火。游戏物理以 25 Hz（每帧 40 ms）运行，页面按显示器刷新率绘制并在相邻物理状态之间插值。
@@ -250,7 +236,7 @@ node --check viewer/viewer.js
 bash viewer/build.sh
 ```
 
-复现 README 顶部的基准（约 5 分钟）：
+复现 README 顶部的 Killfield 基准（约 5 分钟）：
 
 ```sh
 cargo run --release --manifest-path engine/Cargo.toml --bin bench_mpc -- 2000 512 20262814
@@ -258,8 +244,9 @@ cargo run --release --manifest-path engine/Cargo.toml --bin bench_mpc -- 2000 51
 
 ## PPO 状态
 
-当前部署模型为上面验收的 Hybrid。训练仍在独立 `rl` 分支迭代；`main` 只接收冻结、验收过的
-权重和与其 schema 完全对应的浏览器运行时。
+当前部署模型为上面验收的 Hybrid（v16）。训练在独立的 [`rl` 分支](../../tree/rl)迭代——
+O/A/R 定义、训练配置与逐版结果见该分支的 `docs/DESIGN.md` / `docs/TRAINING.md` /
+`docs/HANDOFF.md`；`main` 只接收冻结、验收过的权重和与其 schema 完全对应的浏览器运行时。
 
 ## License
 
