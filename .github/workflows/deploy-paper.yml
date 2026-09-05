@@ -1,0 +1,54 @@
+name: Deploy player and interactive paper
+
+on:
+  push:
+    branches: [rl]
+    paths:
+      - paper/**
+      - .github/workflows/deploy-paper.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Read the player from main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: site
+
+      - name: Read this paper revision
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          path: paper-source
+
+      - name: Compose one Pages artifact
+        run: |
+          cp -R paper-source/paper site/paper
+          touch site/.nojekyll
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4
