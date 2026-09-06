@@ -1,5 +1,9 @@
 import assert from "node:assert/strict";
-import { Keyboard } from "../src/input.js";
+import {
+  DEFAULT_FORWARD_ALIGNMENT_DEGREES,
+  Keyboard,
+  joystickButtons,
+} from "../src/input.js";
 
 class FakeTarget {
   constructor() { this.listeners = new Map(); }
@@ -83,5 +87,13 @@ target.dispatch("keydown", "w");
 now = 601;
 assert.equal(keyboard.sampleWindowStrengths(0).forward, 1);
 target.dispatch("keyup", "w");
+
+// The player wheel now defaults to a full 360° forward sector. Even a stick
+// target directly behind the hull asks the tank to turn and drive forward;
+// reverse remains an explicit opt-in through the wheel setting.
+assert.equal(DEFAULT_FORWARD_ALIGNMENT_DEGREES, 360);
+const behindAtDefault = joystickButtons(0, 1, 0);
+assert.equal(behindAtDefault.forward, 1);
+assert.equal(behindAtDefault.backup, 0);
 
 console.log("bounded input window OK");

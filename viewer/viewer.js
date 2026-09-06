@@ -25,8 +25,8 @@
  */
 
 import * as C from "./src/constants.js";
-import { STRINGS, loadLang, saveLang } from "./src/i18n.js?v=91ec4451";
-import { Keyboard, TouchControls } from "./src/input.js";
+import { STRINGS, loadLang, saveLang } from "./src/i18n.js?v=controls-help";
+import { Keyboard, TouchControls } from "./src/input.js?v=wheel-360";
 import { SoundEffects } from "./src/audio.js";
 import { Rng } from "./src/rng.js";
 import { interpolatePredictedPose, simulationBudget } from "./src/low-latency.js";
@@ -119,6 +119,16 @@ const openingDelayInput = document.getElementById("opening-delay");
 const openingDelayLabel = document.getElementById("opening-delay-label");
 const openingDelayValue = document.getElementById("opening-delay-value");
 const openingDelayField = document.getElementById("opening-delay-field");
+const controlsHelp = document.getElementById("controls-help");
+const controlsHelpTrigger = document.getElementById("controls-help-trigger");
+const controlsHelpTitle = document.getElementById("controls-help-title");
+const controlForward = document.getElementById("control-forward");
+const controlBackup = document.getElementById("control-backup");
+const controlLeft = document.getElementById("control-left");
+const controlRight = document.getElementById("control-right");
+const controlFire = document.getElementById("control-fire");
+const controlReroll = document.getElementById("control-reroll");
+const controlPause = document.getElementById("control-pause");
 const watchButton = document.getElementById("mode-watch");
 const playButton = document.getElementById("mode-play");
 const stage = document.getElementById("stage");
@@ -545,6 +555,16 @@ function applyLanguage() {
   syncForwardAlignmentControl();
   syncReactionDelayControl();
   syncOpeningDelayControl();
+  controlsHelpTrigger.textContent = s.controlsHelp.trigger;
+  controlsHelpTrigger.setAttribute("aria-label", s.controlsHelp.trigger);
+  controlsHelpTitle.textContent = s.controlsHelp.title;
+  controlForward.textContent = s.controlsHelp.forward;
+  controlBackup.textContent = s.controlsHelp.backup;
+  controlLeft.textContent = s.controlsHelp.left;
+  controlRight.textContent = s.controlsHelp.right;
+  controlFire.textContent = s.controlsHelp.fire;
+  controlReroll.textContent = s.controlsHelp.reroll;
+  controlPause.textContent = s.controlsHelp.pause;
   themedPickers.forEach(syncThemedPicker);
   touchControls.setLabels(s.touchControls);
   orientationTitle.textContent = s.orientationTitle;
@@ -700,6 +720,7 @@ function setMode(next) {
   playButton.classList.toggle("active", next === "play");
   watchConfig.hidden = next !== "watch";
   playConfig.hidden = next !== "play";
+  controlsHelp.hidden = next !== "play";
   touchControls.setAvailable(next === "play");
   syncInstantTurnButton();
   // A mode switch changes who tank 1 even is, so treat it as a fresh match.

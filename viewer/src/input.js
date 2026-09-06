@@ -179,14 +179,16 @@ export class Keyboard {
   }
 }
 
-const FORWARD_ALIGNMENT_KEY = "killfield-forward-alignment-degrees";
+// Version the preference with the new 360° default so browsers that visited
+// the old 270° build do not silently retain that retired default.
+const FORWARD_ALIGNMENT_KEY = "killfield-forward-alignment-degrees-v2";
 const JOYSTICK_TURN_FULL = 0.10;
 const JOYSTICK_DRIVE_START = 0.25;
 const JOYSTICK_FULL_SPEED = 0.33;
 const JOYSTICK_DIRECTIONS = 128;
 const JOYSTICK_STEP_DEG = 360 / JOYSTICK_DIRECTIONS;
 const JOYSTICK_TURN_DEADBAND_DEG = C.TANK_TURN_SPEED / 2;
-export const DEFAULT_FORWARD_ALIGNMENT_DEGREES = 270;
+export const DEFAULT_FORWARD_ALIGNMENT_DEGREES = 360;
 
 export function normaliseForwardAlignmentDegrees(raw) {
   const value = Number(raw);

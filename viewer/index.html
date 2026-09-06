@@ -13,7 +13,7 @@
 <link rel="icon" type="image/png" sizes="192x192" href="assets/brand/icon-192.png">
 <link rel="apple-touch-icon" sizes="180x180" href="assets/brand/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="stylesheet" href="style.css?v=4546e45a">
+<link rel="stylesheet" href="style.css?v=controls-360">
 </head>
 <body>
 <main>
@@ -96,7 +96,7 @@
       <select id="play-opponent" class="native-controller-select" tabindex="-1" aria-hidden="true"><option value="laika">Laika</option><option value="hybrid" selected>Hybrid</option><option value="killfield">Killfield</option></select>
     </div>
     <button id="instant-turn" type="button" aria-pressed="false" class="toggle">No turn-rate limit: off</button>
-    <label class="range-field"><span id="forward-alignment-label">Wheel forward region</span><input id="forward-alignment" type="range" min="0" max="360" step="2.8125" value="270"><output id="forward-alignment-value" for="forward-alignment">270°</output></label>
+    <label class="range-field"><span id="forward-alignment-label">Wheel forward region</span><input id="forward-alignment" type="range" min="0" max="360" step="2.8125" value="360"><output id="forward-alignment-value" for="forward-alignment">360° / 360°</output></label>
     <div class="controller-picker" id="reaction-delay-field" data-theme-picker data-select-id="reaction-delay" data-label-id="reaction-delay-label">
       <span id="reaction-delay-label">Opponent delay</span>
       <button type="button" class="controller-trigger" aria-haspopup="listbox" aria-expanded="false"><span>0 frames</span><i aria-hidden="true"></i></button>
@@ -111,9 +111,26 @@
     <label class="range-field" id="opening-delay-field"><span id="opening-delay-label">Opening pause</span><input id="opening-delay" type="range" min="0" max="3" step="0.1" value="0.5"><output id="opening-delay-value" for="opening-delay">0.5 s</output></label>
   </section>
 
-  <div class="actions"><button id="reroll" type="button" class="ghost-btn">New maze</button><button id="reset-score" type="button" class="ghost-btn">Reset score</button></div>
+  <div class="actions">
+    <button id="reroll" type="button" class="ghost-btn">New maze</button>
+    <button id="reset-score" type="button" class="ghost-btn">Reset score</button>
+    <div id="controls-help" class="controls-help" hidden>
+      <button id="controls-help-trigger" type="button" class="ghost-btn" aria-describedby="controls-help-card">Controls</button>
+      <div id="controls-help-card" class="controls-help-card" role="tooltip">
+        <strong id="controls-help-title">Desktop controls</strong>
+        <div class="controls-help-grid">
+          <span><kbd>↑</kbd><kbd>W</kbd><kbd>E</kbd></span><span id="control-forward">Forward</span>
+          <span><kbd>↓</kbd><kbd>S</kbd><kbd>D</kbd></span><span id="control-backup">Reverse</span>
+          <span><kbd>←</kbd><kbd>A</kbd></span><span id="control-left">Turn left</span>
+          <span><kbd>→</kbd><kbd>F</kbd></span><span id="control-right">Turn right</span>
+          <span><kbd>Space</kbd><kbd>Q</kbd><kbd>M</kbd></span><span id="control-fire">Fire</span>
+        </div>
+        <p id="controls-help-shortcuts"><kbd>R</kbd> <span id="control-reroll">new maze</span> <span aria-hidden="true">·</span> <kbd>P</kbd> <span id="control-pause">pause</span></p>
+      </div>
+    </div>
+  </div>
   <footer class="site-footer"><a href="https://github.com/Cichlider/killfield" target="_blank" rel="noreferrer">github.com/Cichlider/killfield</a><span>© 2026 Cichlider. All rights reserved.</span></footer>
 </main>
-<script type="module" src="viewer.js?v=05f9d3db"></script>
+<script type="module" src="viewer.js?v=controls-360"></script>
 </body>
 </html>

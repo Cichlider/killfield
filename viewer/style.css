@@ -338,6 +338,82 @@ canvas { display: block; width: 100%; height: auto; }
   font-size: 11px;
 }
 
+.controls-help { position: relative; }
+
+.controls-help-card {
+  position: absolute;
+  z-index: 30;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  width: max-content;
+  max-width: min(340px, calc(100vw - 28px));
+  padding: 13px 14px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  color: var(--ink);
+  background: rgba(251,250,247,.98);
+  box-shadow: 0 14px 35px rgba(34,30,20,.16), 0 2px 8px rgba(34,30,20,.08);
+  line-height: 1.35;
+  opacity: 0;
+  transform: translate(-50%, 5px) scale(.98);
+  transform-origin: bottom;
+  pointer-events: none;
+  transition: opacity .16s ease, transform .16s ease;
+}
+
+.controls-help:hover .controls-help-card,
+.controls-help:focus-within .controls-help-card {
+  opacity: 1;
+  transform: translate(-50%, 0) scale(1);
+  pointer-events: auto;
+}
+
+.controls-help-card strong {
+  display: block;
+  margin-bottom: 9px;
+  font-size: 12px;
+}
+
+.controls-help-grid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 6px 13px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.controls-help-grid > span:first-child,
+.controls-help-grid > span:nth-child(3),
+.controls-help-grid > span:nth-child(5),
+.controls-help-grid > span:nth-child(7),
+.controls-help-grid > span:nth-child(9) {
+  display: flex;
+  gap: 4px;
+}
+
+.controls-help-card kbd {
+  min-width: 22px;
+  padding: 2px 5px;
+  border: 1px solid var(--line-strong);
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  color: #3f413d;
+  background: #fff;
+  font: 600 10px/1.25 ui-monospace, SFMono-Regular, Menlo, monospace;
+  text-align: center;
+  white-space: nowrap;
+}
+
+#controls-help-shortcuts {
+  margin: 10px 0 0;
+  padding-top: 9px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
 .site-footer {
   display: flex;
   flex-wrap: wrap;
