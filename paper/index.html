@@ -41,7 +41,7 @@
             <div><dt data-en="Policy">策略</dt><dd data-en="PPO actor–critic">PPO actor–critic</dd></div>
             <div><dt data-en="Input">观测</dt><dd data-en="1028 dimensions">1028 维</dd></div>
             <div><dt data-en="Control">控制</dt><dd data-en="18 actions · 25 Hz">18 个动作 · 25 Hz</dd></div>
-            <div><dt data-en="Lineage">训练血统 (lineage)</dt><dd data-en="477,528,064 steps">477,528,064 步</dd></div>
+            <div><dt data-en="Lineage">训练血统 (lineage)</dt><dd data-en="508,985,344 steps">508,985,344 步</dd></div>
           </dl>
         </div>
       </header>
@@ -190,8 +190,8 @@
       <section class="lineage-section" id="lineage">
         <div class="section-heading">
           <div class="lineage-kicker">
-            <strong>16</strong><span data-en="runs">个 run</span>
-            <strong>477,528,064</strong><span data-en="cumulative environment steps">累计环境步</span>
+            <strong>17</strong><span data-en="runs">个 run</span>
+            <strong>508,985,344</strong><span data-en="cumulative environment steps">累计环境步</span>
           </div>
           <h2 data-en="Training process">训练过程</h2>
         </div>
@@ -221,6 +221,7 @@
                 <tr><th>v14</th><td class="num" title="18,120,704">+18.1M<br><small>434.2M</small></td><td data-en="schema 24 · 1028-d: consecutive idle counter">schema 24 · 1028 维：加连续原地计数</td><td data-en="trade 0 → −0.1">双亡 0 → −0.1</td><td data-en="unchanged">不变</td><td class="formula"><span class="tex-inline" data-tex-zh="\ell'_{\text{idle}} = \ell_{\text{idle}} - \operatorname{clip}(t_{\text{idle}}-8,\,0,\,4.0)">\(\ell'_{\text{idle}} = \ell_{\text{idle}} - \operatorname{clip}(t_{\text{idle}}-8,\,0,\,4.0)\)</span></td><td data-en="six recent generations">六档近代联赛</td><td data-en="fixed 100-game Laika 82%, trades 10%">固定 100 局 Laika 82%，双亡 10%</td></tr>
                 <tr><th>v15</th><td class="num" title="13,303,808">+13.3M<br><small>447.5M</small></td><td data-en="unchanged">不变</td><td data-en="unchanged">不变</td><td data-en="unchanged">不变</td><td class="formula"><span class="tex-inline" data-tex-zh="\ell'_{\text{fire}} = \ell_{\text{fire}} + \alpha\cdot\text{ammo\_scale}(\text{弹槽})" data-tex-en="\ell'_{\text{fire}} = \ell_{\text{fire}} + \alpha\cdot\text{ammo\_scale}(\text{slots})">\(\ell'_{\text{fire}} = \ell_{\text{fire}} + \alpha\cdot\text{ammo\_scale}(\text{弹槽})\)</span></td><td data-en="seven generations">七档联赛</td><td data-en="dodge_scale reaches 1.361; visible dodging appears in play">dodge_scale 达 1.361，实机出现明确躲弹行为</td></tr>
                 <tr><th class="em">v16</th><td class="num" title="29,982,720">+30.0M<br><small>477.5M</small></td><td data-en="unchanged">不变</td><td data-en="unchanged">不变</td><td class="formula"><b>L4</b> <span class="tex-inline" data-tex-zh="m(a)=\left\lfloor a/2\right\rfloor\ \ (\text{原为 } a=a_{t-1})" data-tex-en="m(a)=\left\lfloor a/2\right\rfloor\ \ (\text{was } a=a_{t-1})">\(m(a)=\left\lfloor a/2\right\rfloor\ \ (\text{原为 } a=a_{t-1})\)</span></td><td class="formula"><span class="tex-inline" data-tex-zh="\ell'_{\text{fire}} = \ell_{\text{fire}} + \alpha_1\text{hitETA} + \alpha_2\,\text{occupancy}^2 + \alpha_3\,\text{suicideRisk}">\(\ell'_{\text{fire}} = \ell_{\text{fire}} + \alpha_1\text{hitETA} + \alpha_2\,\text{occupancy}^2 + \alpha_3\,\text{suicideRisk}\)</span></td><td data-en="gen6–v15, seven">gen6–v15 七档</td><td data-en="fixed 100-game Laika 90%, trades 4%; the ammo path still needs an ablation">固定 100 局 Laika 90%，双亡 4%；弹夹通路仍需消融确认</td></tr>
+                <tr><th class="em">v17b</th><td class="num" title="31,457,280">+31.5M<br><small>508.99M</small></td><td data-en="unchanged">不变</td><td data-en="unchanged">不变</td><td data-en="unchanged">不变</td><td class="formula"><span class="tex-inline" data-tex-zh="\alpha(s) = \alpha_{\text{old}} + \delta(s),\quad \delta_0=0\ \ (\text{dodge, ammo 各一个 } \delta)" data-tex-en="\alpha(s) = \alpha_{\text{old}} + \delta(s),\quad \delta_0=0\ \ (\text{one }\delta\text{ each for dodge, ammo})">\(\alpha(s) = \alpha_{\text{old}} + \delta(s),\quad \delta_0=0\ \ (\text{dodge, ammo 各一个 } \delta)\)</span></td><td data-en="v13/v14/v15/v16, weighted 10/20/30/40%">v13/v14/v15/v16，权重 10/20/30/40%</td><td data-en="2000-game Laika 97.5%, 1000-game Killfield 92.7% — an exploratory production run, no matched ablation control">2000 局 Laika 97.5%，1000 局 Killfield 92.7% — 探索性生产实验，无匹配消融对照</td></tr>
               </tbody>
             </table>
           </div>
@@ -249,34 +250,34 @@
         </div>
 
         <details class="question strength" open>
-          <summary><span>01</span><h3 data-en="How strong is it?">它有多强？</h3><p data-en="94.1% against Laika, 81.8% against 512-ray Killfield; it also holds an edge over top domestic players over long sessions.">对 Laika 94.1%，对 512-ray Killfield 81.8%；与国内顶尖玩家的长局对抗同样占优。</p><i></i></summary>
+          <summary><span>01</span><h3 data-en="How strong is it?">它有多强？</h3><p data-en="97.5% against Laika, 92.7% against 512-ray Killfield. Not yet tested against real players at this checkpoint.">对 Laika 97.5%，对 512-ray Killfield 92.7%；这一代尚未做过真人长局测试。</p><i></i></summary>
           <div class="answer-shell">
             <div class="result-pair">
               <article>
-                <span data-en="vs Laika · scripted game AI">vs Laika · 原生脚本 AI</span><strong>94.1<small>%</small></strong>
-                <div class="outcome-bar" aria-label="胜 941，负 18，双亡 41"><i style="--w:94.1"></i><i style="--w:1.8"></i><i style="--w:4.1"></i></div>
-                <p data-en-html="<b>941</b> won　18 lost　41 traded　·　180 frames avg"><b>941</b> 胜　18 负　41 双亡　·　平均 180 帧</p>
+                <span data-en="vs Laika · scripted game AI">vs Laika · 原生脚本 AI</span><strong>97.5<small>%</small></strong>
+                <div class="outcome-bar" aria-label="胜 1950，负 6，双亡 44"><i style="--w:97.5"></i><i style="--w:0.3"></i><i style="--w:2.2"></i></div>
+                <p data-en-html="<b>1950</b> won　6 lost　44 traded　·　177 frames avg"><b>1950</b> 胜　6 负　44 双亡　·　平均 177 帧</p>
               </article>
               <article>
-                <span>vs Killfield · 512-ray MPC</span><strong>81.8<small>%</small></strong>
-                <div class="outcome-bar" aria-label="胜 818，负 126，双亡 56"><i style="--w:81.8"></i><i style="--w:12.6"></i><i style="--w:5.6"></i></div>
-                <p data-en-html="<b>818</b> won　126 lost　56 traded　·　251 frames avg"><b>818</b> 胜　126 负　56 双亡　·　平均 251 帧</p>
+                <span>vs Killfield · 512-ray MPC</span><strong>92.7<small>%</small></strong>
+                <div class="outcome-bar" aria-label="胜 927，负 43，双亡 30"><i style="--w:92.7"></i><i style="--w:4.3"></i><i style="--w:3.0"></i></div>
+                <p data-en-html="<b>927</b> won　43 lost or drew　30 traded　·　205 frames avg"><b>927</b> 胜　43 负（含 3 局 30 秒平局）　30 双亡　·　平均 205 帧</p>
               </article>
             </div>
             <dl class="eval-meta">
-              <div><dt>Checkpoint</dt><dd>v16 · update 915</dd></div>
+              <div><dt>Checkpoint</dt><dd>v17b（gs 分支）· gs_v16b update 352</dd></div>
               <div><dt data-en="Rules">规则</dt><dd data-en="Original, no 30s draw">原版无 30 秒平局</dd></div>
               <div><dt data-en="Action">动作</dt><dd data-en="Deterministic argmax">确定性 argmax</dd></div>
-              <div><dt data-en="Sample">样本</dt><dd data-en="1000 rounds each">每组 1000 局</dd></div>
+              <div><dt data-en="Sample">样本</dt><dd data-en="2000 rounds vs Laika, 1000 vs Killfield">对 Laika 2000 局，对 Killfield 1000 局</dd></div>
               <div><dt data-en="Safety cap">安全上限</dt><dd data-en="15,000 frames · never hit">15,000 帧 · 未触发</dd></div>
-              <div><dt data-en="Seed base">种子基</dt><dd>20260905 / 20261905</dd></div>
+              <div><dt data-en="Seed base">种子基</dt><dd>95300 / 96300</dd></div>
             </dl>
             <div class="human-result">
               <p class="mini-label" data-en="HUMAN · long sessions">HUMAN · 长局对抗</p>
-              <p data-en="Beyond these two scripted and planner benchmarks, v16 has also played long sessions against top domestic players of this game. Humans often gain an early edge by probing, but the advantage flips as a session lengthens: Hybrid recomputes ballistics and survival outlook every frame, never tires, and never loosens ammo discipline under sustained fire — so it stays ahead on cumulative score over a long session.">除了这两组脚本与规划器基准，v16 也和国内这款游戏的顶尖玩家打过长局。人类在头几局往往能靠试探占到便宜，但局数拉长之后优势会翻转：Hybrid 每帧重算弹道与生存前景，不会疲劳、不会在连续交火中放松弹夹纪律，因此在长局累计比分上稳定占优。</p>
-              <p class="answer-note" data-en="This is a record of long sessions, not a fixed-seed, fixed-protocol 1000-round benchmark like the two above, and the human sample is far smaller. It says “it does not fall behind against real people” — do not quote it alongside 94.1% / 81.8%.">这一项是长局对战记录，不是上面那种固定种子、固定协议的 1000 局基准，人类样本量也小得多；它说明的是「在真人对抗中不落下风」，不能与 94.1% / 81.8% 并列引用。</p>
+              <p data-en="The prior checkpoint, v16, played long sessions against top domestic players of this game and held an edge that grew over the course of a session. This v17b checkpoint (state-conditioned dodge/ammo gates, a wider frozen self-play league) has not yet had the same human testing — treat that specific claim as historical, about v16, not this deployed version.">上一代 v16 曾与国内这款游戏的顶尖玩家打过长局，优势随局数拉长而扩大。这一代 v17b（状态条件的 dodge/ammo 门控、更宽的冻结自博弈联赛）还没有做过同样的真人测试——那段结论是关于 v16 的历史记录，不代表当前部署的这一版。</p>
+              <p class="answer-note" data-en="This is a record of long sessions, not a fixed-seed, fixed-protocol benchmark like the two above, and the human sample is far smaller. It said v16 “does not fall behind against real people” — do not quote it alongside this checkpoint's 97.5% / 92.7%.">这一项是长局对战记录，不是上面那种固定种子、固定协议的基准，人类样本量也小得多；它说明的是 v16「在真人对抗中不落下风」，不能与这一代的 97.5% / 92.7% 并列引用。</p>
             </div>
-            <p class="answer-note" data-en="94.1% and 81.8% cover only these two fixed benchmarks and these two seed ranges. They do not generalise to an arbitrary unseen policy, and the final numbers alone cannot attribute how much each actor change contributed.">94.1% 与 81.8% 只覆盖这两个固定基准和这两段新种子，不能推广为对任意未知策略占优，也不能单靠最终数字反推每一项 actor 改动各自贡献了多少。</p>
+            <p class="answer-note" data-en="97.5% and 92.7% cover only these two fixed benchmarks and these two seed bases. They do not generalise to an arbitrary unseen policy, and the final numbers alone cannot attribute how much the gate mechanism versus the wider self-play league contributed — this run has no matched ablation control.">97.5% 与 92.7% 只覆盖这两个固定基准和这两个种子基，不能推广为对任意未知策略占优；也不能单靠最终数字反推门控机制和更宽自博弈池各自贡献了多少——这一代没有做过匹配的消融对照。</p>
           </div>
         </details>
 
@@ -531,6 +532,6 @@
     </article>
   </main>
 
-  <script type="module" src="paper.js?v=20260906i"></script>
+  <script type="module" src="paper.js?v=20260908a"></script>
 </body>
 </html>

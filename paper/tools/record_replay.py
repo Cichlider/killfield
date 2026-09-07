@@ -128,7 +128,19 @@ def main():
 
     manifest = json.loads((args.run / "live.json").read_text())
     payload = torch.load(args.run / "live.pt", map_location="cpu", weights_only=False)
-    model = ActorCritic()
+    # A gated checkpoint's dodge_delta/ammo_delta keys land in load_weights's
+    # own "expected missing" allowance for a *default* ActorCritic() by
+    # coincidence of key overlap (dodge_scale, ammo_scale, ...), so building
+    # the model without the manifest's gate flags fails silently: the gate
+    # MLP weights get dropped as "unexpected" and the flat scalars they
+    # replaced stay at their zero-init, i.e. the replay would show a policy
+    # with the dodge/ammo shortcuts effectively switched off.
+    model = ActorCritic(
+        dodge_gate=manifest.get("dodge_gate", False),
+        ammo_gate=manifest.get("ammo_gate", False),
+        dodge_alpha_old=manifest.get("dodge_alpha_old", 0.0),
+        ammo_alpha_old=manifest.get("ammo_alpha_old", (0.0, 0.0, 0.0, 0.0)),
+    )
     load_weights(model, payload["model"], str(args.run / "live.pt"))
     model.eval()
 

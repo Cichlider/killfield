@@ -25,5 +25,9 @@ pub mod score;
 pub mod teacher;
 pub mod tuning;
 
-#[cfg(any(target_arch = "wasm32", test))]
+// Native (non-wasm32) builds skip this module by default so the training
+// dylib doesn't carry browser-only glue. `record` opts a native build back
+// in — e.g. for `paper/tools/record_replay.py`, which loads these same
+// single-instance render/step functions from a native .dylib via ctypes.
+#[cfg(any(target_arch = "wasm32", test, feature = "record"))]
 pub mod wasm;

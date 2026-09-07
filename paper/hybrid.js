@@ -128,16 +128,37 @@ export class HybridPolicy {
       this.tensor("trunk.0.bias"), 256, "tanh");
     const logits = dense(features, this.tensor("actor.weight"), this.tensor("actor.bias"), 18);
 
-    const dodgeScale = this.scalar("dodge_scale");
+    const gated = this.manifest.gated || { dodge: false, ammo: false };
+    const dodgeScale = gated.dodge
+      ? this.scalar("dodge_alpha_old") + dense(
+          dense(features, this.tensor("dodge_delta.0.weight"), this.tensor("dodge_delta.0.bias"), 64, "tanh"),
+          this.tensor("dodge_delta.2.weight"), this.tensor("dodge_delta.2.bias"), 1,
+        )[0]
+      : this.scalar("dodge_scale");
     const ammo = observation[863];
     const hit = observation[890];
     const suicide = observation[891];
     const eta = Math.max(0, Math.min(1, observation[893] * 3));
     const hitSoon = hit * (1 - eta);
-    const fireBias = this.scalar("ammo_scale") * ammo
-      + this.scalar("shot_quality_scale") * hitSoon
-      - this.scalar("ammo_lock_scale") * ((1 - ammo) ** 2) * (1 - hitSoon)
-      - this.scalar("suicide_scale") * suicide;
+    let ammoScale; let shotQualityScale; let ammoLockScale; let suicideScale;
+    if (gated.ammo) {
+      const ammoOut = dense(
+        dense(features, this.tensor("ammo_delta.0.weight"), this.tensor("ammo_delta.0.bias"), 64, "tanh"),
+        this.tensor("ammo_delta.2.weight"), this.tensor("ammo_delta.2.bias"), 4,
+      );
+      const alphaOld = this.tensor("ammo_alpha_old");
+      [ammoScale, shotQualityScale, ammoLockScale, suicideScale] =
+        [0, 1, 2, 3].map((i) => alphaOld[i] + ammoOut[i]);
+    } else {
+      ammoScale = this.scalar("ammo_scale");
+      shotQualityScale = this.scalar("shot_quality_scale");
+      ammoLockScale = this.scalar("ammo_lock_scale");
+      suicideScale = this.scalar("suicide_scale");
+    }
+    const fireBias = ammoScale * ammo
+      + shotQualityScale * hitSoon
+      - ammoLockScale * ((1 - ammo) ** 2) * (1 - hitSoon)
+      - suicideScale * suicide;
     for (let action = 0; action < 18; action += 1) {
       logits[action] += dodgeScale * dodge[Math.floor(action / 2)];
       if (action % 2 === 1) logits[action] += fireBias;

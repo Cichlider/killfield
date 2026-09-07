@@ -1,4 +1,4 @@
-import { HybridPolicy } from "./hybrid.js";
+import { HybridPolicy } from "./hybrid.js?v=20260908a";
 
 // ---------------------------------------------------------------- paper UI
 const panes = [...document.querySelectorAll(".formula-pane")];

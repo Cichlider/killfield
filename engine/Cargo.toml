@@ -7,6 +7,12 @@ edition = "2021"
 name = "kf_engine"
 crate-type = ["rlib", "cdylib"]
 
+[features]
+# Native builds normally skip `wasm.rs`; this pulls it back in for tools
+# (e.g. `paper/tools/record_replay.py`) that need the single-instance
+# render/step API from a native .dylib rather than a browser wasm32 build.
+record = []
+
 [profile.release]
 opt-level = 3
 lto = true
