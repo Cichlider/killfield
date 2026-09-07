@@ -12,13 +12,30 @@ import numpy as np
 import torch
 
 
-ACTOR_KEYS = (
-    "dodge_scale", "ammo_scale", "shot_quality_scale", "ammo_lock_scale",
-    "suicide_scale", "idle_logit_penalty", "map.0.weight", "map.0.bias",
+FIXED_KEYS = (
+    "map.0.weight", "map.0.bias",
     "map.2.weight", "map.2.bias", "map.5.weight", "map.5.bias",
     "bullets.0.weight", "bullets.0.bias", "bullets.2.weight", "bullets.2.bias",
     "scalars.0.weight", "scalars.0.bias", "trunk.0.weight", "trunk.0.bias",
-    "actor.weight", "actor.bias",
+    "actor.weight", "actor.bias", "idle_logit_penalty",
+)
+# `dodge_gate`/`ammo_gate` swap a single flat scalar for a warm-started
+# residual gate `alpha_old + delta(features)`; the two shapes are mutually
+# exclusive per checkpoint, so the exported key set depends on which one the
+# checkpoint was actually trained with -- read from the checkpoint's own
+# manifest fields, not assumed. Constructing `ActorCritic()` with defaults
+# here (like `serve_live.py`/`eval_duel.py` used to) silently builds the
+# wrong architecture for a gated checkpoint and either KeyErrors on load or,
+# worse, loads a partial state_dict without complaint.
+UNGATED_DODGE_KEYS = ("dodge_scale",)
+GATED_DODGE_KEYS = (
+    "dodge_alpha_old", "dodge_delta.0.weight", "dodge_delta.0.bias",
+    "dodge_delta.2.weight", "dodge_delta.2.bias",
+)
+UNGATED_AMMO_KEYS = ("ammo_scale", "shot_quality_scale", "ammo_lock_scale", "suicide_scale")
+GATED_AMMO_KEYS = (
+    "ammo_alpha_old", "ammo_delta.0.weight", "ammo_delta.0.bias",
+    "ammo_delta.2.weight", "ammo_delta.2.bias",
 )
 
 
@@ -35,14 +52,33 @@ def main() -> None:
     from duel_ppo import ActorCritic  # noqa: PLC0415
 
     payload = torch.load(args.checkpoint, map_location="cpu", weights_only=False)
-    model = ActorCritic()
+    # Gate config (dodge_gate/ammo_gate/*_alpha_old) is architecture metadata,
+    # not weights, so it lives in the checkpoint's companion manifest
+    # (live.json/complete.json's shape), not inside the .pt payload itself --
+    # same place serve_live.py/eval_duel.py read it from.
+    manifest_sidecar = args.checkpoint.with_suffix(".json")
+    side = json.loads(manifest_sidecar.read_text()) if manifest_sidecar.exists() else {}
+    dodge_gate = bool(side.get("dodge_gate", False))
+    ammo_gate = bool(side.get("ammo_gate", False))
+    model = ActorCritic(
+        dodge_gate=dodge_gate, ammo_gate=ammo_gate,
+        dodge_alpha_old=side.get("dodge_alpha_old", 0.0),
+        ammo_alpha_old=side.get("ammo_alpha_old", (0.0, 0.0, 0.0, 0.0)),
+    )
     model.load_state_dict(payload["model"])
     model.eval()
+
+    actor_keys = (
+        (GATED_DODGE_KEYS if dodge_gate else UNGATED_DODGE_KEYS)
+        + (GATED_AMMO_KEYS if ammo_gate else UNGATED_AMMO_KEYS)
+        + FIXED_KEYS
+    )
+    print(f"dodge_gate={dodge_gate} ammo_gate={ammo_gate}")
 
     arrays: list[np.ndarray] = []
     tensors: dict[str, dict[str, object]] = {}
     offset = 0
-    for key in ACTOR_KEYS:
+    for key in actor_keys:
         value = payload["model"][key].detach().cpu().numpy().astype("<f4", copy=False)
         flat = value.reshape(-1)
         tensors[key] = {"shape": list(value.shape), "offset": offset, "length": flat.size}
@@ -64,6 +100,7 @@ def main() -> None:
         "bullet_slots": BULLET_SLOTS,
         "actions": 18,
         "floats": offset,
+        "gated": {"dodge": dodge_gate, "ammo": ammo_gate},
         "tensors": tensors,
     }
     manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")

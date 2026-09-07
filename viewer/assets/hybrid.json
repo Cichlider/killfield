@@ -1,41 +1,87 @@
 {
   "format": "killfield-hybrid-f32-v1",
-  "checkpoint": "final.pt",
+  "checkpoint": "v17b_gs_league_u352.pt",
   "schema": 24,
   "observation": 1028,
   "bullet_slots": 10,
   "actions": 18,
-  "floats": 228280,
+  "floats": 261501,
+  "gated": {
+    "dodge": true,
+    "ammo": true
+  },
   "tensors": {
-    "dodge_scale": {
+    "dodge_alpha_old": {
       "shape": [],
       "offset": 0,
       "length": 1
     },
-    "ammo_scale": {
-      "shape": [],
+    "dodge_delta.0.weight": {
+      "shape": [
+        64,
+        256
+      ],
       "offset": 1,
+      "length": 16384
+    },
+    "dodge_delta.0.bias": {
+      "shape": [
+        64
+      ],
+      "offset": 16385,
+      "length": 64
+    },
+    "dodge_delta.2.weight": {
+      "shape": [
+        1,
+        64
+      ],
+      "offset": 16449,
+      "length": 64
+    },
+    "dodge_delta.2.bias": {
+      "shape": [
+        1
+      ],
+      "offset": 16513,
       "length": 1
     },
-    "shot_quality_scale": {
-      "shape": [],
-      "offset": 2,
-      "length": 1
+    "ammo_alpha_old": {
+      "shape": [
+        4
+      ],
+      "offset": 16514,
+      "length": 4
     },
-    "ammo_lock_scale": {
-      "shape": [],
-      "offset": 3,
-      "length": 1
+    "ammo_delta.0.weight": {
+      "shape": [
+        64,
+        256
+      ],
+      "offset": 16518,
+      "length": 16384
     },
-    "suicide_scale": {
-      "shape": [],
-      "offset": 4,
-      "length": 1
+    "ammo_delta.0.bias": {
+      "shape": [
+        64
+      ],
+      "offset": 32902,
+      "length": 64
     },
-    "idle_logit_penalty": {
-      "shape": [],
-      "offset": 5,
-      "length": 1
+    "ammo_delta.2.weight": {
+      "shape": [
+        4,
+        64
+      ],
+      "offset": 32966,
+      "length": 256
+    },
+    "ammo_delta.2.bias": {
+      "shape": [
+        4
+      ],
+      "offset": 33222,
+      "length": 4
     },
     "map.0.weight": {
       "shape": [
@@ -44,14 +90,14 @@
         3,
         3
       ],
-      "offset": 6,
+      "offset": 33226,
       "length": 1008
     },
     "map.0.bias": {
       "shape": [
         16
       ],
-      "offset": 1014,
+      "offset": 34234,
       "length": 16
     },
     "map.2.weight": {
@@ -61,14 +107,14 @@
         3,
         3
       ],
-      "offset": 1030,
+      "offset": 34250,
       "length": 4608
     },
     "map.2.bias": {
       "shape": [
         32
       ],
-      "offset": 5638,
+      "offset": 38858,
       "length": 32
     },
     "map.5.weight": {
@@ -76,14 +122,14 @@
         128,
         960
       ],
-      "offset": 5670,
+      "offset": 38890,
       "length": 122880
     },
     "map.5.bias": {
       "shape": [
         128
       ],
-      "offset": 128550,
+      "offset": 161770,
       "length": 128
     },
     "bullets.0.weight": {
@@ -91,14 +137,14 @@
         32,
         10
       ],
-      "offset": 128678,
+      "offset": 161898,
       "length": 320
     },
     "bullets.0.bias": {
       "shape": [
         32
       ],
-      "offset": 128998,
+      "offset": 162218,
       "length": 32
     },
     "bullets.2.weight": {
@@ -106,14 +152,14 @@
         32,
         32
       ],
-      "offset": 129030,
+      "offset": 162250,
       "length": 1024
     },
     "bullets.2.bias": {
       "shape": [
         32
       ],
-      "offset": 130054,
+      "offset": 163274,
       "length": 32
     },
     "scalars.0.weight": {
@@ -121,14 +167,14 @@
         128,
         88
       ],
-      "offset": 130086,
+      "offset": 163306,
       "length": 11264
     },
     "scalars.0.bias": {
       "shape": [
         128
       ],
-      "offset": 141350,
+      "offset": 174570,
       "length": 128
     },
     "trunk.0.weight": {
@@ -136,14 +182,14 @@
         256,
         320
       ],
-      "offset": 141478,
+      "offset": 174698,
       "length": 81920
     },
     "trunk.0.bias": {
       "shape": [
         256
       ],
-      "offset": 223398,
+      "offset": 256618,
       "length": 256
     },
     "actor.weight": {
@@ -151,15 +197,20 @@
         18,
         256
       ],
-      "offset": 223654,
+      "offset": 256874,
       "length": 4608
     },
     "actor.bias": {
       "shape": [
         18
       ],
-      "offset": 228262,
+      "offset": 261482,
       "length": 18
+    },
+    "idle_logit_penalty": {
+      "shape": [],
+      "offset": 261500,
+      "length": 1
     }
   }
 }
