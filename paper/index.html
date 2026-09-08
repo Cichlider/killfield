@@ -3,15 +3,15 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Hybrid：在实时坦克对战中结合强化学习与局部物理预演的交互式技术论文。">
+  <meta name="description" content="Lookahead as Information：动作条件预演作为观测信息有效，额外动作对齐路由未显示可测增益。">
   <meta name="theme-color" content="#f3f1eb">
   <meta property="og:type" content="article">
-  <meta property="og:title" content="Hybrid — Interactive Technical Report">
-  <meta property="og:description" content="用实况、数据和交互图解说明一个实时强化学习系统。">
+  <meta property="og:title" content="Lookahead as Information — A Tank Trouble Case Study">
+  <meta property="og:description" content="动作条件预演信息带来清晰增益；额外的动作对齐 logit 路由没有可测增益。">
   <meta name="twitter:card" content="summary">
-  <title>Hybrid — Interactive Technical Report</title>
+  <title>Lookahead as Information — A Tank Trouble Case Study</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
-  <link rel="stylesheet" href="paper.css?v=20260906i">
+  <link rel="stylesheet" href="paper.css?v=20260908a">
   <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js" onload="renderMathInElement(document.body,{delimiters:[{left:'$$',right:'$$',display:true},{left:'\\(',right:'\\)',display:false}],throwOnError:false});"></script>
 </head>
@@ -35,7 +35,7 @@
         <p class="eyebrow">INTERACTIVE TECHNICAL REPORT · 2026</p>
         <div class="hero-lockup">
           <div>
-            <h1>Hybrid</h1>
+            <h1 class="paper-title">Lookahead as Information</h1>
           </div>
           <dl class="hero-spec">
             <div><dt data-en="Policy">策略</dt><dd data-en="PPO actor–critic">PPO actor–critic</dd></div>
@@ -288,7 +288,7 @@
         <details class="question strength">
           <summary><span>03</span><h3 data-en="Does the dodge signal actually help?">闪避信号真的有效吗？</h3><p data-en="A matched training ablation and a checkpoint intervention answer two different causal questions.">匹配训练消融与 checkpoint 干预回答两个不同的因果问题。</p><i></i></summary>
           <div class="answer-shell">
-            <p class="answer-text" data-en-html="First limitation: the controlled study is a <b>matched continuation from one mature v11 ancestor</b>, not training from scratch. All arms use the same 4,194,304 additional steps, reward, pool and seeds 21/22/23. Within that scope, merely exposing dodge in the observation beats Base by +9.53 pp against Laika and +7.30 pp against Killfield; adding the aligned actor shortcut on top of readable dodge adds only +1.23 / +2.33 pp, with overlapping three-seed ranges.">先写边界：受控实验是从同一成熟 v11 祖先出发的<b>匹配续训</b>，不是从头训练。各 arm 的追加步数（4,194,304）、奖励、对手池和种子 21/22/23 均相同。在这个范围内，只让网络读到 dodge，较 Base 对 Laika / Killfield 提高 +9.53 / +7.30 pp；在可读 dodge 上再加动作对齐捷径只增加 +1.23 / +2.33 pp，且三种子区间重叠。</p>
+            <p class="answer-text" data-en-html="First limitation: the controlled study is a <b>matched continuation from one mature v11 ancestor</b>, not training from scratch. All arms use the same 4,194,304 additional steps, reward, pool and seeds 21/22/23. Within that scope, merely exposing dodge in the observation beats Base by +9.53 pp against Laika and +7.30 pp against Killfield; both three-seed contrast intervals exclude zero. Adding the aligned actor shortcut on top of readable dodge adds only +1.23 / +2.33 pp, with intervals spanning zero.">先写边界：受控实验是从同一成熟 v11 祖先出发的<b>匹配续训</b>，不是从头训练。各 arm 的追加步数（4,194,304）、奖励、对手池和种子 21/22/23 均相同。在这个范围内，只让网络读到 dodge，较 Base 对 Laika / Killfield 提高 +9.53 / +7.30 pp，两个三种子差值区间都不含 0；在可读 dodge 上再加动作对齐捷径只增加 +1.23 / +2.33 pp，区间均跨过 0。</p>
             <div class="spec-wrap"><table class="spec-table">
               <thead><tr><th data-en="Matched continuation arm">匹配续训 arm</th><th data-en="Laika mean / seeds">Laika 均值 / 各 seed</th><th data-en="Killfield mean / seeds">Killfield 均值 / 各 seed</th></tr></thead>
               <tbody>
@@ -299,9 +299,10 @@
                 <tr><th>Shuffled path</th><td>78.6 / 74.4 / 78.5<br><small>dual−shuffled −0.10 pp</small></td><td>60.3 / 61.1 / 59.7<br><small>dual−shuffled +0.53 pp</small></td></tr>
               </tbody>
             </table></div>
-            <p class="answer-note" data-en="The per-seed endpoint table is retained in the audit record; the table above reports contrasts because this study's key question is paired arm difference. Its AUC values come from sampled training-policy evaluations, not periodic fixed argmax, so they are diagnostics rather than a clean sample-efficiency claim.">各 seed 的端点值保留在实验记录中；上表报告配对 arm 差值，因为该实验的问题正是 arm 间差异。AUC 来自训练期 sampling 评测，不是周期性 fixed-argmax，因此只作为诊断，不包装成严格的样本效率结论。</p>
+            <p class="answer-note" data-en-html="The shuffled path uses one <b>fixed permutation for the entire training run</b>: <code>(4,7,1,8,3,0,2,5,6)</code>. It permutes only the nine values entering the direct logit term; the shared observation keeps the correct order. It is therefore a correspondence control, not stepwise random noise. The per-seed endpoint table is retained here; AUC comes from sampled training-policy evaluations, not periodic fixed argmax, so it remains diagnostic.">shuffled path 在整段训练中使用同一个<b>固定置换</b>：<code>(4,7,1,8,3,0,2,5,6)</code>。它只打乱进入直接 logit 项的 9 个值；共享 observation 仍保持正确顺序。因此这是索引对应关系对照，不是逐步随机噪声。上表保留各 seed 端点；AUC 来自训练期 sampling 评测而非周期性 fixed-argmax，仍只作诊断。</p>
+            <div class="pull" data-en-html="The result is <b>information works; aligned routing shows no measurable gain</b>. Read−Base is +9.53 / +7.30 pp. Dual−shuffled is −0.10 / +0.53 pp, compatible with zero. The data support providing action-conditioned lookahead outputs as observations; they do not support the claim that matching each score directly to its action logit is necessary or beneficial within this continuation budget.">结果是：<b>信息有效；动作对齐路由没有可测增益</b>。Read−Base 为 +9.53 / +7.30 pp；dual−shuffled 为 −0.10 / +0.53 pp，与零效应相容。数据支持把 action-conditioned lookahead 输出作为观测提供给策略；不支持「把每个分数直接接到对应动作 logit，在本续训预算内是必要或有益的」。</div>
             <p class="answer-h" data-en="A different question: does today's v17b checkpoint depend on the path?">另一个问题：当前 v17b checkpoint 是否依赖这条通路？</p>
-            <p class="answer-text" data-en-html="Holding weights, seeds and protocol fixed, setting only <code>dodge</code>'s logit contribution to zero drops 500-round win rate from 97.4% to 86.2% against Laika and from 92.6% to 75.4% against Killfield. This supports current-checkpoint dependence; by itself it would not prove what a from-scratch no-dodge policy could eventually learn. The matched continuation study above supplies the training-stage evidence.">固定权重、种子与协议，只把 <code>dodge</code> 的 logit 贡献置零，500 局胜率对 Laika 从 97.4% 降到 86.2%，对 Killfield 从 92.6% 降到 75.4%。这支持当前 checkpoint 依赖该通路；它单独不能证明从头训练的 no-dodge 策略最终能学到什么，上一段的匹配续训实验才是训练阶段证据。</p>
+            <p class="answer-text" data-en-html="Holding weights, seeds and protocol fixed, setting only <code>dodge</code>'s logit contribution to zero drops 500-round win rate from 97.4% to 86.2% against Laika and from 92.6% to 75.4% against Killfield. This is not a contradiction: v17b routed dodge information through this path, so removing it breaks that checkpoint; an arm that had no aligned path from the start of the matched continuation could route the same ordered observation through its trunk and reach the same measured endpoint. <b>The shortcut is the route this checkpoint took, not an evidenced necessary route.</b>">固定权重、种子与协议，只把 <code>dodge</code> 的 logit 贡献置零，500 局胜率对 Laika 从 97.4% 降到 86.2%，对 Killfield 从 92.6% 降到 75.4%。这并不矛盾：v17b 把 dodge 信息路由到了这条通路，拔掉它会破坏当前 checkpoint；在匹配续训开始时就没有对齐通路的 arm，可以把同样的有序 observation 经 trunk 路由，并达到相同的实测端点。<b>捷径是当前 checkpoint 选择的路，不是证据支持的必经之路。</b></p>
             <div class="spec-wrap"><table class="spec-table">
               <thead><tr><th data-en="Path set to zero">置零通路</th><th>vs Laika</th><th>vs Killfield</th><th data-en="Change from baseline">相对基线</th></tr></thead>
               <tbody>
@@ -332,7 +333,7 @@
               <div class="shortcut"><small>ACTION-ALIGNED SHORTCUTS</small><b>dodge · ammo · shot ETA · idle</b><span>soft bias → logits</span></div>
             </div>
             <p class="answer-text" data-en="Bullet rows use one shared encoder plus masked mean/max pooling, because slot order has no tactical meaning. The shortcuts are soft logit biases, never action masks; the trunk can override them.">子弹行使用共享编码器与 masked mean/max pooling，因为槽位顺序没有战术含义。六条捷径都是 soft logit bias，从不 mask 动作；trunk 仍可覆盖它们。</p>
-            <p class="answer-text" data-en-html="The immediate limitation: inference-time removal measures dependence of this checkpoint, not universal architectural necessity. Under that intervention, dodge is dominant; shot_quality is small and opponent-dependent; ammo, ammo_lock, suicide and idle are within 0.0–0.6 pp. A separate matched 4.19M-step, three-seed ammo study likewise finds no clear incremental benefit from those fire-logit shortcuts beyond information already readable by the trunk.">先写边界：推理期移除衡量的是当前 checkpoint 的依赖，不是架构的普遍必要性。在这项干预中，dodge 占主导；shot_quality 很小且依赖对手；ammo、ammo_lock、suicide、idle 的变化仅 0.0–0.6 pp。另一个匹配的 4.19M 步、三种子弹药消融也没有显示这些开火 logit 捷径在 trunk 已可读信息之上的明确增益。</p>
+            <p class="answer-text" data-en-html="The immediate limitation: inference-time removal measures dependence of this checkpoint, not universal architectural necessity. The matched shuffled control supplies the stronger architectural result: <b>correct action-to-logit correspondence has no measurable endpoint benefit over a fixed wrong correspondence</b>. Under checkpoint intervention, dodge is dominant only as v17b's chosen route; shot_quality is small and opponent-dependent; ammo, ammo_lock, suicide and idle are within 0.0–0.6 pp. A separate matched 4.19M-step, three-seed ammo study likewise finds no clear incremental benefit from those fire-logit shortcuts beyond information already readable by the trunk.">先写边界：推理期移除衡量的是当前 checkpoint 的依赖，不是架构的普遍必要性。匹配 shuffled 对照给出更强的架构结论：<b>正确的 action-to-logit 对应关系，相比固定的错误对应关系，没有可测端点增益</b>。在 checkpoint 干预中，dodge 的主导效应只说明它是 v17b 选择的路；shot_quality 很小且依赖对手；ammo、ammo_lock、suicide、idle 的变化仅 0.0–0.6 pp。另一个匹配的 4.19M 步、三种子弹药消融也没有显示这些开火 logit 捷径在 trunk 已可读信息之上的明确增益。</p>
             <div class="spec-wrap"><table class="spec-table">
               <thead><tr><th data-en="Matched ammo arm">匹配 ammo arm</th><th>Laika</th><th>Killfield</th><th data-en="Bad-fire rate">bad-fire 比例</th></tr></thead>
               <tbody>
@@ -362,7 +363,7 @@
           <summary><span>05</span><h3 data-en="Does “search only provides local features” survive an accounting?">「搜索只生成局部特征」经得起逐维清点吗？</h3><p data-en="53 dimensions require forward simulation; 76 if broader geometric search is included.">严格口径 53 维依赖前向模拟；宽口径计入几何搜索后为 76 维。</p><i></i></summary>
           <div class="answer-shell">
             <p class="answer-text" data-en-html="The immediate boundary: Hybrid does not consume Killfield's 512-ray density field, but it does consume planner-like intermediate computations. Under a strict ballistics/lookahead definition, 10 aim-assist + 30 per-bullet forecast + 4 threat-summary + 9 dodge dimensions = <b>53 / 1028 (5.16%)</b>. Adding 16 wall rays and 7 BFS path/gradient/dead-end dimensions gives a broad search-derived count of <b>76 / 1028 (7.39%)</b>. Density-field channels: zero.">边界先写：Hybrid 不读取 Killfield 的 512-ray 密度场，但确实消费规划器式的中间计算。严格按弹道 / lookahead 口径，10 维瞄准辅助 + 30 维逐弹预测 + 4 维威胁摘要 + 9 维 dodge，共 <b>53 / 1028（5.16%）</b>；再计入 16 维墙体射线与 7 维 BFS 路径 / 梯度 / 死路量，宽口径为 <b>76 / 1028（7.39%）</b>。密度场相关通道为 0。</p>
-            <div class="pull" data-en-html="The accurate claim is: <b>a learned policy surpasses the full planner after consuming planner-like intermediate products</b>, not “learning surpasses planning”. That is exactly the action-conditioned-lookahead contribution named in the title.">准确表述是：<b>学习策略在消费了规划器式中间产物之后，超越完整规划器</b>；不是「学习超越规划」。这正是标题中 action-conditioned lookahead 的含义。</div>
+            <div class="pull" data-en-html="The supported contribution is: <b>providing action-conditioned lookahead outputs as observation information yields +9.53 / +7.30 pp in matched continuation; wiring those outputs directly to matching action logits adds no measurable benefit</b>. A learned policy then surpasses the full planner while consuming planner-like intermediate products—not “learning surpasses planning”.">证据支持的贡献是：<b>把 action-conditioned lookahead 输出作为观测信息，在匹配续训中带来 +9.53 / +7.30 pp；再把这些输出直接接到对应动作 logits，没有可测增益</b>。学习策略是在消费规划器式中间产物后超越完整规划器，而不是「学习超越规划」。</div>
           </div>
         </details>
 
@@ -472,6 +473,6 @@
     </article>
   </main>
 
-  <script type="module" src="paper.js?v=20260908b"></script>
+  <script type="module" src="paper.js?v=20260908c"></script>
 </body>
 </html>

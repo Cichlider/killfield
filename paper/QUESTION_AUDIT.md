@@ -57,6 +57,10 @@ Checkpoint：`outputs/pool/v17b_gs_league_u352.pt`。每个补充格 500 局，a
 
 配对差值：Read−Base 为 +9.53 / +7.30 pp（Laika / Killfield）；Act−Base 为 +0.73 / +2.23 pp；Read+Act−Read 为 +1.23 / +2.33 pp；Read+Act−Shuffled 为 −0.10 / +0.53 pp。后两项三种子区间重叠，按不确定处理。训练期 AUC 使用 sampled policy 指标，不能当成严格 fixed-argmax 样本效率曲线。
 
+Shuffled path 使用训练全程固定的零索引置换 `(4,7,1,8,3,0,2,5,6)`。置换只作用于直接 logit 项；共享 observation 中的 9 个 dodge 值保持正确顺序。因此它检验的是正确 action-logit 对应关系相对于一个可被网络重学的固定错位映射是否有增益，不是每步随机噪声对照。
+
+证据结论：Read−Base 的三种子差值区间均不含 0，支持 dodge 信息本身有效；Read+Act−Shuffled 为 −0.10 / +0.53 pp、与零相容，不支持正确动作对齐路由带来可测端点增益。推理期拔掉 v17b dodge 路径的大幅下降只说明当前 checkpoint 已依赖其训练时选择的路径，不把该路径提升为其他训练策略的必经之路。
+
 ### 4.2 v17b 推理期干预
 
 同一 checkpoint、同一种子、同一环境；只把指定 shortcut 的最终 logit 贡献置零。每行 500 局 Laika（seed 95300）+ 500 局 Killfield（seed 96300）。
@@ -102,7 +106,7 @@ Checkpoint：`outputs/pool/v17b_gs_league_u352.pt`。每个补充格 500 局，a
 - 再计 wall rays 16 与 BFS path / gradient / dead-end 7：**76 / 1028（7.39%）**。
 - Killfield density-field channels：**0**。
 
-因此正文改为「学习策略在消费规划器式中间产物后超越完整规划器」，不再写「学习超越规划」。
+因此正文主张改为「把 action-conditioned lookahead 输出作为观测信息带来可测增益；额外的动作对齐 logit 路由没有可测增益」。同时保留更窄的系统描述：「学习策略在消费规划器式中间产物后超越完整规划器」，不再写「学习超越规划」。
 
 ## 6. Q6：平滑奖励查证
 

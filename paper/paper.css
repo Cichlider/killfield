@@ -39,6 +39,7 @@ article { padding-bottom:80px; }
 .eyebrow { margin:0 0 40px; color:var(--red); font-size:10px; letter-spacing:.17em; }
 .hero-lockup { display:grid; grid-template-columns:minmax(0,1fr) 340px; gap:80px; align-items:center; }
 h1 { margin:0; font-size:clamp(84px,14vw,178px); font-weight:500; line-height:.86; letter-spacing:-.08em; }
+.paper-title { max-width:760px; font-size:clamp(58px,8vw,104px); line-height:.9; letter-spacing:-.065em; }
 .hero-spec { margin:0; border-top:1px solid var(--ink); }
 .hero-spec div { display:grid; grid-template-columns:80px 1fr; gap:14px; padding:13px 0; border-bottom:1px solid var(--line); }
 .hero-spec dt { color:var(--muted); font-size:10px; letter-spacing:.1em; text-transform:uppercase; }
@@ -310,6 +311,7 @@ h2 { margin:0; font-size:clamp(36px,5vw,62px); font-weight:500; line-height:1.24
 
 @media (max-width:500px) {
   h1 { font-size:24vw; }
+  .paper-title { font-size:17vw; }
   .hero { min-height:380px; }
   .live-paper { padding-top:76px; }
   .arena-shell { padding:7px; border-radius:12px; }
