@@ -500,6 +500,12 @@ def main():
         indices = np.arange(batch)
         size = batch // config.minibatches
         entropy_seen = 0.0
+        entropy_sum = 0.0
+        policy_loss_sum = 0.0
+        value_loss_sum = 0.0
+        approx_kl_sum = 0.0
+        clipfrac_sum = 0.0
+        diagnostic_minibatches = 0
         for _ in range(config.epochs):
             np.random.shuffle(indices)
             for start in range(0, batch, size):
@@ -508,6 +514,7 @@ def main():
                 dist = Categorical(logits=logits)
                 logp = dist.log_prob(b_act[sel])
                 ratio = (logp - b_logp[sel]).exp()
+                log_ratio = logp - b_logp[sel]
                 adv = b_adv[sel]
                 policy_loss = -torch.min(
                     ratio * adv,
@@ -516,6 +523,13 @@ def main():
                 value_loss = 0.5 * (value - b_ret[sel]).pow(2).mean()
                 entropy = dist.entropy().mean()
                 entropy_seen = float(entropy.detach())
+                with torch.no_grad():
+                    entropy_sum += float(entropy)
+                    policy_loss_sum += float(policy_loss)
+                    value_loss_sum += float(value_loss)
+                    approx_kl_sum += float(((ratio - 1.0) - log_ratio).mean())
+                    clipfrac_sum += float(((ratio - 1.0).abs() > config.clip).float().mean())
+                    diagnostic_minibatches += 1
                 if critic_only:
                     loss = value_loss
                 else:
@@ -542,7 +556,11 @@ def main():
             "critic_only": critic_only,
             "reward_per_step": float(rew_buf.mean()),
             "explained_variance": explained,
-            "entropy": entropy_seen,
+            "entropy": entropy_sum / max(diagnostic_minibatches, 1),
+            "policy_loss": policy_loss_sum / max(diagnostic_minibatches, 1),
+            "value_loss": value_loss_sum / max(diagnostic_minibatches, 1),
+            "approx_kl": approx_kl_sum / max(diagnostic_minibatches, 1),
+            "clipfrac": clipfrac_sum / max(diagnostic_minibatches, 1),
             **tally.summary(),
         }
         with metrics_path.open("a") as handle:
@@ -557,7 +575,8 @@ def main():
         print(
             f"u{update + 1}/{updates} steps={total:,} {shown} "
             + (f"chg={record['change_rate']:.0%} " if record["change_rate"] else "")
-            + f"EV={explained:+.2f} H={entropy_seen:.2f}"
+            + f"EV={explained:+.2f} H={record['entropy']:.2f} "
+            + f"KL={record['approx_kl']:.4f} clip={record['clipfrac']:.1%}"
             + (" [critic warmup]" if critic_only else ""),
             flush=True,
         )

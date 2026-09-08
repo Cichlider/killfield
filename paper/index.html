@@ -246,46 +246,82 @@
 
       <section class="deep-dive" id="deep-dive">
         <div class="section-heading solo">
-          <h2 data-en="Some questions">一些问题</h2>
+          <h2 data-en="Questions a sceptical reader should ask">一些问题</h2>
         </div>
 
         <details class="question strength" open>
-          <summary><span>01</span><h3 data-en="How strong is it?">它有多强？</h3><p data-en="97.5% against Laika, 92.7% against 512-ray Killfield. Not yet tested against real players at this checkpoint.">对 Laika 97.5%，对 512-ray Killfield 92.7%；这一代尚未做过真人长局测试。</p><i></i></summary>
+          <summary><span>01</span><h3 data-en="How much of 97.5% / 92.7% comes from the policy, and how much from the protocol?">97.5% / 92.7% 里，有多少来自策略，有多少来自评测协议？</h3><p data-en="The headline is real under one fixed protocol; its boundary is narrower than “superhuman in general”.">数字在固定协议下成立；它的边界比「普遍超人」窄。</p><i></i></summary>
           <div class="answer-shell">
             <div class="result-pair">
-              <article>
-                <span data-en="vs Laika · scripted game AI">vs Laika · 原生脚本 AI</span><strong>97.5<small>%</small></strong>
-                <div class="outcome-bar" aria-label="胜 1950，负 6，双亡 44"><i style="--w:97.5"></i><i style="--w:0.3"></i><i style="--w:2.2"></i></div>
-                <p data-en-html="<b>1950</b> won　6 lost　44 traded　·　177 frames avg"><b>1950</b> 胜　6 负　44 双亡　·　平均 177 帧</p>
-              </article>
-              <article>
-                <span>vs Killfield · 512-ray MPC</span><strong>92.7<small>%</small></strong>
-                <div class="outcome-bar" aria-label="胜 927，负 43，双亡 30"><i style="--w:92.7"></i><i style="--w:4.3"></i><i style="--w:3.0"></i></div>
-                <p data-en-html="<b>927</b> won　43 lost or drew　30 traded　·　205 frames avg"><b>927</b> 胜　43 负（含 3 局 30 秒平局）　30 双亡　·　平均 205 帧</p>
-              </article>
+              <article><span>vs Laika · 2000 rounds</span><strong>97.5<small>%</small></strong><p data-en-html="<b>1950</b> won　6 lost　44 double deaths　·　177 frames avg"><b>1950</b> 胜　6 负　44 双亡　·　平均 177 帧</p></article>
+              <article><span>vs Killfield · 1000 rounds</span><strong>92.7<small>%</small></strong><p data-en-html="<b>927</b> won　43 lost (including 3 30-second timeouts)　30 double deaths　·　205 frames avg"><b>927</b> 胜　43 负（其中 3 局为 30 秒超时）　30 双亡　·　平均 205 帧</p></article>
             </div>
-            <dl class="eval-meta">
-              <div><dt>Checkpoint</dt><dd>v17b（gs 分支）· gs_v16b update 352</dd></div>
-              <div><dt data-en="Rules">规则</dt><dd data-en="Original, no 30s draw">原版无 30 秒平局</dd></div>
-              <div><dt data-en="Action">动作</dt><dd data-en="Deterministic argmax">确定性 argmax</dd></div>
-              <div><dt data-en="Sample">样本</dt><dd data-en="2000 rounds vs Laika, 1000 vs Killfield">对 Laika 2000 局，对 Killfield 1000 局</dd></div>
-              <div><dt data-en="Safety cap">安全上限</dt><dd data-en="15,000 frames · never hit">15,000 帧 · 未触发</dd></div>
-              <div><dt data-en="Seed base">种子基</dt><dd>95300 / 96300</dd></div>
-            </dl>
-            <div class="human-result">
-              <p class="mini-label" data-en="HUMAN · long sessions">HUMAN · 长局对抗</p>
-              <p data-en="The prior checkpoint, v16, played long sessions against top domestic players of this game and held an edge that grew over the course of a session. This v17b checkpoint (state-conditioned dodge/ammo gates, a wider frozen self-play league) has not yet had the same human testing — treat that specific claim as historical, about v16, not this deployed version.">上一代 v16 曾与国内这款游戏的顶尖玩家打过长局，优势随局数拉长而扩大。这一代 v17b（状态条件的 dodge/ammo 门控、更宽的冻结自博弈联赛）还没有做过同样的真人测试——那段结论是关于 v16 的历史记录，不代表当前部署的这一版。</p>
-              <p class="answer-note" data-en="This is a record of long sessions, not a fixed-seed, fixed-protocol benchmark like the two above, and the human sample is far smaller. It said v16 “does not fall behind against real people” — do not quote it alongside this checkpoint's 97.5% / 92.7%.">这一项是长局对战记录，不是上面那种固定种子、固定协议的基准，人类样本量也小得多；它说明的是 v16「在真人对抗中不落下风」，不能与这一代的 97.5% / 92.7% 并列引用。</p>
-            </div>
-            <p class="answer-note" data-en="97.5% and 92.7% cover only these two fixed benchmarks and these two seed bases. They do not generalise to an arbitrary unseen policy, and the final numbers alone cannot attribute how much the gate mechanism versus the wider self-play league contributed — this run has no matched ablation control.">97.5% 与 92.7% 只覆盖这两个固定基准和这两个种子基，不能推广为对任意未知策略占优；也不能单靠最终数字反推门控机制和更宽自博弈池各自贡献了多少——这一代没有做过匹配的消融对照。</p>
+            <p class="answer-text" data-en-html="The first limitation follows immediately: these numbers cover two fixed opponents, deterministic argmax, and two seed bases; they do not imply dominance over arbitrary unseen policies. The fixed benchmark uses the <b>training rules</b>: a 30-second timeout is a −1.0 terminal loss. Original Tank Trouble has no such timeout.">紧接着的边界是：这两个数字只覆盖两个固定对手、确定性 argmax 和两个种子基，不能推广为对任意未知策略占优。固定基准使用的是<b>训练规则</b>：30 秒超时是 −1.0 的带惩罚终局；原版 Tank Trouble 没有这条超时规则。</p>
+            <div class="spec-wrap"><table class="spec-table">
+              <thead><tr><th data-en="Check">复核</th><th>Laika</th><th>Killfield</th><th data-en="Reading">读法</th></tr></thead>
+              <tbody>
+                <tr><th data-en="Seed-base sensitivity · 500 each">种子基敏感性 · 各 500 局</th><td>95300: 97.4%<br>96300: 96.8%</td><td>95300: 91.4%<br>96300: 92.6%</td><td data-en="0.6 pp / 1.2 pp; neither exceeds the predeclared 3 pp flag.">相差 0.6 / 1.2 个百分点，均未超过预先设定的 3 pp 警戒线。</td></tr>
+                <tr><th data-en="Argmax vs sampling · 500 each">argmax 对 sampling · 各 500 局</th><td>97.4% / 96.4%</td><td>92.6% / 93.4%</td><td data-en="Argmax is +1.0 pp against Laika and −0.8 pp against Killfield: no consistent inflation in this sample.">argmax 对 Laika +1.0 pp、对 Killfield −0.8 pp；本样本没有一致的高估方向。</td></tr>
+              </tbody>
+            </table></div>
+            <p class="answer-note" data-en="“Draw” is never left unqualified below: a double death earns −0.1; a training-rule timeout earns −1.0. The original-rules human sessions can contain double deaths, but cannot contain a 30-second timeout.">下文不再裸写「平局」：双亡奖励为 −0.1；训练规则下的 30 秒超时为 −1.0。原版规则的真人对局可以双亡，但不存在 30 秒超时。</p>
           </div>
         </details>
 
         <details class="question">
-          <summary><span>02</span><h3 data-en="What is the actor, and what did you do to it?">actor 是什么，你对它做了什么？</h3><p data-en="Three encoders feed one trunk; the actor turns it into 18 logits. Six zero-initialised shortcuts re-parameterise the problem.">三类编码器汇入同一 trunk；actor 把它变成 18 个 logits。六条零初始化捷径重新参数化了学习问题。</p><i></i></summary>
+          <summary><span>02</span><h3 data-en="Are the training opponent and the evaluation opponent the same thing?">训练对手和评测对手是同一个东西吗？</h3><p data-en="The code says the premise is more complicated: the pool directly includes the same 512-ray planner.">代码给出的事实更复杂：训练池直接包含同一个 512-ray 规划器。</p><i></i></summary>
           <div class="answer-shell">
-            <p class="answer-h" data-en="What it is">它是什么</p>
-            <p class="answer-text" data-en-html="Actor is the half of the policy network that <b>makes the decision</b>. A shared encoder compresses the map, the bullet set and the remaining scalars into one state representation; the actor turns that into 18 logits, and softmax turns those into a distribution over actions. Training samples from that distribution to keep exploring; evaluation and this page take the argmax so the behaviour is reproducible. The critic reads the <i>same</i> representation but emits a single scalar — its estimate of how much return this position is worth.">Actor 是策略网络里负责<b>做决定</b>的那一半。共享编码器先把地图、子弹集合和其余标量压成一个状态表示；actor 把它变成 18 个 logits，softmax 再变成动作分布。训练时从这个分布采样以保持探索，评估和本页取 argmax 以获得可复现的行为。Critic 读<i>同一份</i>表示，但只输出一个标量——它对当前局面价值的估计。</p>
+            <p class="answer-text" data-en-html="The immediate limitation: this is <b>not</b> a zero-exposure evaluation. Each training round samples Laika / the exact 512-ray Killfield / a frozen learned ancestor with weights 10% / 10% / 80%. Both training and evaluation construct Killfield through the same engine path, with 512 rays and the same L1 opponent model. <code>dodge_safety</code> is not a simpler training opponent; it is a 24-frame feature supplied to Hybrid.">先写边界：这<b>不是</b>零接触评测。训练每局按 10% / 10% / 80% 抽取 Laika、同一个 512-ray Killfield、冻结学习祖先；训练与评测都走同一引擎构造路径，使用 512 rays 与同一 L1 对手模型。<code>dodge_safety</code> 不是一个简化训练对手，而是提供给 Hybrid 的 24 帧特征。</p>
+            <div class="spec-wrap"><table class="spec-table">
+              <thead><tr><th></th><th>512-ray Killfield MPC</th><th data-en="Hybrid's dodge_safety">Hybrid 的 dodge_safety</th></tr></thead>
+              <tbody>
+                <tr><th data-en="Inputs">输入</th><td data-en="512 reflected rays, density field, bullets, walls, opponent, ammo and 72 aim bins">512 条反弹射线、密度场、子弹、墙、对手、弹药、72 个瞄准桶</td><td data-en="The current state and 9 no-fire movement candidates; no density field or ray bank">当前局面与 9 个不开火移动候选；无密度场、无 ray bank</td></tr>
+                <tr><th data-en="Horizon / rule">视野 / 决策</th><td data-en="36-frame rollout, controls held for 8 frames; 18 plans, argmax; movement/turn commitment 4/2 frames">36 帧 rollout、控制保持 8 帧；18 个计划取 argmax；移动/转向承诺 4/2 帧</td><td data-en="24-frame rollout; opponent buttons held by L1 model; outputs 9 features, and the learned policy chooses">24 帧 rollout；L1 固定对手按钮；输出 9 个特征，最终由学习策略选动作</td></tr>
+                <tr><th data-en="Score">评分</th><td class="formula">\(\begin{aligned}D&=-12000+t\\K&=12000-8t+R_a\\O&=1500-2t+R_a\\S&=0A_f+6[F_{\max}-F_0]_++120G+12C\\&\quad+190QCA+60\Delta x/s-300W/H\\&\quad-320I+F_{\rm fire}+R_a\end{aligned}\)<br><small>\(R_a=-450\ln((c+1)/(n+1))\); hit \(=1800-30(1+1.5q)t_f\); self-hit \(=-2500\); miss \(=-260(1+\rho_0)\).</small></td><td class="formula">\(\displaystyle d_i=\begin{cases}1,&\text{no bullet and no opponent fire}\\\operatorname{clip}(c_{\min}/8,0,1),&\text{survives 24}\\-1+\tfrac12 e/24,&\text{dies at }e\end{cases}\)</td></tr>
+              </tbody>
+            </table></div>
+            <p class="answer-note" data-en="In the MPC formula, F is field risk, G guidance progress, C chain gain, Q firing opportunity, the following C/A factors are concentration and alignment gain, W wall-contact frames, I incoming risk, and Δx displacement. The field-ascent coefficient is currently zero; it is shown as code reality, not omitted as an insignificant term.">MPC 公式中，F 是场风险，G 是 guidance progress，C 是 chain gain，Q 是开火机会，紧随的 C / A 分别是 concentration 与 alignment gain，W 是贴墙帧，I 是 incoming risk，Δx 是位移。field-ascent 项当前系数为 0；这是代码事实，不因「不显著」而从定义中藏掉。</p>
+            <p class="answer-text" data-en="The training signal and evaluation criterion are now explicit; readers can judge how much 92.7% reflects coverage of a known opponent. Killfield itself has zero training and zero gradient yet beats most human players, so “beats humans” tests total system strength, not the learning algorithm. The causal claim rests on ablations instead.">训练暴露与评测判据至此摊开，读者可自行判断 92.7% 有多少来自已知对手覆盖。Killfield 自身零训练、零梯度，却已能赢多数人类玩家，因此「赢人类」检验的是系统整体强度，不是学习算法；方法层面的因果主张依靠消融。</p>
+          </div>
+        </details>
+
+        <details class="question strength">
+          <summary><span>03</span><h3 data-en="Does the dodge signal actually help?">闪避信号真的有效吗？</h3><p data-en="A matched training ablation and a checkpoint intervention answer two different causal questions.">匹配训练消融与 checkpoint 干预回答两个不同的因果问题。</p><i></i></summary>
+          <div class="answer-shell">
+            <p class="answer-text" data-en-html="First limitation: the controlled study is a <b>matched continuation from one mature v11 ancestor</b>, not training from scratch. All arms use the same 4,194,304 additional steps, reward, pool and seeds 21/22/23. Within that scope, merely exposing dodge in the observation beats Base by +9.53 pp against Laika and +7.30 pp against Killfield; adding the aligned actor shortcut on top of readable dodge adds only +1.23 / +2.33 pp, with overlapping three-seed ranges.">先写边界：受控实验是从同一成熟 v11 祖先出发的<b>匹配续训</b>，不是从头训练。各 arm 的追加步数（4,194,304）、奖励、对手池和种子 21/22/23 均相同。在这个范围内，只让网络读到 dodge，较 Base 对 Laika / Killfield 提高 +9.53 / +7.30 pp；在可读 dodge 上再加动作对齐捷径只增加 +1.23 / +2.33 pp，且三种子区间重叠。</p>
+            <div class="spec-wrap"><table class="spec-table">
+              <thead><tr><th data-en="Matched continuation arm">匹配续训 arm</th><th data-en="Laika mean / seeds">Laika 均值 / 各 seed</th><th data-en="Killfield mean / seeds">Killfield 均值 / 各 seed</th></tr></thead>
+              <tbody>
+                <tr><th>Base · none</th><td>66.4 / 68.0 / 64.5</td><td>53.0 / 48.9 / 51.9</td></tr>
+                <tr><th>Read · observation</th><td>78.5 / 75.3 / 73.7<br><small>Read−Base +9.53 pp</small></td><td>60.6 / 56.2 / 58.9<br><small>Read−Base +7.30 pp</small></td></tr>
+                <tr><th>Act · shortcut only</th><td>66.5 / 67.5 / 67.1<br><small>Act−Base +0.73 pp</small></td><td>52.6 / 54.1 / 53.8<br><small>Act−Base +2.23 pp</small></td></tr>
+                <tr><th>Read+Act · dual</th><td>78.0 / 77.1 / 76.1<br><small>dual−Read +1.23 pp</small></td><td>60.5 / 60.8 / 61.4<br><small>dual−Read +2.33 pp</small></td></tr>
+                <tr><th>Shuffled path</th><td>78.6 / 74.4 / 78.5<br><small>dual−shuffled −0.10 pp</small></td><td>60.3 / 61.1 / 59.7<br><small>dual−shuffled +0.53 pp</small></td></tr>
+              </tbody>
+            </table></div>
+            <p class="answer-note" data-en="The per-seed endpoint table is retained in the audit record; the table above reports contrasts because this study's key question is paired arm difference. Its AUC values come from sampled training-policy evaluations, not periodic fixed argmax, so they are diagnostics rather than a clean sample-efficiency claim.">各 seed 的端点值保留在实验记录中；上表报告配对 arm 差值，因为该实验的问题正是 arm 间差异。AUC 来自训练期 sampling 评测，不是周期性 fixed-argmax，因此只作为诊断，不包装成严格的样本效率结论。</p>
+            <p class="answer-h" data-en="A different question: does today's v17b checkpoint depend on the path?">另一个问题：当前 v17b checkpoint 是否依赖这条通路？</p>
+            <p class="answer-text" data-en-html="Holding weights, seeds and protocol fixed, setting only <code>dodge</code>'s logit contribution to zero drops 500-round win rate from 97.4% to 86.2% against Laika and from 92.6% to 75.4% against Killfield. This supports current-checkpoint dependence; by itself it would not prove what a from-scratch no-dodge policy could eventually learn. The matched continuation study above supplies the training-stage evidence.">固定权重、种子与协议，只把 <code>dodge</code> 的 logit 贡献置零，500 局胜率对 Laika 从 97.4% 降到 86.2%，对 Killfield 从 92.6% 降到 75.4%。这支持当前 checkpoint 依赖该通路；它单独不能证明从头训练的 no-dodge 策略最终能学到什么，上一段的匹配续训实验才是训练阶段证据。</p>
+            <div class="spec-wrap"><table class="spec-table">
+              <thead><tr><th data-en="Path set to zero">置零通路</th><th>vs Laika</th><th>vs Killfield</th><th data-en="Change from baseline">相对基线</th></tr></thead>
+              <tbody>
+                <tr><th data-en="none (baseline)">无（基线）</th><td>97.4%</td><td>92.6%</td><td>—</td></tr>
+                <tr><th>dodge</th><td>86.2%</td><td>75.4%</td><td>−11.2 / −17.2 pp</td></tr>
+                <tr><th>ammo</th><td>97.4%</td><td>92.0%</td><td>0.0 / −0.6 pp</td></tr>
+                <tr><th>shot_quality</th><td>95.2%</td><td>92.4%</td><td>−2.2 / −0.2 pp</td></tr>
+                <tr><th>ammo_lock</th><td>97.4%</td><td>92.4%</td><td>0.0 / −0.2 pp</td></tr>
+                <tr><th>suicide</th><td>97.4%</td><td>92.6%</td><td>0.0 / 0.0 pp</td></tr>
+                <tr><th>idle</th><td>97.4%</td><td>92.4%</td><td>0.0 / −0.2 pp</td></tr>
+                <tr><th data-en="all six">全部六条</th><td>83.2%</td><td>77.2%</td><td>−14.2 / −15.4 pp</td></tr>
+              </tbody>
+            </table></div>
+            <p class="answer-text" data-en-html="On 8,192 real states, trunk logits have standard deviation 9.284 and absolute 90th percentile 15.680; dodge contributes 3.194 and 4.226 respectively. After dodge removal, the terminal-hit proxy rises 2.6%→13.8% against Laika and 7.4%→24.6% against Killfield; on threatened frames the chosen move matching the safest candidate falls 17.28%→11.93% and 20.42%→12.71%. These are behavioural proxies, not projectile-level causal hit/evasion labels.">在 8,192 个真实状态上，trunk logits 的标准差为 9.284、绝对值 P90 为 15.680；dodge 贡献分别为 3.194 与 4.226。置零 dodge 后，终局受击代理指标对 Laika 从 2.6% 升到 13.8%，对 Killfield 从 7.4% 升到 24.6%；在威胁帧中，所选移动等于最安全候选的比例从 17.28% 降到 11.93%、从 20.42% 降到 12.71%。这些是行为代理量，不是逐弹道的因果命中 / 闪避标签。</p>
+          </div>
+        </details>
+
+        <details class="question">
+          <summary><span>04</span><h3 data-en="Which actor shortcuts matter, and which are decoration?">六条 actor 捷径里，哪些必要，哪些近似装饰？</h3><p data-en="The negative results are as informative as the large dodge effect.">零效应与 dodge 的大效应同样需要报告。</p><i></i></summary>
+          <div class="answer-shell">
             <div class="architecture-diagram">
               <div class="arch-input"><small>840</small><b>Map</b><span>2-layer CNN → 128</span></div>
               <div class="arch-input"><small>10 × 10</small><b>Bullets</b><span>shared row MLP · masked mean/max → 64</span></div>
@@ -293,236 +329,140 @@
               <div class="arch-trunk"><small>320 → 256</small><b>Shared trunk</b></div>
               <div class="arch-output actor"><b>Actor</b><span>18 logits</span></div>
               <div class="arch-output critic"><b>Critic</b><span>V(s)</span></div>
-              <div class="shortcut"><small>ACTION-ALIGNED SHORTCUTS</small><b>dodge · ammo · shot ETA · idle</b><span>zero-init bias → logits</span></div>
+              <div class="shortcut"><small>ACTION-ALIGNED SHORTCUTS</small><b>dodge · ammo · shot ETA · idle</b><span>soft bias → logits</span></div>
             </div>
-            <p class="answer-text" data-en-html="Bullets go through a shared row encoder with masked mean/max pooling because slot order carries no tactical meaning — the network must not decide differently because the same bullet happened to land in slot 2 rather than slot 7.">子弹走共享行编码器加带 mask 的 mean/max pooling，因为槽位顺序没有战术含义——同一颗子弹恰好落在第 2 槽还是第 7 槽，不该改变决策。</p>
-
-            <p class="answer-h" data-en="What I added">我做了什么</p>
-            <p class="answer-text" data-en="Six action-aligned soft shortcuts, each wiring one already-computed fact straight onto the logits it concerns:">六条动作对齐的软捷径，每条把一个已经算好的事实直接接到它所关心的那些 logit 上：</p>
-            <div class="spec-wrap">
-              <table class="spec-table">
-                <thead><tr><th data-en="Shortcut">捷径</th><th data-en="Wiring">直接连接</th><th data-en="What it expresses">表达什么</th></tr></thead>
-                <tbody>
-                  <tr><th>dodge_scale</th><td data-en="9 dodge_safety values → the no-fire/fire logit pair each one belongs to">9 个 dodge_safety 值 → 各自对应的不开火 / 开火两个 logit</td><td data-en="“Candidate 3’s safety number is about movement 3” — the index correspondence itself">「候选 3 的安全值说的就是移动 3」——索引对应关系本身</td></tr>
-                  <tr><th>ammo_scale</th><td data-en="Remaining ammo slots → all 9 fire logits">剩余弹槽 → 9 个开火 logit</td><td data-en="Overall willingness to spend a slot">整体上愿不愿意花一个弹槽</td></tr>
-                  <tr><th>shot_quality_scale</th><td data-en="Predicted hit with short ETA → fire logits">预计命中且 ETA 短 → 开火 logit</td><td data-en="Prefer shots that free the slot again quickly">偏好能快速释放弹槽的射击</td></tr>
-                  <tr><th>ammo_lock_scale</th><td data-en="Ammo scarcity² × predicted slot occupancy → fire logits">弹药稀缺度² × 预计占槽时间 → 开火 logit</td><td data-en="The emptier the magazine, the more it opposes a shot that ties up a slot">弹夹越空，越反对长期占槽的射击</td></tr>
-                  <tr><th>suicide_scale</th><td data-en="Self-hit risk of the current trajectory → fire logits">当前弹道的自杀风险 → 开火 logit</td><td data-en="Do not take a shot that is already known to kill you">不要开一枪已知会打死自己</td></tr>
-                  <tr><th>idle_logit_penalty</th><td data-en="Neutral movement streak beyond 8 frames → the two neutral actions">超过 8 帧的连续中性移动 → 两个中性动作</td><td data-en="Tactical pauses allowed; indefinite idling gradually opposed (max −4.0, never a mask)">允许战术停顿，逐渐反对无限期发呆（最多 −4.0，永不 mask）</td></tr>
-                </tbody>
-              </table>
-            </div>
-
-            <p class="answer-h" data-en="Why it works">为什么有效</p>
-            <p class="answer-text" data-en-html="Not because they write the policy for the model. Because they <b>re-parameterise the learning problem</b>.">不是因为它们替模型写好了策略，而是因为它们<b>重新参数化了学习问题</b>。</p>
-            <p class="answer-text" data-en-html="Take <code>dodge_safety</code>. Before the shortcut, the correspondence between the nine safety numbers and the eighteen actions sat behind a 128-dimensional shared bottleneck. A sparse win/loss signal had to learn two things at once: <i>which number refers to which action</i>, and <i>how much that number should be trusted</i>. The first is a fixed fact about indexing — it is never going to change, and it is expensive to discover from reward alone. Aligning it leaves the network only the second question, which is one scalar per shortcut.">拿 <code>dodge_safety</code> 举例。加捷径之前，9 个安全值与 18 个动作的对应关系藏在 128 维共享瓶颈之后。稀疏的胜负信号必须同时学会两件事：<i>哪个数对应哪个动作</i>，以及<i>这个数该信多少</i>。前者是关于索引的固定事实——它永远不会变，却要从奖励里昂贵地发现。对齐之后，网络只剩第二个问题，而那是每条捷径一个标量。</p>
-            <div class="pull" data-en-html="Measured: <code>dodge_scale</code> starts at 0, reaches ≈0.189 in v12, and 1.361 by v15 — the point at which visible dodging appears in play. The model was not told to dodge; it was told which number means what, and then decided on its own how far to trust it."><code>dodge_scale</code> 从 0 起步，v12 学到约 0.189，到 v15 达到 1.361——正是实机出现明确躲弹行为的那一版。模型没有被告知要躲；它只是被告知哪个数字指的是什么，然后自己决定了该信多少。</div>
-            <p class="answer-text" data-en-html="These stay biases, not rules: the trunk can still override any of them with other evidence, and none of them masks an action. Every shortcut is <b>zero-initialised</b> — at α=0 the new network’s logits are bit-identical to the old checkpoint’s, which is what makes them safe to add mid-lineage.">它们始终是 bias 而不是规则：trunk 仍可用别的证据覆盖，任何一条都不 mask 动作。每条捷径都<b>零初始化</b>——α=0 时新网络的 logits 与旧 checkpoint 逐位相同，这正是它们能在血统中途安全加入的原因。</p>
-            <p class="answer-note" data-en="Search only produces local survival features; the learned policy still weighs them against everything else and picks the action.">搜索只生成局部生存特征；最终的权衡与动作选择仍由学习策略完成。</p>
+            <p class="answer-text" data-en="Bullet rows use one shared encoder plus masked mean/max pooling, because slot order has no tactical meaning. The shortcuts are soft logit biases, never action masks; the trunk can override them.">子弹行使用共享编码器与 masked mean/max pooling，因为槽位顺序没有战术含义。六条捷径都是 soft logit bias，从不 mask 动作；trunk 仍可覆盖它们。</p>
+            <p class="answer-text" data-en-html="The immediate limitation: inference-time removal measures dependence of this checkpoint, not universal architectural necessity. Under that intervention, dodge is dominant; shot_quality is small and opponent-dependent; ammo, ammo_lock, suicide and idle are within 0.0–0.6 pp. A separate matched 4.19M-step, three-seed ammo study likewise finds no clear incremental benefit from those fire-logit shortcuts beyond information already readable by the trunk.">先写边界：推理期移除衡量的是当前 checkpoint 的依赖，不是架构的普遍必要性。在这项干预中，dodge 占主导；shot_quality 很小且依赖对手；ammo、ammo_lock、suicide、idle 的变化仅 0.0–0.6 pp。另一个匹配的 4.19M 步、三种子弹药消融也没有显示这些开火 logit 捷径在 trunk 已可读信息之上的明确增益。</p>
+            <div class="spec-wrap"><table class="spec-table">
+              <thead><tr><th data-en="Matched ammo arm">匹配 ammo arm</th><th>Laika</th><th>Killfield</th><th data-en="Bad-fire rate">bad-fire 比例</th></tr></thead>
+              <tbody>
+                <tr><th>full</th><td>76.3%</td><td>60.2%</td><td>25.1%</td></tr>
+                <tr><th>no_ammo</th><td>77.1%</td><td>59.5%</td><td>25.2%</td></tr>
+                <tr><th>no_eta</th><td>75.9%</td><td>60.3%</td><td>24.6%</td></tr>
+                <tr><th>no_suicide</th><td>77.5%</td><td>60.1%</td><td>23.1%</td></tr>
+                <tr><th data-en="none (all four off)">none（四条全关）</th><td>76.9%</td><td>58.3%</td><td>23.3%</td></tr>
+              </tbody>
+            </table></div>
+            <div class="spec-wrap"><table class="spec-table">
+              <thead><tr><th data-en="Shortcut">捷径</th><th data-en="Direct wiring">直接连接</th><th data-en="Measured logit contribution · abs P90">实测 logit 贡献 · |·| P90</th></tr></thead>
+              <tbody>
+                <tr><th>dodge_scale</th><td data-en="9 dodge_safety values → matching no-fire/fire action pair">9 个安全值 → 对应不开火 / 开火动作对</td><td>4.226</td></tr>
+                <tr><th>ammo_scale</th><td data-en="remaining slots → all fire logits">剩余弹槽 → 所有开火 logits</td><td>0.750</td></tr>
+                <tr><th>shot_quality_scale</th><td data-en="short predicted hit ETA → fire logits">短预计命中 ETA → 开火 logits</td><td>1.272</td></tr>
+                <tr><th>ammo_lock_scale</th><td data-en="scarcity² × slot occupancy → fire logits">稀缺度² × 占槽时间 → 开火 logits</td><td>0.114</td></tr>
+                <tr><th>suicide_scale</th><td data-en="self-hit risk → fire logits">自击风险 → 开火 logits</td><td>0.796</td></tr>
+                <tr><th>idle_logit_penalty</th><td data-en="neutral streak over 8 frames → two neutral actions; max −4">连续中性超过 8 帧 → 两个中性动作；最多 −4</td><td>2.824</td></tr>
+              </tbody>
+            </table></div>
+            <p class="answer-text" data-en-html="<code>shot_quality</code> is positive when active and <code>ammo_lock</code> negative when active, but their contribution correlation across the real-state sample is only <b>+0.084</b>. Sparse, state-dependent activation means “they cancel each other in most states” is not supported. The four near-zero endpoint effects are retained as negative results; deleting them is a future architecture simplification, not something silently done to this checkpoint."><code>shot_quality</code> 激活时为正、<code>ammo_lock</code> 激活时为负，但在真实状态样本上的贡献相关系数只有 <b>+0.084</b>。由于稀疏且依赖状态，数据不支持「它们在多数状态互相抵消」。四条近零的端点效应照实保留；是否删除它们是未来的架构简化，不会悄悄改写当前 checkpoint。</p>
           </div>
         </details>
 
         <details class="question">
-          <summary><span>03</span><h3 data-en="How is it trained, and what is the loss?">训练流程是什么？loss 是什么？</h3><p data-en="256 environments × 128 steps = one update. Five loss terms, two of which exist to fix optimisation pathologies that reward cannot reach.">256 个环境 × 128 步 = 一次更新。五项 loss，其中两项专门修 reward 够不到的优化病理。</p><i></i></summary>
+          <summary><span>05</span><h3 data-en="Does “search only provides local features” survive an accounting?">「搜索只生成局部特征」经得起逐维清点吗？</h3><p data-en="53 dimensions require forward simulation; 76 if broader geometric search is included.">严格口径 53 维依赖前向模拟；宽口径计入几何搜索后为 76 维。</p><i></i></summary>
           <div class="answer-shell">
-            <p class="answer-h" data-en="One update">一次更新</p>
-            <p class="answer-text" data-en-html="Training runs 256 real games in parallel. The policy reads each environment’s observation and <b>samples</b> an action from the categorical distribution; the engine executes it and produces the next frame. After 128 steps per environment, the terminal rewards and the critic’s value estimates go into GAE; the batch is shuffled into 8 minibatches and optimised for 4 epochs. That is 32,768 transitions and 32 optimizer steps per update.">训练并行运行 256 局真实游戏。策略读取每个环境的观测，从分类分布中<b>采样</b>动作；引擎执行它并产生下一帧。每个环境累计 128 步后，终局奖励与 critic 的价值估计进入 GAE；整批打乱成 8 个 minibatch，优化 4 个 epoch。也就是每次更新 32,768 个 transition、32 次 optimizer step。</p>
-            <div class="training-loop" role="tablist" aria-label="训练循环">
-              <button class="active" data-loop="rollout"><small>01</small><b>Rollout</b><span>256 × 128</span></button>
-              <button data-loop="gae"><small>02</small><b>GAE</b><span>γ .999 · λ .95</span></button>
-              <button data-loop="ppo"><small>03</small><b>PPO</b><span>4 epochs × 8</span></button>
-              <button data-loop="league"><small>04</small><b>League</b><span>10 / 10 / 80</span></button>
-              <button data-loop="publish"><small>05</small><b>Publish</b><span>atomic snapshot</span></button>
-            </div>
-            <output class="loop-output" id="loop-output"><b>32,768 transitions</b><span>并行环境采样；训练时 sample，评估与网页使用 argmax。</span></output>
-
-            <p class="answer-h" data-en="The loss">loss</p>
-            <div class="answer-eq" data-tex-zh="\mathcal L=\underbrace{\mathcal L_{\text{clip}}}_{\text{策略}}+\underbrace{0.5\,\mathcal L_V}_{\text{价值}}-\underbrace{\beta_H\mathcal H(\pi)}_{\text{探索}}+\underbrace{0.02\,\mathcal L_{\text{persist}}}_{\text{抖动}}+\underbrace{0.05\,\mathcal L_{\text{wall}}}_{\text{顶墙}}" data-tex-en="\mathcal L=\underbrace{\mathcal L_{\text{clip}}}_{\text{policy}}+\underbrace{0.5\,\mathcal L_V}_{\text{value}}-\underbrace{\beta_H\mathcal H(\pi)}_{\text{explore}}+\underbrace{0.02\,\mathcal L_{\text{persist}}}_{\text{twitch}}+\underbrace{0.05\,\mathcal L_{\text{wall}}}_{\text{walls}}">$$\mathcal L=\underbrace{\mathcal L_{\text{clip}}}_{\text{策略}}+\underbrace{0.5\,\mathcal L_V}_{\text{价值}}-\underbrace{\beta_H\mathcal H(\pi)}_{\text{探索}}+\underbrace{0.02\,\mathcal L_{\text{persist}}}_{\text{抖动}}+\underbrace{0.05\,\mathcal L_{\text{wall}}}_{\text{顶墙}}$$</div>
-            <div class="spec-wrap">
-              <table class="spec-table">
-                <thead><tr><th data-en="Term">项</th><th data-en="What it does">它做什么</th></tr></thead>
-                <tbody>
-                  <tr><th>PPO-clip</th><td data-en="Raises the probability of high-advantage actions and lowers low-advantage ones, but clips the ratio to [0.8, 1.2] so a single update cannot lurch the policy.">提高高优势动作的概率、降低低优势动作的概率，但把 ratio 裁到 [0.8, 1.2]，使单次更新无法让策略突变。</td></tr>
-                  <tr><th>value · 0.5</th><td data-en="Trains the critic to predict the return from here, which is what turns a raw reward into a low-variance relative judgement for the actor.">训练 critic 预测从此处出发的回报——正是它把原始奖励变成 actor 可用的低方差相对判断。</td></tr>
-                  <tr><th>entropy · β</th><td data-en="Keeps the distribution from sharpening too early. β decays on a schedule from 0.01.">阻止分布过早变尖。β 从 0.01 按调度衰减。</td></tr>
-                  <tr><th>persistence · 0.02</th><td data-en="Penalises the probability mass on “a different movement from last frame”. Compares movement = a // 2 only — the fire bit is deliberately ignored.">惩罚「与上一帧不同的移动」上的概率质量。只比较 movement = a // 2，故意忽略开火位。</td></tr>
-                  <tr><th>wall · 0.05</th><td data-en="Only when a hard collision actually happened, penalises keeping the same throttle that just drove into the wall. Wall-sliding through a corner is not punished.">只在真的发生硬碰撞时，惩罚继续维持刚才那个撞墙的油门。贴墙过弯不受罚。</td></tr>
-                </tbody>
-              </table>
-            </div>
-
-            <p class="answer-h" data-en="Why twitch is a loss problem, not a reward problem">为什么抖动是 loss 问题，不是 reward 问题</p>
-            <p class="answer-text" data-en-html="This is the part I think is worth the most. <b>Reward answers “what outcome is worth pursuing over a whole round”. Loss decides “which direction this particular parameter update moves”.</b> They are not substitutes.">这是我认为最值得讲的一段。<b>Reward 回答的是「整局什么结果值得追求」，loss 决定的是「这一次参数更新具体朝哪个方向走」。</b>两者不是互相替代。</p>
-            <p class="answer-text" data-en-html="Twitch is a per-frame <i>shape</i> problem in the distribution. Sampling from a categorical, the action can flip every frame even when the argmax never moves — it only needs the distribution to stay flat. Now compare the two forces acting on that flatness:">抖动是分布在逐帧尺度上的<i>形状</i>问题。从分类分布采样时，即使 argmax 从不改变，只要分布仍然平坦，动作就会每帧跳变。对比作用在这个平坦度上的两股力量：</p>
-            <div class="spec-wrap">
-              <table class="spec-table">
-                <thead><tr><th data-en="Force">力量</th><th data-en="Path to the logits">到达 logits 的路径</th><th data-en="Latency">时延</th><th data-en="Variance">方差</th></tr></thead>
-                <tbody>
-                  <tr><th data-en="Terminal style score">终局平滑分</th><td data-en="reward → return → GAE → advantage → clip term → logits">reward → return → GAE → advantage → clip 项 → logits</td><td class="num em" data-en="~200 frames">约 200 帧</td><td class="em" data-en="high — credit must be guessed">高——责任要靠猜</td></tr>
-                  <tr><th data-en="Entropy term">entropy 项</th><td data-en="analytic gradient, straight onto the logits">解析梯度，直接作用于 logits</td><td class="num" data-en="every frame">每一帧</td><td data-en="none">无</td></tr>
-                </tbody>
-              </table>
-            </div>
-            <p class="answer-text" data-en-html="So the contest is structurally unfair. The style score has to travel roughly 200 frames and then be attributed, through a sparse credit assignment, to <i>which</i> of those switches was the bad one — while entropy is pushing the distribution flat again on every single frame with an exact gradient. Turning up the style score does not fix this; it just adds variance to a signal that is already losing on latency.">所以这场竞争在结构上就不对等。平滑分要穿过约 200 帧，再通过稀疏的 credit assignment 猜出<i>哪一次</i>切换才是坏的——而 entropy 每一帧都在用精确梯度把分布重新推平。把平滑分调大解决不了这个问题；那只是在给一个本来就输在时延上的信号增加方差。</p>
-            <p class="answer-text" data-en-html="<code>persistence</code> reads the current policy’s probabilities over the 18 actions <i>right now</i>, sums the mass on movements that differ from last frame, and penalises it. No waiting for the round to end. No critic guessing which frame was responsible. <b>Measured: sampled action change rate fell 66% → 54%, and to ≈15% with further training; turn-reversal rate fell 22.6% → 0.6%.</b>"><code>persistence</code> 直接读取<i>当前这一帧</i>策略在 18 个动作上的概率，把「与上一帧不同的移动」的质量求和并惩罚。不用等回合结束，不用 critic 猜是哪一帧的责任。<b>实测：采样动作变更率 66% → 54%，继续训练后接近 15%；转向反转率 22.6% → 0.6%。</b></p>
-            <div class="pull" data-en-html="But this also exposes what loss is dangerous at. The easiest way to satisfy “keep your action” is to never move. After persistence shipped, long idling rose from 18.4% to <b>48.0%</b>. The fix did not belong in the loss either — we did not make “stay still” illegal. It went into the actor, as a delayed soft bias: eight frames of neutral movement are entirely free, and only after that does the logit start to fall.">但这也暴露了 loss 的危险之处。满足「保持上一个动作」最容易的方式是根本不动。persistence 上线后，长期静止从 18.4% 升到 <b>48.0%</b>。而修法也不在 loss 里——我们没有把「不动」设成非法动作，而是把它交给 actor，做成延迟生效的软偏置：前 8 帧中性移动完全免费，之后 logit 才开始下降。</div>
-            <p class="answer-text" data-en-html="Which gives the division of labour the whole project runs on:">于是得到整个项目赖以运转的分工：</p>
-            <div class="layer-map">
-              <div><span data-en="defines the task">定义任务</span><b>Reward</b></div>
-              <div><span data-en="fixes describable optimisation pathologies">修可明确描述的优化病理</span><b>Loss</b></div>
-              <div><span data-en="expresses overridable action priors">表达可覆盖的动作先验</span><b>Actor</b></div>
-            </div>
+            <p class="answer-text" data-en-html="The immediate boundary: Hybrid does not consume Killfield's 512-ray density field, but it does consume planner-like intermediate computations. Under a strict ballistics/lookahead definition, 10 aim-assist + 30 per-bullet forecast + 4 threat-summary + 9 dodge dimensions = <b>53 / 1028 (5.16%)</b>. Adding 16 wall rays and 7 BFS path/gradient/dead-end dimensions gives a broad search-derived count of <b>76 / 1028 (7.39%)</b>. Density-field channels: zero.">边界先写：Hybrid 不读取 Killfield 的 512-ray 密度场，但确实消费规划器式的中间计算。严格按弹道 / lookahead 口径，10 维瞄准辅助 + 30 维逐弹预测 + 4 维威胁摘要 + 9 维 dodge，共 <b>53 / 1028（5.16%）</b>；再计入 16 维墙体射线与 7 维 BFS 路径 / 梯度 / 死路量，宽口径为 <b>76 / 1028（7.39%）</b>。密度场相关通道为 0。</p>
+            <div class="pull" data-en-html="The accurate claim is: <b>a learned policy surpasses the full planner after consuming planner-like intermediate products</b>, not “learning surpasses planning”. That is exactly the action-conditioned-lookahead contribution named in the title.">准确表述是：<b>学习策略在消费了规划器式中间产物之后，超越完整规划器</b>；不是「学习超越规划」。这正是标题中 action-conditioned lookahead 的含义。</div>
           </div>
         </details>
 
         <details class="question">
-          <summary><span>04</span><h3 data-en="What went wrong?">碰到了什么问题？</h3><p data-en="Failures are not a checklist but a set of measurable behavioural symptoms.">失败不是清单，而是一组可测量的行为症状。</p><i></i></summary>
+          <summary><span>06</span><h3 data-en="Is “twitch is a loss problem” an experimental result?">「抖动是 loss 问题」是实验结论吗？</h3><p data-en="No: it is a gradient-path argument, and the paper labels it that way.">不是；它是梯度路径论证，正文按这个证据等级表述。</p><i></i></summary>
           <div class="answer-shell">
-            <div class="problem-board" id="problem-board">
-              <button class="active" data-problem="twitch"><b data-en="Reward cannot damp twitch">Reward 压不住抖动</b><span>66.3% changes</span></button>
-              <button data-problem="idle"><b data-en="Persistence breeds idling">Persistence 制造发呆</b><span>48% idle</span></button>
-              <button data-problem="wall"><b data-en="The policy keeps pushing walls">策略持续顶墙</b><span>invalid pressure</span></button>
-              <button data-problem="dodge"><b data-en="Dodging fails to emerge">躲弹难以出现</b><span>action condition missing</span></button>
-              <button data-problem="ammo"><b data-en="No ammo discipline">不会管理弹夹</b><span>long credit delay</span></button>
-              <button data-problem="league"><b data-en="Cyclic counters and forgetting">循环克制与遗忘</b><span>single parent</span></button>
-            </div>
-            <output class="problem-output" id="problem-output"><b>终局平滑分需要穿过约 200 帧。</b><span>entropy 却在每一帧直接推动采样；梯度路径不对称。</span></output>
+            <p class="answer-text" data-en-html="The limitation comes first: no clean run increased the terminal action-smoothness reward while holding everything else fixed. Historical notes say the [0, 0.25] smooth bonus showed no effect across eight runs, but restarts confound that observation. Therefore the claim remains an argument from delay and variance: terminal reward reaches a twitch roughly 200 frames later through GAE, while entropy supplies an analytic gradient every frame.">边界是：没有一组只提高终局动作平滑奖励、其余完全固定的干净对照。历史记录称 [0, 0.25] 的 smooth bonus 在八次 run 中未见效果，但这些 run 被重启等因素混淆。因此这里只保留基于时延与方差的论证：终局奖励约 200 帧后才经 GAE 归因到一次抖动，entropy 则每帧提供解析梯度。</p>
+            <p class="answer-h" data-en="How the objective evolved">loss 如何演进</p>
+            <div class="spec-wrap"><table class="spec-table">
+              <thead><tr><th data-en="Stage">阶段</th><th data-en="Change">变化</th><th data-en="Purpose / evidential status">目的 / 证据等级</th></tr></thead>
+              <tbody>
+                <tr><th>L0</th><td>\(\mathcal L_{\rm PPO}+0.5\mathcal L_V-\beta_H\mathcal H\)</td><td data-en="base clipped policy, value and exploration terms">基础 clipped policy、value 与探索</td></tr>
+                <tr><th>L1</th><td data-en="terminal smooth-reward term">终局 smooth reward</td><td data-en="no clean isolated effect">没有干净的独立效果证据</td></tr>
+                <tr><th>L2</th><td>\(+0.02\mathcal L_{\rm persist}\)</td><td data-en="direct per-frame gradient against action switching">用每帧梯度直接约束动作切换</td></tr>
+                <tr><th>L3</th><td>\(+0.05\mathcal L_{\rm wall}\)</td><td data-en="penalise repeating throttle after a hard stop">完全撞停后反对继续同向油门</td></tr>
+                <tr><th>L4</th><td data-en="persistence compares movement m(a), not the fire bit">persist 比较移动 \(m(a)=\lfloor a/2\rfloor\)，不比较开火位</td><td data-en="avoid labelling fire toggles as movement twitch">避免把开火切换误判为走位抖动</td></tr>
+              </tbody>
+            </table></div>
+            <div class="answer-eq">\(\mathcal L=\mathcal L_{\rm clip}+0.5\mathcal L_V-\beta_H\mathcal H+0.02\mathcal L_{\rm persist}+0.05\mathcal L_{\rm wall}\)</div>
+            <p class="answer-text" data-en-html="The interventions did move the targeted symptom: sampled action changes fell 66%→54% and later to about 15%; turn reversals fell 22.6%→0.6%; measured hard wall collisions reached about 0.8%. But persistence also created a new failure—long idling rose 18.4%→<b>48.0%</b>. The response was an overridable actor bias after eight free neutral frames, not an action mask. These before/after observations support symptom control; they are not the missing clean reward-vs-loss experiment.">这些干预确实改变了目标症状：采样动作变更率 66%→54%，继续训练后约 15%；转向反转率 22.6%→0.6%；硬撞墙率约 0.8%。但 persistence 也制造了新退化——长期静止从 18.4% 升到 <b>48.0%</b>。应对方式是允许前 8 帧中性动作、之后才生效的可覆盖 actor bias，而不是 action mask。这些前后测量支持「症状被控制」，却不能替代缺失的 reward-vs-loss 干净对照。</p>
           </div>
         </details>
 
         <details class="question">
-          <summary><span>05</span><h3 data-en="How were they solved, and how many times did the loss change?">问题怎么解决的？loss 改了几次？</h3><p data-en="Locate the layer the error lives in, then change that layer. The explicit loss structure changed four times.">先定位错误住在哪一层，再改那一层。显式 loss 结构改过四次。</p><i></i></summary>
+          <summary><span>07</span><h3 data-en="How do you know the PPO implementation is correct?">你怎么知道自己的 PPO 是对的？</h3><p data-en="One boundary-index check passes; the broader integration-validation claim remains open.">一个边界索引检查通过；更广的集成验证仍未完成。</p><i></i></summary>
           <div class="answer-shell">
-            <p class="answer-text" data-en-html="Every fix in this project follows the same template. The point is not that many parameters were tuned — it is that each symptom was traced to <b>one</b> layer before anything was touched.">这个项目里每一次修复都走同一个模板。重点不是调了多少参数，而是每个症状在动手之前都被归到了<b>某一层</b>。</p>
-            <div class="research-chain">
-              <div><small>01</small><b data-en="Observe">观察</b><span data-en="Behaviour capture">行为录像</span></div><i></i>
-              <div><small>02</small><b data-en="Quantify">量化</b><span data-en="Reproducible metric">可复现指标</span></div><i></i>
-              <div><small>03</small><b data-en="Hypothesise">假设</b><span data-en="Falsifiable mechanism">可证伪机制</span></div><i></i>
-              <div><small>04</small><b data-en="Change a layer">改层</b><span>O / R / Loss / Actor / Pool</span></div><i></i>
-              <div><small>05</small><b data-en="Verify">验证</b><span data-en="Keep the counterexamples">保留反例</span></div>
-            </div>
-
-            <p class="answer-h" data-en="The four explicit loss revisions">loss 的四次显式修订</p>
-            <p class="answer-text" data-en-html="Counting standard PPO as L0, the <i>explicit loss structure</i> changed four times. Reward changes, the learning-rate schedule fix, actor shortcuts and opponent-pool changes are <b>not</b> loss changes — lumping them together to claim “I tuned the loss a dozen times” would just mean the causal attribution was never done.">把标准 PPO 记作 L0，<i>显式 loss 结构</i>共改过四次。reward 改动、学习率调度修复、actor 捷径和对手池变化<b>都不是</b> loss 改动——把它们混在一起说「我调了十几次 loss」，只说明因果归因从没做过。</p>
-            <div class="spec-wrap">
-              <table class="spec-table">
-                <thead><tr><th>ver</th><th>run</th><th data-en="Change">改动</th><th data-en="Intent">目的</th><th data-en="Result, and what was decided next">结果与后续决定</th></tr></thead>
-                <tbody>
-                  <tr><th>L0</th><td class="num">v1</td><td><code>clip + 0.5·value − β·entropy</code></td><td data-en="Learn to win while still exploring">学会胜负策略并维持探索</td><td data-en="Learns fine, but the terminal style score cannot damp per-frame sampling twitch.">能学，但终局平滑分压不住逐帧采样抖动。</td></tr>
-                  <tr><th>L1</th><td class="num">v9</td><td data-en="+ 0.02 persistence, initially comparing the full action">+ 0.02 persistence，最初比较完整动作</td><td data-en="Directly penalise not continuing the previous action">直接惩罚不延续上一动作的概率质量</td><td data-en="Switching drops sharply. Also creates the “stand still” shortcut, and miscounts releasing the trigger as a switch.">切换明显下降。同时制造「不动」捷径，并把松开扳机误算成一次切换。</td></tr>
-                  <tr><th>L2</th><td class="num">v10</td><td data-en="+ 0.05 reversal; 25% relief while aiming">+ 0.05 reversal；瞄准时只保留 25% 压力</td><td data-en="Specifically suppress left-then-immediately-right">专门压制左转后立刻右转</td><td data-en="reversal mass ≈0.17% by end of run — but idling did not improve. This term was later dropped.">末期 reversal mass 约 0.17%——但静止问题没改善。该项后来被移除。</td></tr>
-                  <tr><th>L3</th><td class="num">v11</td><td data-en="Drop reversal, add + 0.05 wall">去掉 reversal，加 + 0.05 wall</td><td data-en="Oppose the same throttle only on an actual hard collision">只在真的硬碰撞时反对同一油门</td><td data-en="Wall probability mass 0.92 → ≈0; measured hard-collision rate ≈0.8%.">wall 概率质量 0.92 → 接近 0；实测硬撞墙率约 0.8%。</td></tr>
-                  <tr><th class="em">L4</th><td class="num">v16</td><td data-en="persistence compares movement = a // 2 only, ignoring the fire bit">persistence 只比较 movement = a // 2，忽略开火位</td><td data-en="Smooth the movement without rewarding a held trigger">平滑移动，但不鼓励按住扳机</td><td data-en="Releasing the trigger stops counting as a bad switch. This is the current loss.">松开扳机不再算作坏切换。这就是当前的 loss。</td></tr>
-                </tbody>
-              </table>
-            </div>
-            <p class="answer-text" data-en="The two surviving behavioural terms, written out:">两个存活下来的行为项，写全是：</p>
-            <div class="answer-eq" data-tex-zh="\mathcal L_{\text{persist}}=\mathbb E_t\!\left[1-\sum_a\pi(a\mid s_t)\,\mathbf 1\{m(a)=m(a_{t-1})\}\right],\quad m(a)=\left\lfloor a/2\right\rfloor" data-tex-en="\mathcal L_{\text{persist}}=\mathbb E_t\!\left[1-\sum_a\pi(a\mid s_t)\,\mathbf 1\{m(a)=m(a_{t-1})\}\right],\quad m(a)=\left\lfloor a/2\right\rfloor">$$\mathcal L_{\text{persist}}=\mathbb E_t\!\left[1-\sum_a\pi(a\mid s_t)\,\mathbf 1\{m(a)=m(a_{t-1})\}\right],\quad m(a)=\left\lfloor a/2\right\rfloor$$</div>
-            <div class="answer-eq" data-tex-zh="\mathcal L_{\text{wall}}=\mathbb E_t\!\left[\mathbf 1\{\text{hard-hit}_t\}\sum_a\pi(a\mid s_t)\,\mathbf 1\{\tau(a)=\tau(a_{t-1})\}\right]" data-tex-en="\mathcal L_{\text{wall}}=\mathbb E_t\!\left[\mathbf 1\{\text{hard-hit}_t\}\sum_a\pi(a\mid s_t)\,\mathbf 1\{\tau(a)=\tau(a_{t-1})\}\right]">$$\mathcal L_{\text{wall}}=\mathbb E_t\!\left[\mathbf 1\{\text{hard-hit}_t\}\sum_a\pi(a\mid s_t)\,\mathbf 1\{\tau(a)=\tau(a_{t-1})\}\right]$$</div>
-            <p class="answer-text" data-en-html="<code>hard-hit</code> is the full stop (<code>hit_something</code>) only — it deliberately excludes <code>wall_sliding</code>, which is how a tank takes a corner normally. <code>m(a)</code> is the 9 movements, <code>τ(a)</code> the 3 throttles."><code>hard-hit</code> 只对应完全撞停的 <code>hit_something</code>，故意不含 <code>wall_sliding</code>——那是坦克正常过弯的方式。<code>m(a)</code> 是 9 种移动，<code>τ(a)</code> 是 3 档油门。</p>
-
-            <p class="answer-h" data-en="Which layer takes which symptom">哪一层接哪种症状</p>
-            <div class="layer-map">
-              <div><span data-en="Missing information">信息不足</span><b>Observation</b></div>
-              <div><span data-en="Correspondence hard to learn">对应难学</span><b>Actor</b></div>
-              <div><span data-en="Gradient too distant">梯度太远</span><b>Loss</b></div>
-              <div><span data-en="Wrong objective">目标错误</span><b>Reward</b></div>
-              <div><span data-en="Forgetting">遗忘</span><b>League</b></div>
-            </div>
+            <p class="answer-text" data-en-html="The limitation is decisive: the numerical GAE reference tests, termination-vs-truncation unit test, one-state convergence test and same-machine LunarLander/CleanRL comparison have <b>not yet been completed</b>. Therefore this page does not claim the PPO stack is independently validated.">关键边界是：GAE 数值对拍、termination / truncation 单测、单状态收敛和同机 LunarLander / CleanRL 对照仍<b>尚未完成</b>。因此本页不宣称 PPO 栈已被独立验证。</p>
+            <p class="answer-text" data-en-html="The checked boundary convention is internally correct: after <code>env.step(action)</code>, <code>done_buf[t]</code> stores whether transition \(s_t,a_t\to s_{t+1}\) terminated, so <code>alive = 1-done_buf[t]</code> is not one frame early or late. CleanRL's \(dones[t+1]\) spelling stores the same fact under a different buffer convention.">已核查的一项是边界索引：<code>env.step(action)</code> 后，<code>done_buf[t]</code> 保存 transition \(s_t,a_t\to s_{t+1}\) 是否终止，因此 <code>alive = 1-done_buf[t]</code> 没有差一帧。CleanRL 写成 \(dones[t+1]\) 是不同 buffer 约定下的同一事实。</p>
+            <p class="answer-text" data-en="The production update collects 256 environments × 128 steps = 32,768 transitions, computes GAE with gamma .999 and lambda .95, normalises advantages over the full rollout batch, then shuffles into 8 minibatches for 4 epochs (32 optimiser steps). Training samples categorical actions; fixed evaluation uses argmax.">生产训练每个 update 收集 256 环境 × 128 步 = 32,768 transitions，以 gamma .999、lambda .95 计算 GAE，在整个 rollout batch 上归一化 advantage，再打乱成 8 个 minibatch、优化 4 epochs（共 32 个 optimizer steps）。训练从 categorical 分布采样动作；固定评测取 argmax。</p>
+            <div class="spec-wrap"><table class="spec-table">
+              <tbody>
+                <tr><th>termination / truncation</th><td data-en="The buffer does not distinguish them. The 30-second limit is deliberately a −1.0 MDP terminal for shaping, so treating it as terminal matches this task; attaching the code unchanged to Gymnasium TimeLimit would be wrong.">buffer 不区分二者。30 秒上限被主动设计为 −1.0 的 MDP 内带惩罚终局以塑形，所以在本任务中按 terminal 处理符合定义；原样接到 Gymnasium TimeLimit 会出错。这不是偶然对齐，而是任务定义。</td></tr>
+                <tr><th data-en="Value loss">Value loss</th><td data-en="No clipping. \(L_V=0.5\,MSE\), then multiplied by value coefficient 0.5: effective 0.25×MSE, an unintended double halving.">无 clipping。\(\mathcal L_V=0.5\,MSE\)，外层再乘 value coefficient 0.5：有效权重为 0.25×MSE，是无意的双重折半。</td></tr>
+                <tr><th data-en="Normalisation">归一化</th><td data-en="No reward normalisation and no running observation statistics; Rust applies fixed physical-range scaling. There is therefore no eval-time running-stat update to freeze.">无 reward 归一化、无 running observation stats；Rust 按固定物理范围缩放，因此也不存在评测时忘记冻结 running stats 的问题。</td></tr>
+              </tbody>
+            </table></div>
           </div>
         </details>
 
         <details class="question">
-          <summary><span>06</span><h3 data-en="How do you warm-start the next generation?">如何为下一代热启动？</h3><p data-en="Two things at once: the learner inherits the function, the parent becomes a frozen opponent. At step 0 the logits are bit-identical.">同时做两件事：学习者继承函数，父代变成冻结对手。step 0 时 logits 逐位相同。</p><i></i></summary>
+          <summary><span>08</span><h3 data-en="What metrics say training is healthy?">用什么指标判断训练健康？</h3><p data-en="Historical telemetry is insufficient; instrumentation is fixed prospectively, not retroactively invented.">历史遥测不足；现在补齐前向记录，不伪造历史曲线。</p><i></i></summary>
           <div class="answer-shell">
-            <p class="answer-text" data-en-html="“Next generation” here does not mean wiping the network and retraining. It means two things at once: <b>the learner inherits the previous function, and the previous function becomes a frozen opponent.</b> The first preserves capability; the second gives the new generation a comparison bar that cannot drift while it trains.">这里的「下一代」不是清空网络重练，而是同时完成两件事：<b>学习者继承上一代的函数，上一代本身变成冻结对手。</b>前者保存能力，后者给新一代一根不会随训练漂移的横杆。</p>
-            <p class="answer-text" data-en-html="Ordinary same-shape continuation just restores the checkpoint. The part that actually needs design is what happens when the observation or the actor structure <i>changes</i> — how to make the new network exactly equivalent to the old one at step 0.">同构续训直接恢复 checkpoint 就行。真正需要设计的是观测或 actor 结构<i>发生变化</i>时——怎样让新网络在 step 0 与旧网络严格等价。</p>
-
-            <p class="answer-h" data-en="1 · Observation growth: append only, pad with zeros">1 · 观测扩容：只追加，补零</p>
-            <div class="answer-eq" data-tex-zh="z=Wx+b\;\longrightarrow\;z'=[W\;\,0]\begin{bmatrix}x\\u\end{bmatrix}+b=Wx+b=z" data-tex-en="z=Wx+b\;\longrightarrow\;z'=[W\;\,0]\begin{bmatrix}x\\u\end{bmatrix}+b=Wx+b=z">$$z=Wx+b\;\longrightarrow\;z'=[W\;\,0]\begin{bmatrix}x\\u\end{bmatrix}+b=Wx+b=z$$</div>
-            <p class="answer-text" data-en-html="The new feature <i>u</i> is already readable, but its contribution at initialisation is exactly zero; gradient decides later whether to use it. This requires that new dimensions are only ever appended — never inserted into the middle, never re-meaning an existing channel. Every schema step 20→24 obeys it, and old ancestors are lifted to the current schema the same way so they can keep entering the league <b>with unchanged behaviour</b>.">新特征 <i>u</i> 已经可读，但初始化瞬间的贡献严格为零；之后再由梯度决定是否使用它。这要求新维度只能追加——不能插进中间，也不能改变旧通道的语义。schema 20→24 的每一步都遵守它，旧祖先也用同样方式升到当前 schema，因此可以继续进联赛而<b>行为不变</b>。</p>
-
-            <p class="answer-h" data-en="2 · New actor paths: the scale starts at zero">2 · Actor 新通路：尺度从零开始</p>
-            <div class="answer-eq" data-tex-zh="\ell' = \ell + \alpha\, g(s),\qquad \alpha_0=0" data-tex-en="\ell' = \ell + \alpha\, g(s),\qquad \alpha_0=0">$$\ell' = \ell + \alpha\, g(s),\qquad \alpha_0=0$$</div>
-            <p class="answer-text" data-en-html="Whether <i>g(s)</i> is nine safety candidates, ammo scarcity or a shot ETA, α=0 makes all 18 logits bit-identical to the old model. v12’s <code>dodge_scale</code>, v15’s <code>ammo_scale</code> and v16’s three shot-quality scales all work this way.">无论 <i>g(s)</i> 是 9 个安全候选、弹药稀缺度还是射击 ETA，α=0 时 18 个 logits 与旧模型逐位相同。v12 的 <code>dodge_scale</code>、v15 的 <code>ammo_scale</code>、v16 的三条射击质量尺度都是这样处理的。</p>
-            <p class="answer-text" data-en-html="<b>v14 is the deliberate exception.</b> The <code>idle_logit_penalty</code> starts at 4.0, because the whole point was to change long-idle behaviour <i>at step 0</i>. We verified against a fixed control that the soft bias had not broken the base capability first — but this run cannot claim “the actor function is unchanged”, and the paper must say so rather than quietly folding it in with the others."><b>v14 是有意的例外。</b><code>idle_logit_penalty</code> 以 4.0 启动，因为它的目的正是<i>在 step 0 就</i>改变长期静止行为。我们先用固定对照确认了软偏置没有破坏基础能力——但这一版不能宣称「actor 函数完全不变」，论文必须讲明，而不是把它悄悄混进其他版本里。</p>
-
-            <p class="answer-h" data-en="3 · Do not blindly restore the old optimiser">3 · 不盲目恢复旧优化器</p>
-            <div class="spec-wrap">
-              <table class="spec-table">
-                <thead><tr><th data-en="Situation">情况</th><th data-en="Mode">方式</th><th data-en="Why">为什么</th></tr></thead>
-                <tbody>
-                  <tr><th data-en="O/A/R and structure identical">O/A/R 与结构完全相同</th><td><code>resume</code></td><td data-en="Model, Adam state and schedule all restored — a true continuation.">模型、Adam 状态与调度一起恢复，是真正的断点续训。</td></tr>
-                  <tr><th data-en="Observation width, actor params or reward changed">观测宽度 / actor 参数 / reward 改变</th><td><code>init-from</code></td><td data-en="Inherit the compatible function, but rebuild Adam: old momentum no longer corresponds to the new parameter space or objective.">继承可兼容的函数，但重建 Adam：旧动量已不对应新参数空间或新目标。</td></tr>
-                  <tr><th data-en="Reward changed">reward 改变</th><td data-en="+ 20 critic-only updates">+ 20 次 critic-only 预热</td><td data-en="The old critic predicts the old return definition. Let it re-calibrate before the actor is allowed to move on its advantages.">旧 critic 预测的是旧回报定义。先让它重新标定，再允许 actor 依据其 advantage 更新。</td></tr>
-                  <tr><th data-en="Every run">每一次 run</th><td><code>trained_steps</code></td><td data-en="Continues from the cumulative lineage total, so the LR and entropy schedules sit at the real progress. v7 exists because a new run once reset the LR to its initial value.">从血统累计值接续，使学习率与 entropy 调度停在真实进度。v7 的存在就是因为某次新 run 把学习率误重置回了初值。</td></tr>
-                </tbody>
-              </table>
-            </div>
-
-            <p class="answer-h" data-en="4 · Promotion, and the acceptance check">4 · 升代与验收</p>
-            <div class="warmstart">
-              <div class="equivalence"><span>parent</span><b>f(x)</b></div>
-              <div class="migration"><small data-en="append input">输入追加</small><b>W′ = [ W　0 ]</b><small data-en="shortcut scale α₀ = 0">捷径尺度 α₀ = 0</small></div>
-              <div class="equivalence"><span data-en="child · step 0">子代 · step 0</span><b>f′(x, u) = f(x)</b></div>
-            </div>
-            <p class="answer-text" data-en-html="At the end of a phase the model is saved atomically with its schema, step count and version. The new learner warm-starts from it; the <i>same snapshot</i> joins the <code>AncestorPool</code> and is never updated again. Each round draws one ancestor — newer ones weighted higher, but old ones are never deleted. So a new generation must beat its latest parent <i>and</i> keep whatever it took to beat its grandparents, which is what stops the “counters its father, forgot its grandfather” cycle.">阶段结束时，模型带 schema、步数和版本号原子保存。新学习者从它热启动；<i>同一份快照</i>加入 <code>AncestorPool</code>，之后只做推理。每局抽一个祖先，较新的权重更高，但旧的从不删除。于是新一代既要打赢最新父代，<i>也</i>必须保住打赢祖父所需的东西——这正是打断「克制父亲、忘了祖父」循环的机制。</p>
-            <div class="pull" data-en-html="Acceptance: run the old and new networks on the same fixed observation batch and require the <b>max absolute difference across all 18 logits to be 0</b>. Then check the schema / observation / action manifest, then the browser-vs-PyTorch parity case, then record the step-0 behaviour baseline. Only then can any later change be attributed to training rather than to a mis-wired migration.">验收：用同一批固定观测同时跑新旧网络，要求 <b>18 个 logits 的最大绝对差为 0</b>。再检查 schema / observation / action manifest，再跑浏览器与 PyTorch 的 parity case，最后记录 step-0 行为基线。做完这些，后续变化才能归因于训练，而不是迁移时把权重接错了。</div>
-
+            <p class="answer-text" data-en-html="The immediate limitation: across 478M steps and 17 versions, <code>approx_kl</code> and <code>clipfrac</code> were not recorded, and entropy was the last of 32 optimiser minibatches rather than a per-update mean. Thus the historical “collapse” concern cannot be re-adjudicated from trustworthy diagnostics. The trainer now aggregates per-update entropy, policy loss, value loss, approximate KL and clip fraction; this is prospective instrumentation, not a backfilled curve.">边界先写：在 4.78 亿步、17 个版本中，<code>approx_kl</code> 与 <code>clipfrac</code> 未记录，entropy 取的是 32 个优化 minibatch 中最后一个，而非 update 均值。因此无法用可信诊断量重新裁决历史上的「坍缩」担忧。训练器现已按 update 汇总 entropy、policy loss、value loss、approximate KL 与 clip fraction；这是向前生效的补测，不是回填出来的历史曲线。</p>
+            <p class="answer-text" data-en-html="This matters because the project chose a fixed-opponent pool plus frozen ancestors, rather than pure self-play, partly to reduce collapse and cyclic forgetting—while its collapse monitor was itself noisy. Entropy coefficient also anneals over lineage steps: at 478M / 800M it is about 0.004, 40% of its initial value. A falling entropy trace can therefore be schedule-driven rather than evidence of self-play collapse.">这很重要：项目选择固定对手池 + 冻结祖先而非纯自博弈，部分动机是规避坍缩与循环遗忘，但当时监测坍缩的指标本身就有噪声。entropy 系数还按血统步数衰减：478M / 800M 时约为 0.004，只剩初值 40%。因此 entropy 下降可能来自调度，不能自动解释成自博弈坍缩。</p>
           </div>
         </details>
 
         <details class="question">
-          <summary><span>07</span><h3 data-en="What did the project ship, and how does one frame happen?">交付了什么？客户端里一帧怎样发生？</h3><p data-en="Six artefacts around one authoritative physics. Then the exact order of a frame, and the three latencies people confuse.">六类产物围绕同一套权威物理。然后是一帧的确切顺序，以及三种被混为一谈的延迟。</p><i></i></summary>
+          <summary><span>09</span><h3 data-en="Were the ablations contaminated by schedules or lineage?">消融实验有没有被调度或血统污染？</h3><p data-en="The completed matched arms share the same start and schedule segment; there are only three seeds.">已完成的匹配 arms 起点与调度区间一致；但只有三个种子。</p><i></i></summary>
           <div class="answer-shell">
-            <p class="answer-text" data-en-html="The Hybrid checkpoint is only one of six. What actually ships is a closed loop from the authoritative game rules, through training and the model, through verification, to something running in a browser.">Hybrid checkpoint 只是六者之一。真正交付的是一条从权威游戏规则、经训练与模型、经验证、到浏览器里跑起来的闭环。</p>
-            <div class="spec-wrap">
-              <table class="spec-table">
-                <thead><tr><th data-en="Artefact">产物</th><th data-en="Form">形态</th><th data-en="Responsible for">负责什么</th></tr></thead>
-                <tbody>
-                  <tr><th data-en="Unified engine">统一引擎</th><td data-en="Rust crate · native dylib · WASM">Rust crate · 原生动态库 · WASM</td><td data-en="Random mazes, tank motion, collision, bouncing ballistics, round adjudication. Training, evaluation and the web all consume the same authoritative physics.">随机迷宫、坦克运动、碰撞、反弹弹道、回合判定。训练、评估、网页共用同一套权威物理。</td></tr>
-                  <tr><th data-en="Killfield planner">Killfield 规划器</th><td data-en="512-ray density field + rolling planner, inside the engine">引擎内的 512-ray 密度场与滚动规划器</td><td data-en="Chooses actions by real-time search, never trained. It is both an opponent and the capability yardstick for Hybrid.">靠实时搜索选动作，从不训练。既是对手，也是 Hybrid 的能力参照。</td></tr>
-                  <tr><th data-en="Hybrid policy">Hybrid 学习策略</th><td data-en="PyTorch checkpoint · browser json + f32 bin">PyTorch checkpoint · 浏览器 json + f32 bin</td><td data-en="Maps the 1028-d observation to 18 logits, combining dodge, ammo and pause priors through the actor shortcuts.">把 1028 维观测映射到 18 个 logits，并经 actor 捷径组合躲避、弹夹与停顿偏好。</td></tr>
-                  <tr><th data-en="Training system">训练系统</th><td data-en="Vectorised envs · PPO · GAE · ancestor league · checkpoint publisher">向量化环境 · PPO · GAE · 祖先联赛 · checkpoint 发布器</td><td data-en="Parallel sampling, actor–critic optimisation, warm-started upgrades, and preserving the training lineage.">并行采样、优化 actor–critic、热启动升级、保存训练血统。</td></tr>
-                  <tr><th data-en="Evaluation &amp; verification">评估与验证</th><td data-en="Fixed-opponent eval · action diagnostics · benchmarks · schema/parity/physics regression">固定对手评估 · 动作诊断 · 性能基准 · schema / parity / 物理回归</td><td data-en="Measures win rate, trades, twitch, wall-hits, latency — and cross-platform consistency.">衡量胜率、双亡、抖动、撞墙、延迟，以及跨端一致性。</td></tr>
-                  <tr><th data-en="Browser product">浏览器产品</th><td data-en="Watch client · this interactive paper">Watch 客户端 · 这篇交互式论文</td><td data-en="Hands the same physics and the same model to the reader, and turns internal state into something explainable.">把相同物理和相同模型交给读者，并把内部状态变成可解释的演示。</td></tr>
-                </tbody>
-              </table>
-            </div>
-            <div class="pull" data-en-html="The engineering point: <b>training, native evaluation and the web page do not each keep their own copy of the rules.</b> One Rust engine compiles to a native library for Python training and to WASM for the browser; the checkpoint is exported to web weights and then checked against fixed parity cases — the browser’s logits must match PyTorch’s.">工程上最重要的一条：<b>训练环境、原生评估和网页展示没有各自复制一套游戏规则。</b>同一个 Rust 引擎编译成原生库供 Python 训练，也编译成 WASM 供浏览器使用；checkpoint 导出为网页权重后，再用固定 parity case 检查——浏览器的 logits 必须与 PyTorch 一致。</div>
+            <p class="answer-text" data-en-html="The immediate limitation: three seeds are enough to expose gross inconsistency, not to establish a tight population estimate; overlapping seed ranges are reported as uncertain. For dodge, ammo and distillation studies, every completed arm starts at <code>trained_steps=404,881,408</code>, ends at 409,075,712 after exactly 4,194,304 steps, and uses the same 600M-step LR/entropy schedule with seeds 21/22/23. The matched contrasts are therefore not explained by different annealing windows.">边界是：三个种子足以暴露明显不一致，不足以给出紧的总体估计；seed 区间重叠的结果按不确定报告。dodge、ammo、distillation 三组研究的所有完成 arms 都从 <code>trained_steps=404,881,408</code> 开始，恰好追加 4,194,304 步后停在 409,075,712，使用同一 600M 步 LR / entropy 调度和 seeds 21/22/23。因此匹配差异不能由不同退火区间解释。</p>
+            <p class="answer-text" data-en-html="Lineage tracking exists because it once failed: v7 came from a run that accidentally reset learning rate to its initial value. Subsequent migrations distinguish <code>resume</code> (weights, Adam and schedule) from <code>init-from</code> (compatible weights, fresh Adam, explicit inherited <code>trained_steps</code>). When an observation grows, new columns are zero-padded; actor paths use \(\ell'=\ell+\alpha g(s),\alpha_0=0\), and fixed-observation parity requires all 18 logits to match at step 0. v14's idle penalty is the disclosed exception: it intentionally changed behaviour at step 0.">之所以追踪血统，是因为它曾经失效：v7 来自一次误把学习率重置到初值的 run。此后迁移区分 <code>resume</code>（权重、Adam、调度全恢复）与 <code>init-from</code>（兼容权重、重建 Adam、显式继承 <code>trained_steps</code>）。观测扩容时新列补零；actor 新通路采用 \(\ell'=\ell+\alpha g(s),\alpha_0=0\)，并要求固定观测上 step-0 的 18 个 logits 完全一致。v14 的 idle penalty 是公开的例外：它有意在 step 0 改变行为。</p>
+          </div>
+        </details>
 
-            <p class="answer-h" data-en="One frame, in order">一帧的顺序</p>
-            <p class="answer-text" data-en-html="On load, the WASM engine and the model manifest/weights fetch in parallel. When both land, the client verifies <code>schema = 24</code>, <code>observation = 1028</code>, <code>actions = 18</code>. Any mismatch <b>refuses to start</b> — rather than letting an old model “appear to work” on a new observation. Only then is a match created.">页面启动时，WASM 引擎与模型 manifest / 权重并行加载。两者就绪后，客户端校验 <code>schema = 24</code>、<code>observation = 1028</code>、<code>actions = 18</code>。任何一项不一致就<b>拒绝启动</b>——而不是让旧模型在新观测上「看起来还能跑」。之后才创建对局。</p>
+        <details class="question">
+          <summary><span>10</span><h3 data-en="Can this policy be targeted?">这个策略能被针对吗？</h3><p data-en="Human play found no stable counter, but no best-response search was run.">真人对局未发现稳定克制法，但没有做 best-response 搜索。</p><i></i></summary>
+          <div class="answer-shell">
+            <p class="answer-text" data-en-html="The limitation follows the observation immediately: extensive human play found no stable counter, but human exploration differs sharply from gradient search, and this project has not trained an exploiter against frozen v17b. The KataGo precedent is cautionary: adversarial policies beat a superhuman Go system above 97%, and after disclosure an amateur could reproduce the cyclic exploit.">边界紧跟事实：大量真人对局没有发现稳定克制打法，但人类探索与梯度搜索差异很大；本项目尚未对冻结 v17b 训练 exploiter。KataGo 的先例值得警惕：对抗策略对一个超人围棋系统取得超过 97% 的胜率，漏洞公开后业余棋手也能复现循环攻击。</p>
+            <p class="answer-text" data-en-html="The 10/10/80 Laika / Killfield / frozen-ancestor pool is an active trade-off: fixed anchors and immutable ancestors reduce collapse and cyclic forgetting, while the reachable policy diversity is limited by what that pool covers.">10/10/80 的 Laika / Killfield / 冻结祖先池是一项主动权衡：固定锚点和不可变祖先降低坍缩与循环遗忘风险，代价是可达策略多样性受池子覆盖面限制。</p>
+            <p class="answer-note"><a href="https://proceedings.mlr.press/v202/wang23g.html" target="_blank" rel="noreferrer">Wang et al., “Adversarial Policies Beat Superhuman Go AIs” (ICML 2023) ↗</a></p>
+          </div>
+        </details>
+
+        <details class="question">
+          <summary><span>11</span><h3 data-en="How do v16's human results relate to v17b's benchmark?">v16 的真人成绩与 v17b 的基准数字是什么关系？</h3><p data-en="They are different checkpoints and protocols, and remain separate.">不同 checkpoint、不同协议，不能并列换算。</p><i></i></summary>
+          <div class="answer-shell">
+            <p class="answer-text" data-en-html="The limitation comes first: v16 played the human sessions; v17b produced 97.5% / 92.7% under the fixed benchmark. Same-session rounds are correlated by map, continuing state and player adaptation, so effective sample size is below the nominal count.">边界先写：真人长局用的是 v16；97.5% / 92.7% 固定基准来自 v17b。同会话 round 受地图、连续状态和玩家适应影响而相关，有效样本量小于名义局数。</p>
+            <p class="answer-text" data-en-html="The L_Shy_P group is reported as observed: <b>80–24–12</b>, where the 12 are double deaths. Under this project's reward, double death is −0.1 and close to neutral, so it is not reclassified. In the broader human-play records, the 104-decisive-round window is 76.9% [69%, 85%] and the 258-decisive-round window is 77.5% [72%, 83%]; intervals overlap, so the data show no detectable decline, not proof that humans could never adapt.">L_Shy_P 这一组照实呈现为 <b>80–24–12</b>，其中 12 场是双亡。按本项目奖励，双亡为 −0.1、接近中性，因此不重新归类。在更广的真人记录中，104 场分胜负窗口为 76.9% [69%, 85%]，258 场分胜负窗口为 77.5% [72%, 83%]；区间重叠，数据只说明未检出下滑，不证明人类永远无法适应。</p>
+            <p class="answer-h" data-en="Training rules are stricter than deployment rules">训练规则严于部署规则</p>
+            <p class="answer-text" data-en-html="All human games used the original rules: no 30-second timeout. Training deliberately turns a 30-second timeout into a −1.0 MDP terminal, so the policy carries a “resolve combat within 30 seconds” prior into an environment that does not require it. This structurally forbids passive standoffs and helps explain the aggressive style; it is a self-imposed constraint, because deployment is looser. No original-rules-without-timeout training control was run, so the size of this prior's effect remains a limitation.">真人对局全部使用原版规则：没有 30 秒超时。训练主动把 30 秒超时定义为 −1.0 的 MDP 内终局，因此策略把「必须在 30 秒内解决战斗」的先验带进一个并不要求它这么做的环境。这在结构上禁止消极对峙，也解释了进攻性风格；它是自我施加的约束，因为部署环境反而更宽松。尚未训练「原版规则、无超时惩罚」对照，因此这条先验的影响大小仍是 limitation。</p>
+          </div>
+        </details>
+
+        <details class="question">
+          <summary><span>12</span><h3 data-en="Does the AI beat humans through reaction speed?">AI 赢人类靠的是反应速度吗？</h3><p data-en="The game rewards positioning and ricochet setup, but formal evaluation still uses zero-frame delay.">游戏重站位与弹道预埋；但正式评测仍是零帧延迟。</p><i></i></summary>
+          <div class="answer-shell">
+            <p class="answer-text" data-en-html="The limitation is explicit: formal evaluation uses zero-frame delay. The viewer exposes 1/2/3-frame modes, but no controlled comparison has been run; 3 frames are 120 ms, still below a rough 200 ms human reaction scale. Moreover, a policy trained at zero delay is calibrated to a 40 ms action budget, so running it at three frames is a distribution shift, not simply “the same policy but slower”. Clean evidence requires delay domain randomisation or delay in the observation.">边界明确：正式评测使用零帧延迟。viewer 提供 1/2/3 帧档位，但尚无正式对照；3 帧是 120 ms，仍短于约 200 ms 的人类反应量级。并且零延迟训练的策略按 40 ms 动作预算校准，推理时改成三帧是分布偏移，不只是「同一策略慢一点」。干净证据需要把延迟做成训练域随机化维度或写入观测。</p>
+            <p class="answer-text" data-en="Mechanically, Tank Trouble is not a precision-aim game: turning is slow, ricochets persist, ammunition is finite, and maze walls make position, denial and pre-laid trajectories central. That explains why reaction time is not the only variable; it does not remove the zero-delay confound.">机制上，Tank Trouble 不是精确瞄准游戏：转向慢、反弹弹道持续存在、弹药有限、迷宫墙体使站位、封锁与弹道预埋成为核心。这说明反应速度不是唯一变量，但不能消除零延迟混淆。</p>
+            <p class="answer-h" data-en="One browser frame, in order">浏览器中的一帧</p>
             <ol class="frame-steps">
-              <li data-en-html="<code>requestAnimationFrame</code> accumulates real elapsed time. Only when 40 ms has accumulated does a 25 Hz physics tick fire."><code>requestAnimationFrame</code> 累计真实经过时间。累计满 40 ms 才产生一个 25 Hz 物理 tick。</li>
-              <li data-en="Before the tick, the previous renderable state is saved, for the interpolation later.">tick 开始前保存上一份可渲染状态，供稍后插值。</li>
-              <li data-en="WASM encodes Hybrid’s observation, bullet mask and dodge_safety from the current authoritative position.">WASM 从当前权威局面编码 Hybrid 的 observation、bullet mask 和 dodge_safety。</li>
-              <li data-en-html="Hybrid runs one forward pass <b>locally in the browser</b>, takes the argmax, and writes the action index back into the engine.">Hybrid <b>在浏览器本地</b>完成一次前向，取 argmax，把 action index 写回引擎。</li>
-              <li data-en-html="<code>kf_step</code> begins: Laika or Killfield decides inside the engine, then both actions are consumed together and the physics advances."><code>kf_step</code> 开始：Laika 或 Killfield 在引擎内部决策，然后统一消费双方动作并推进物理。</li>
-              <li data-en="The client reads the new tanks, bullets, score and round phase, and handles sound and end-of-round events.">客户端读取新的坦克、子弹、比分与回合状态，处理声音与回合结束事件。</li>
-              <li data-en-html="On screen refresh, draw by interpolating between the previous and current authoritative states. 60 or 120 Hz only makes the picture smoother — it does not change the 25 Hz rules.">屏幕刷新时，在上一份与当前权威状态之间插值。60 / 120 Hz 只让画面更平滑，<b>不改变 25 Hz 的规则</b>。</li>
+              <li data-en="requestAnimationFrame accumulates wall-clock time; a physics tick fires every 40 ms."><code>requestAnimationFrame</code> 累计真实时间；每满 40 ms 触发一次物理 tick。</li>
+              <li data-en="Save the previous renderable state for later interpolation.">保存上一份可渲染状态，供稍后插值。</li>
+              <li data-en="WASM encodes observation, bullet mask and dodge_safety from the authoritative state.">WASM 从权威状态编码 observation、bullet mask 与 dodge_safety。</li>
+              <li data-en="Hybrid runs locally, takes argmax and writes the action into the engine.">Hybrid 在本地前向、取 argmax，并把动作写回引擎。</li>
+              <li data-en="The opponent decides; both actions are consumed together and physics advances.">对手决策；双方动作同时消费，物理推进。</li>
+              <li data-en="The client reads the new state and handles sound and round-end events.">客户端读取新状态，处理声音与终局事件。</li>
+              <li data-en="Rendering interpolates between authoritative states; refresh rate changes smoothness, not the 25 Hz rules.">渲染在两份权威状态间插值；刷新率只改变平滑度，不改变 25 Hz 规则。</li>
             </ol>
-            <p class="answer-text" data-en-html="Switching the opponent gives immediate visual feedback and then rebuilds the match; the WASM and the weights are already in memory, so nothing is re-downloaded. Pausing clears the accumulator, so resuming does not fast-forward a burst of stale frames.">切换对手时界面立即给出选中反馈，然后重建一局；WASM 与权重已在内存中，不会重新下载。暂停会清空累计时间，恢复时不会突然快进一串旧帧。</p>
-
-            <p class="answer-h" data-en="Do users feel latency? Three different things">用户会感觉到延迟吗？三种不同的东西</p>
-            <p class="answer-text" data-en-html="These have to be separated, or a “0.3 ms inference” number becomes actively misleading.">这三者必须分开，否则一个「0.3 ms 推理」的数字会变成主动误导。</p>
-            <div class="spec-wrap">
-              <table class="spec-table">
-                <thead><tr><th data-en="Latency">延迟</th><th data-en="Source">来源</th><th data-en="What the user actually perceives">用户实际感觉到什么</th></tr></thead>
-                <tbody>
-                  <tr><th data-en="Decision compute">决策计算</th><td data-en="The Hybrid forward pass, or the Killfield search itself">Hybrid 前向，或 Killfield 搜索本身</td><td data-en="As long as it is well under 40 ms it catches the pending tick, so it costs nothing at all. This is the number shown live beside the arena.">只要明显低于 40 ms 就能赶上当前待执行的 tick，因此完全不产生代价。这就是舞台旁实时显示的那个数。</td></tr>
-                  <tr><th data-en="Physics sampling">物理采样</th><td data-en="Authoritative state updates on a fixed 40 ms grid">权威状态固定每 40 ms 更新一次</td><td data-en="An event landing between two ticks waits 0–40 ms in theory. Watch mode has no player input, so it shows up as motion granularity, not as lag.">刚好落在两次 tick 之间的事件理论上等 0–40 ms。观看模式没有玩家输入，所以它表现为运动的离散度，而不是卡顿。</td></tr>
-                  <tr><th data-en="Display interpolation">显示插值</th><td data-en="Drawing between the last two authoritative states">在最近两份权威状态之间作画</td><td data-en="Purely visual. It makes motion continuous and grants the policy no extra reaction time whatsoever.">纯视觉。它让运动连续，<b>不给策略增加任何反应时间</b>。</td></tr>
-                </tbody>
-              </table>
-            </div>
-            <div class="frame-timing">
-              <span style="--w:7" data-en="decision">决策</span><span style="--w:43" data-en="40 ms physics tick">40 ms 物理 tick</span><span style="--w:50" data-en="display interpolation">显示插值</span>
-            </div>
-            <p class="answer-note" data-en="Some of this telemetry already lives in client memory — observation, logits, action, manifest. Killfield’s candidate breakdown needs a read-only export from the engine: it copies diagnostics already computed this frame, never re-plans, and never participates in choosing the action. An explanation interface must not change the thing it explains.">部分遥测已在客户端内存中——observation、logits、action、manifest。Killfield 的候选分解需要引擎提供只读出口：它只复制本帧已算出的诊断数据，不重新规划，也不参与选动作。解释界面不能反过来改变被解释的对象。</p>
+            <div class="spec-wrap"><table class="spec-table">
+              <thead><tr><th data-en="Latency">延迟</th><th data-en="Meaning">含义</th><th data-en="Effect">作用</th></tr></thead>
+              <tbody>
+                <tr><th data-en="Decision compute">决策计算</th><td data-en="Hybrid forward or Killfield search">Hybrid 前向或 Killfield 搜索</td><td data-en="If comfortably below 40 ms, it still catches the pending tick.">明显低于 40 ms 就能赶上待执行 tick。</td></tr>
+                <tr><th data-en="Physics sampling">物理采样</th><td data-en="Authoritative updates on a fixed 40 ms grid">权威状态按 40 ms 网格更新</td><td data-en="An event theoretically waits 0–40 ms.">事件理论上等待 0–40 ms。</td></tr>
+                <tr><th data-en="Display interpolation">显示插值</th><td data-en="Draw between the last two authoritative states">在最近两份权威状态间绘制</td><td data-en="Purely visual; it grants no policy reaction time.">纯视觉，不给策略额外反应时间。</td></tr>
+              </tbody>
+            </table></div>
+            <p class="answer-note" data-en="At load time the browser also refuses to start unless schema=24, observation=1028 and actions=18 match the model manifest; exported browser logits are checked against PyTorch parity cases.">加载时，浏览器还会校验 schema=24、observation=1028、actions=18 与模型 manifest；任何不匹配都拒绝启动，导出的浏览器 logits 另与 PyTorch parity cases 对拍。</p>
           </div>
         </details>
-
       </section>
 
       <footer class="paper-footer">
@@ -532,6 +472,6 @@
     </article>
   </main>
 
-  <script type="module" src="paper.js?v=20260908a"></script>
+  <script type="module" src="paper.js?v=20260908b"></script>
 </body>
 </html>

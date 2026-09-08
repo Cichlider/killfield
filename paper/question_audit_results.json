@@ -1,0 +1,654 @@
+{
+  "checkpoint": "/Users/cichlidfish/killfield/outputs/pool/v17b_gs_league_u352.pt",
+  "q1_seed_sensitivity": {
+    "laika": {
+      "95300": {
+        "episodes": 500,
+        "seed": 95300,
+        "sample": false,
+        "counts": {
+          "win": 487,
+          "loss": 1,
+          "double": 12,
+          "draw": 0
+        },
+        "win_rate": 0.974,
+        "agent_hit_terminal_rate": 0.026,
+        "mean_survival_frames": 182.736,
+        "threat_steps": 32890,
+        "effective_dodge_actions": 5683,
+        "effective_dodge_rate": 0.17278808148373365,
+        "decisions": 93725,
+        "definitions": {
+          "agent_hit_terminal_rate": "(loss + double-death) / completed rounds; terminal-hit proxy, not per-projectile hit rate",
+          "effective_dodge": "on a frame where min(dodge_safety)<-0.3, chosen movement equals argmax(dodge_safety)"
+        }
+      },
+      "96300": {
+        "episodes": 500,
+        "seed": 96300,
+        "sample": false,
+        "counts": {
+          "win": 484,
+          "loss": 2,
+          "double": 14,
+          "draw": 0
+        },
+        "win_rate": 0.968,
+        "agent_hit_terminal_rate": 0.032,
+        "mean_survival_frames": 182.508,
+        "threat_steps": 32294,
+        "effective_dodge_actions": 5992,
+        "effective_dodge_rate": 0.18554530253297827,
+        "decisions": 93450,
+        "definitions": {
+          "agent_hit_terminal_rate": "(loss + double-death) / completed rounds; terminal-hit proxy, not per-projectile hit rate",
+          "effective_dodge": "on a frame where min(dodge_safety)<-0.3, chosen movement equals argmax(dodge_safety)"
+        }
+      }
+    },
+    "killfield": {
+      "95300": {
+        "episodes": 500,
+        "seed": 95300,
+        "sample": false,
+        "counts": {
+          "win": 457,
+          "loss": 27,
+          "double": 16,
+          "draw": 0
+        },
+        "win_rate": 0.914,
+        "agent_hit_terminal_rate": 0.086,
+        "mean_survival_frames": 198.98,
+        "threat_steps": 40374,
+        "effective_dodge_actions": 8314,
+        "effective_dodge_rate": 0.2059246049437757,
+        "decisions": 102475,
+        "definitions": {
+          "agent_hit_terminal_rate": "(loss + double-death) / completed rounds; terminal-hit proxy, not per-projectile hit rate",
+          "effective_dodge": "on a frame where min(dodge_safety)<-0.3, chosen movement equals argmax(dodge_safety)"
+        }
+      },
+      "96300": {
+        "episodes": 500,
+        "seed": 96300,
+        "sample": false,
+        "counts": {
+          "win": 463,
+          "loss": 21,
+          "double": 16,
+          "draw": 0
+        },
+        "win_rate": 0.926,
+        "agent_hit_terminal_rate": 0.074,
+        "mean_survival_frames": 201.536,
+        "threat_steps": 39629,
+        "effective_dodge_actions": 8092,
+        "effective_dodge_rate": 0.20419389840773172,
+        "decisions": 103700,
+        "definitions": {
+          "agent_hit_terminal_rate": "(loss + double-death) / completed rounds; terminal-hit proxy, not per-projectile hit rate",
+          "effective_dodge": "on a frame where min(dodge_safety)<-0.3, chosen movement equals argmax(dodge_safety)"
+        }
+      }
+    }
+  },
+  "q1_argmax_vs_sampling": {
+    "laika": {
+      "argmax": {
+        "episodes": 500,
+        "seed": 95300,
+        "sample": false,
+        "counts": {
+          "win": 487,
+          "loss": 1,
+          "double": 12,
+          "draw": 0
+        },
+        "win_rate": 0.974,
+        "agent_hit_terminal_rate": 0.026,
+        "mean_survival_frames": 182.736,
+        "threat_steps": 32890,
+        "effective_dodge_actions": 5683,
+        "effective_dodge_rate": 0.17278808148373365,
+        "decisions": 93725,
+        "definitions": {
+          "agent_hit_terminal_rate": "(loss + double-death) / completed rounds; terminal-hit proxy, not per-projectile hit rate",
+          "effective_dodge": "on a frame where min(dodge_safety)<-0.3, chosen movement equals argmax(dodge_safety)"
+        }
+      },
+      "sampling": {
+        "episodes": 500,
+        "seed": 95300,
+        "sample": true,
+        "counts": {
+          "win": 482,
+          "loss": 4,
+          "double": 14,
+          "draw": 0
+        },
+        "win_rate": 0.964,
+        "agent_hit_terminal_rate": 0.036,
+        "mean_survival_frames": 180.672,
+        "threat_steps": 34522,
+        "effective_dodge_actions": 5350,
+        "effective_dodge_rate": 0.15497363999768263,
+        "decisions": 92725,
+        "definitions": {
+          "agent_hit_terminal_rate": "(loss + double-death) / completed rounds; terminal-hit proxy, not per-projectile hit rate",
+          "effective_dodge": "on a frame where min(dodge_safety)<-0.3, chosen movement equals argmax(dodge_safety)"
+        }
+      }
+    },
+    "killfield": {
+      "argmax": {
+        "episodes": 500,
+        "seed": 96300,
+        "sample": false,
+        "counts": {
+          "win": 463,
+          "loss": 21,
+          "double": 16,
+          "draw": 0
+        },
+        "win_rate": 0.926,
+        "agent_hit_terminal_rate": 0.074,
+        "mean_survival_frames": 201.536,
+        "threat_steps": 39629,
+        "effective_dodge_actions": 8092,
+        "effective_dodge_rate": 0.20419389840773172,
+        "decisions": 103700,
+        "definitions": {
+          "agent_hit_terminal_rate": "(loss + double-death) / completed rounds; terminal-hit proxy, not per-projectile hit rate",
+          "effective_dodge": "on a frame where min(dodge_safety)<-0.3, chosen movement equals argmax(dodge_safety)"
+        }
+      },
+      "sampling": {
+        "episodes": 500,
+        "seed": 96300,
+        "sample": true,
+        "counts": {
+          "win": 467,
+          "loss": 25,
+          "double": 8,
+          "draw": 0
+        },
+        "win_rate": 0.934,
+        "agent_hit_terminal_rate": 0.066,
+        "mean_survival_frames": 192.264,
+        "threat_steps": 39413,
+        "effective_dodge_actions": 7842,
+        "effective_dodge_rate": 0.19896988303351687,
+        "decisions": 98700,
+        "definitions": {
+          "agent_hit_terminal_rate": "(loss + double-death) / completed rounds; terminal-hit proxy, not per-projectile hit rate",
+          "effective_dodge": "on a frame where min(dodge_safety)<-0.3, chosen movement equals argmax(dodge_safety)"
+        }
+      }
+    }
+  },
+  "q3_inference_ablation": {
+    "baseline": {
+      "laika": {
+        "episodes": 500,
+        "seed": 95300,
+        "sample": false,
+        "counts": {
+          "win": 487,
+          "loss": 1,
+          "double": 12,
+          "draw": 0
+        },
+        "win_rate": 0.974,
+        "agent_hit_terminal_rate": 0.026,
+        "mean_survival_frames": 182.736,
+        "threat_steps": 32890,
+        "effective_dodge_actions": 5683,
+        "effective_dodge_rate": 0.17278808148373365,
+        "decisions": 93725,
+        "definitions": {
+          "agent_hit_terminal_rate": "(loss + double-death) / completed rounds; terminal-hit proxy, not per-projectile hit rate",
+          "effective_dodge": "on a frame where min(dodge_safety)<-0.3, chosen movement equals argmax(dodge_safety)"
+        }
+      },
+      "killfield": {
+        "episodes": 500,
+        "seed": 96300,
+        "sample": false,
+        "counts": {
+          "win": 463,
+          "loss": 21,
+          "double": 16,
+          "draw": 0
+        },
+        "win_rate": 0.926,
+        "agent_hit_terminal_rate": 0.074,
+        "mean_survival_frames": 201.536,
+        "threat_steps": 39629,
+        "effective_dodge_actions": 8092,
+        "effective_dodge_rate": 0.20419389840773172,
+        "decisions": 103700,
+        "definitions": {
+          "agent_hit_terminal_rate": "(loss + double-death) / completed rounds; terminal-hit proxy, not per-projectile hit rate",
+          "effective_dodge": "on a frame where min(dodge_safety)<-0.3, chosen movement equals argmax(dodge_safety)"
+        }
+      }
+    },
+    "dodge": {
+      "laika": {
+        "episodes": 500,
+        "seed": 95300,
+        "sample": false,
+        "counts": {
+          "win": 431,
+          "loss": 34,
+          "double": 35,
+          "draw": 0
+        },
+        "win_rate": 0.862,
+        "agent_hit_terminal_rate": 0.138,
+        "mean_survival_frames": 178.51,
+        "threat_steps": 34892,
+        "effective_dodge_actions": 4163,
+        "effective_dodge_rate": 0.11931101685200046,
+        "decisions": 91950,
+        "definitions": {
+          "agent_hit_terminal_rate": "(loss + double-death) / completed rounds; terminal-hit proxy, not per-projectile hit rate",
+          "effective_dodge": "on a frame where min(dodge_safety)<-0.3, chosen movement equals argmax(dodge_safety)"
+        }
+      },
+      "killfield": {
+        "episodes": 500,
+        "seed": 96300,
+        "sample": false,
+        "counts": {
+          "win": 377,
+          "loss": 85,
+          "double": 38,
+          "draw": 0
+        },
+        "win_rate": 0.754,
+        "agent_hit_terminal_rate": 0.246,
+        "mean_survival_frames": 193.456,
+        "threat_steps": 39099,
+        "effective_dodge_actions": 4971,
+        "effective_dodge_rate": 0.12713880150387477,
+        "decisions": 99525,
+        "definitions": {
+          "agent_hit_terminal_rate": "(loss + double-death) / completed rounds; terminal-hit proxy, not per-projectile hit rate",
+          "effective_dodge": "on a frame where min(dodge_safety)<-0.3, chosen movement equals argmax(dodge_safety)"
+        }
+      }
+    },
+    "ammo": {
+      "laika": {
+        "episodes": 500,
+        "seed": 95300,
+        "sample": false,
+        "counts": {
+          "win": 487,
+          "loss": 1,
+          "double": 12,
+          "draw": 0
+        },
+        "win_rate": 0.974,
+        "agent_hit_terminal_rate": 0.026,
+        "mean_survival_frames": 183.906,
+        "threat_steps": 33195,
+        "effective_dodge_actions": 5693,
+        "effective_dodge_rate": 0.1715017321885826,
+        "decisions": 94325,
+        "definitions": {
+          "agent_hit_terminal_rate": "(loss + double-death) / completed rounds; terminal-hit proxy, not per-projectile hit rate",
+          "effective_dodge": "on a frame where min(dodge_safety)<-0.3, chosen movement equals argmax(dodge_safety)"
+        }
+      },
+      "killfield": {
+        "episodes": 500,
+        "seed": 96300,
+        "sample": false,
+        "counts": {
+          "win": 460,
+          "loss": 24,
+          "double": 16,
+          "draw": 0
+        },
+        "win_rate": 0.92,
+        "agent_hit_terminal_rate": 0.08,
+        "mean_survival_frames": 204.214,
+        "threat_steps": 41020,
+        "effective_dodge_actions": 8435,
+        "effective_dodge_rate": 0.20563139931740615,
+        "decisions": 105175,
+        "definitions": {
+          "agent_hit_terminal_rate": "(loss + double-death) / completed rounds; terminal-hit proxy, not per-projectile hit rate",
+          "effective_dodge": "on a frame where min(dodge_safety)<-0.3, chosen movement equals argmax(dodge_safety)"
+        }
+      }
+    },
+    "shot_quality": {
+      "laika": {
+        "episodes": 500,
+        "seed": 95300,
+        "sample": false,
+        "counts": {
+          "win": 476,
+          "loss": 3,
+          "double": 21,
+          "draw": 0
+        },
+        "win_rate": 0.952,
+        "agent_hit_terminal_rate": 0.048,
+        "mean_survival_frames": 185.084,
+        "threat_steps": 32132,
+        "effective_dodge_actions": 5252,
+        "effective_dodge_rate": 0.16345076559193328,
+        "decisions": 94925,
+        "definitions": {
+          "agent_hit_terminal_rate": "(loss + double-death) / completed rounds; terminal-hit proxy, not per-projectile hit rate",
+          "effective_dodge": "on a frame where min(dodge_safety)<-0.3, chosen movement equals argmax(dodge_safety)"
+        }
+      },
+      "killfield": {
+        "episodes": 500,
+        "seed": 96300,
+        "sample": false,
+        "counts": {
+          "win": 462,
+          "loss": 22,
+          "double": 16,
+          "draw": 0
+        },
+        "win_rate": 0.924,
+        "agent_hit_terminal_rate": 0.076,
+        "mean_survival_frames": 195.91,
+        "threat_steps": 36575,
+        "effective_dodge_actions": 7540,
+        "effective_dodge_rate": 0.20615174299384825,
+        "decisions": 100400,
+        "definitions": {
+          "agent_hit_terminal_rate": "(loss + double-death) / completed rounds; terminal-hit proxy, not per-projectile hit rate",
+          "effective_dodge": "on a frame where min(dodge_safety)<-0.3, chosen movement equals argmax(dodge_safety)"
+        }
+      }
+    },
+    "ammo_lock": {
+      "laika": {
+        "episodes": 500,
+        "seed": 95300,
+        "sample": false,
+        "counts": {
+          "win": 487,
+          "loss": 1,
+          "double": 12,
+          "draw": 0
+        },
+        "win_rate": 0.974,
+        "agent_hit_terminal_rate": 0.026,
+        "mean_survival_frames": 183.328,
+        "threat_steps": 32860,
+        "effective_dodge_actions": 5679,
+        "effective_dodge_rate": 0.17282410225197808,
+        "decisions": 94050,
+        "definitions": {
+          "agent_hit_terminal_rate": "(loss + double-death) / completed rounds; terminal-hit proxy, not per-projectile hit rate",
+          "effective_dodge": "on a frame where min(dodge_safety)<-0.3, chosen movement equals argmax(dodge_safety)"
+        }
+      },
+      "killfield": {
+        "episodes": 500,
+        "seed": 96300,
+        "sample": false,
+        "counts": {
+          "win": 462,
+          "loss": 22,
+          "double": 16,
+          "draw": 0
+        },
+        "win_rate": 0.924,
+        "agent_hit_terminal_rate": 0.076,
+        "mean_survival_frames": 202.164,
+        "threat_steps": 39931,
+        "effective_dodge_actions": 8132,
+        "effective_dodge_rate": 0.20365129848989508,
+        "decisions": 104125,
+        "definitions": {
+          "agent_hit_terminal_rate": "(loss + double-death) / completed rounds; terminal-hit proxy, not per-projectile hit rate",
+          "effective_dodge": "on a frame where min(dodge_safety)<-0.3, chosen movement equals argmax(dodge_safety)"
+        }
+      }
+    },
+    "suicide": {
+      "laika": {
+        "episodes": 500,
+        "seed": 95300,
+        "sample": false,
+        "counts": {
+          "win": 487,
+          "loss": 1,
+          "double": 12,
+          "draw": 0
+        },
+        "win_rate": 0.974,
+        "agent_hit_terminal_rate": 0.026,
+        "mean_survival_frames": 182.734,
+        "threat_steps": 32890,
+        "effective_dodge_actions": 5682,
+        "effective_dodge_rate": 0.1727576771055032,
+        "decisions": 93725,
+        "definitions": {
+          "agent_hit_terminal_rate": "(loss + double-death) / completed rounds; terminal-hit proxy, not per-projectile hit rate",
+          "effective_dodge": "on a frame where min(dodge_safety)<-0.3, chosen movement equals argmax(dodge_safety)"
+        }
+      },
+      "killfield": {
+        "episodes": 500,
+        "seed": 96300,
+        "sample": false,
+        "counts": {
+          "win": 463,
+          "loss": 21,
+          "double": 16,
+          "draw": 0
+        },
+        "win_rate": 0.926,
+        "agent_hit_terminal_rate": 0.074,
+        "mean_survival_frames": 201.524,
+        "threat_steps": 39632,
+        "effective_dodge_actions": 8093,
+        "effective_dodge_rate": 0.20420367379895035,
+        "decisions": 103700,
+        "definitions": {
+          "agent_hit_terminal_rate": "(loss + double-death) / completed rounds; terminal-hit proxy, not per-projectile hit rate",
+          "effective_dodge": "on a frame where min(dodge_safety)<-0.3, chosen movement equals argmax(dodge_safety)"
+        }
+      }
+    },
+    "idle": {
+      "laika": {
+        "episodes": 500,
+        "seed": 95300,
+        "sample": false,
+        "counts": {
+          "win": 487,
+          "loss": 1,
+          "double": 12,
+          "draw": 0
+        },
+        "win_rate": 0.974,
+        "agent_hit_terminal_rate": 0.026,
+        "mean_survival_frames": 182.524,
+        "threat_steps": 32929,
+        "effective_dodge_actions": 5644,
+        "effective_dodge_rate": 0.1713990707279298,
+        "decisions": 93650,
+        "definitions": {
+          "agent_hit_terminal_rate": "(loss + double-death) / completed rounds; terminal-hit proxy, not per-projectile hit rate",
+          "effective_dodge": "on a frame where min(dodge_safety)<-0.3, chosen movement equals argmax(dodge_safety)"
+        }
+      },
+      "killfield": {
+        "episodes": 500,
+        "seed": 96300,
+        "sample": false,
+        "counts": {
+          "win": 462,
+          "loss": 21,
+          "double": 17,
+          "draw": 0
+        },
+        "win_rate": 0.924,
+        "agent_hit_terminal_rate": 0.076,
+        "mean_survival_frames": 202.574,
+        "threat_steps": 39714,
+        "effective_dodge_actions": 8008,
+        "effective_dodge_rate": 0.20164173842977287,
+        "decisions": 104075,
+        "definitions": {
+          "agent_hit_terminal_rate": "(loss + double-death) / completed rounds; terminal-hit proxy, not per-projectile hit rate",
+          "effective_dodge": "on a frame where min(dodge_safety)<-0.3, chosen movement equals argmax(dodge_safety)"
+        }
+      }
+    },
+    "all": {
+      "laika": {
+        "episodes": 500,
+        "seed": 95300,
+        "sample": false,
+        "counts": {
+          "win": 416,
+          "loss": 37,
+          "double": 47,
+          "draw": 0
+        },
+        "win_rate": 0.832,
+        "agent_hit_terminal_rate": 0.168,
+        "mean_survival_frames": 181.42,
+        "threat_steps": 34946,
+        "effective_dodge_actions": 4147,
+        "effective_dodge_rate": 0.11866880329651462,
+        "decisions": 93150,
+        "definitions": {
+          "agent_hit_terminal_rate": "(loss + double-death) / completed rounds; terminal-hit proxy, not per-projectile hit rate",
+          "effective_dodge": "on a frame where min(dodge_safety)<-0.3, chosen movement equals argmax(dodge_safety)"
+        }
+      },
+      "killfield": {
+        "episodes": 500,
+        "seed": 96300,
+        "sample": false,
+        "counts": {
+          "win": 386,
+          "loss": 73,
+          "double": 41,
+          "draw": 0
+        },
+        "win_rate": 0.772,
+        "agent_hit_terminal_rate": 0.228,
+        "mean_survival_frames": 189.624,
+        "threat_steps": 36576,
+        "effective_dodge_actions": 4507,
+        "effective_dodge_rate": 0.12322287839020123,
+        "decisions": 97425,
+        "definitions": {
+          "agent_hit_terminal_rate": "(loss + double-death) / completed rounds; terminal-hit proxy, not per-projectile hit rate",
+          "effective_dodge": "on a frame where min(dodge_safety)<-0.3, chosen movement equals argmax(dodge_safety)"
+        }
+      }
+    }
+  },
+  "q3_logit_contributions": {
+    "states": 8192,
+    "state_sources": [
+      "128 frames x 32 envs vs Laika seed 95300",
+      "128 frames x 32 envs vs Killfield seed 96300"
+    ],
+    "trunk_logits": {
+      "mean": -1.2874399423599243,
+      "std": 9.283674240112305,
+      "q01": -22.622718811035156,
+      "q05": -14.836902618408203,
+      "q50": -2.9439473152160645,
+      "q95": 16.216379165649414,
+      "q99": 22.726308822631836,
+      "abs_q50": 6.652063846588135,
+      "abs_q90": 15.679786682128906,
+      "abs_q99": 24.003759384155273
+    },
+    "dodge": {
+      "mean": -0.051530830562114716,
+      "std": 3.193856954574585,
+      "q01": -14.008925437927246,
+      "q05": -7.349038600921631,
+      "q50": 0.5208364129066467,
+      "q95": 3.3416407108306885,
+      "q99": 4.376712322235107,
+      "abs_q50": 0.9701229333877563,
+      "abs_q90": 4.2259063720703125,
+      "abs_q99": 14.008925437927246
+    },
+    "ammo": {
+      "mean": -0.5402282476425171,
+      "std": 0.18945954740047455,
+      "q01": -0.8811696171760559,
+      "q05": -0.7817646861076355,
+      "q50": -0.5687467455863953,
+      "q95": -0.13876520097255707,
+      "q99": -0.0043382481671869755,
+      "abs_q50": 0.5687467455863953,
+      "abs_q90": 0.7497538924217224,
+      "abs_q99": 0.8811694979667664
+    },
+    "shot_quality": {
+      "mean": 0.2544701397418976,
+      "std": 0.6451827883720398,
+      "q01": 0.0,
+      "q05": 0.0,
+      "q50": 0.0,
+      "q95": 1.9691928625106812,
+      "q99": 2.7259559631347656,
+      "abs_q50": 0.0,
+      "abs_q90": 1.2721433639526367,
+      "abs_q99": 2.7259559631347656
+    },
+    "ammo_lock": {
+      "mean": -0.048866428434848785,
+      "std": 0.14632165431976318,
+      "q01": -0.8624387979507446,
+      "q05": -0.34334003925323486,
+      "q50": -0.0,
+      "q95": 0.0,
+      "q99": 0.0,
+      "abs_q50": 0.0,
+      "abs_q90": 0.11440487951040268,
+      "abs_q99": 0.8624383807182312
+    },
+    "suicide": {
+      "mean": -0.2724388837814331,
+      "std": 0.36171722412109375,
+      "q01": -1.065026879310608,
+      "q05": -0.8810451030731201,
+      "q50": -0.0,
+      "q95": 0.0,
+      "q99": 0.0,
+      "abs_q50": 0.0,
+      "abs_q90": 0.7955041527748108,
+      "abs_q99": 1.0650267601013184
+    },
+    "idle": {
+      "mean": -0.45433133840560913,
+      "std": 1.195821762084961,
+      "q01": -4.0,
+      "q05": -4.0,
+      "q50": -0.0,
+      "q95": 0.0,
+      "q99": 0.0,
+      "abs_q50": 0.0,
+      "abs_q90": 2.8235294818878174,
+      "abs_q99": 4.0
+    },
+    "shot_quality_ammo_lock_pearson": 0.08375092595815659,
+    "note": "Shortcut stats use affected logits only, except dodge (all 18) and trunk (all 18)."
+  }
+}
