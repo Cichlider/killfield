@@ -39,9 +39,9 @@
           </div>
           <dl class="hero-spec">
             <div><dt data-en="Policy">策略</dt><dd data-en="PPO actor–critic">PPO actor–critic</dd></div>
-            <div><dt data-en="Input">观测</dt><dd data-en="1028 dimensions">1028 维</dd></div>
+            <div><dt data-en="Input">观测</dt><dd data-en="1038 dimensions">1038 维</dd></div>
             <div><dt data-en="Control">控制</dt><dd data-en="18 actions · 25 Hz">18 个动作 · 25 Hz</dd></div>
-            <div><dt data-en="Lineage">训练血统 (lineage)</dt><dd data-en="508,985,344 steps">508,985,344 步</dd></div>
+            <div><dt data-en="Lineage">训练血统 (lineage)</dt><dd data-en="559,316,992 steps">559,316,992 步</dd></div>
           </dl>
         </div>
       </header>
@@ -92,17 +92,17 @@
               <h3 data-en="What it sees, what it can do, why it learns">它看见什么，能做什么，为什么学习</h3>
             </div>
             <div class="formula-tabs" role="tablist" aria-label="观测动作奖励">
-              <button type="button" role="tab" aria-selected="true" aria-controls="pane-observation" data-pane="observation"><b>O</b><span data-en="1028-d observation">1028 维观测</span></button>
+              <button type="button" role="tab" aria-selected="true" aria-controls="pane-observation" data-pane="observation"><b>O</b><span data-en="1038-d observation">1038 维观测</span></button>
               <button type="button" role="tab" aria-selected="false" aria-controls="pane-action" data-pane="action"><b>A</b><span data-en="18 actions">18 个动作</span></button>
               <button type="button" role="tab" aria-selected="false" aria-controls="pane-reward" data-pane="reward"><b>R</b><span data-en="Terminal reward">终局奖励</span></button>
             </div>
           <div class="formula-pane active" id="pane-observation" role="tabpanel">
             <div class="obs-layout">
-              <div class="obs-vector" aria-label="1028维观测分组">
+              <div class="obs-vector" aria-label="1038维观测分组">
                 <button style="--size:840" data-en-label="Maze grid" data-obs="map" data-off="0" data-dim="840" data-label="迷宫栅格" data-covers="map"><span>0</span><b>MAP</b><small>840</small></button>
                 <button style="--size:60" data-en-label="Rays · both states · navigation · aim" data-obs="state" data-off="840" data-dim="60" data-label="射线 · 双方状态 · 导航 · 瞄准" data-covers="rays self opponent navigation aim aimOpponent"><b>STATE</b><small>60</small></button>
                 <button style="--size:100" data-en-label="Per-bullet" data-obs="bullets" data-off="900" data-dim="100" data-label="逐发子弹" data-covers="bullets"><b>BULLETS</b><small>100</small></button>
-                <button style="--size:28" data-en-label="Threat · phase · action history · dodge" data-obs="history" data-off="1000" data-dim="28" data-label="威胁 · 阶段 · 动作历史 · dodge" data-covers="threat phase lastAction threatCount olderActions changeRate dodge idle"><b>+</b><small>28</small></button>
+                <button style="--size:38" data-en-label="Threat · phase · action history · dodge · delay FIFO" data-obs="history" data-off="1000" data-dim="38" data-label="威胁 · 阶段 · 动作历史 · dodge · 延迟队列" data-covers="threat phase lastAction threatCount olderActions changeRate dodge idle delay pending"><b>+</b><small>38</small></button>
               </div>
               <div class="obs-table-wrap">
                 <table class="obs-table">
@@ -124,6 +124,8 @@
                     <tr data-obs="changeRate" data-off="1017" data-dim="1" data-en-meaning="Cumulative changes ÷ (frames − 1) this round" data-en-signal="Action change rate" data-meaning="本回合累计 changes ÷ (frames−1)"><td>1017</td><th>动作变更率<small>1</small></th><td class="live-col"></td></tr>
                     <tr data-obs="dodge" data-off="1018" data-dim="9" data-en-meaning="Survival outlook for each of 9 movement candidates rolled 24 frames; negative means predicted death" data-en-signal="dodge safety" data-meaning="9 个移动候选各滚动 24 帧的生存前景，负值代表预计死亡"><td>1018</td><th>dodge safety<small>9</small></th><td class="live-col"></td></tr>
                     <tr data-obs="idle" data-off="1027" data-dim="1" data-en-meaning="Frames of unbroken neutral movement, capped at 25" data-en-signal="Consecutive idle" data-meaning="连续中性移动帧数，截断到 25 帧"><td>1027</td><th>连续原地<small>1</small></th><td class="live-col"></td></tr>
+                    <tr data-obs="delay" data-off="1028" data-dim="1" data-en-meaning="Actuation delay assigned for this round, normalised by 3" data-en-signal="Reaction delay" data-meaning="本局动作执行延迟，除以 3 归一化"><td>1028</td><th>当前延迟<small>1</small></th><td class="live-col"></td></tr>
+                    <tr data-obs="pending" data-off="1029" data-dim="9" data-en-meaning="Three pending commands × throttle, turn, fire; next-to-execute first" data-en-signal="Real action FIFO" data-meaning="3 个待执行命令 × 油门、转向、开火；下一帧执行的在最前"><td>1029</td><th>真实动作 FIFO<small>9</small></th><td class="live-col"></td></tr>
                   </tbody>
                 </table>
                 <output class="obs-readout" id="obs-readout"><b data-en="Point at any row">指向任意一行</b><span data-en="Its current live value expands here, and the matching feature lights up on the arena above.">该量的当前实时数值会在这里展开，同时在上方实况里高亮对应特征。</span></output>
@@ -190,8 +192,8 @@
       <section class="lineage-section" id="lineage">
         <div class="section-heading">
           <div class="lineage-kicker">
-            <strong>17</strong><span data-en="runs">个 run</span>
-            <strong>508,985,344</strong><span data-en="cumulative environment steps">累计环境步</span>
+            <strong>19</strong><span data-en="runs">个 run</span>
+            <strong>559,316,992</strong><span data-en="cumulative environment steps">累计环境步</span>
           </div>
           <h2 data-en="Training process">训练过程</h2>
         </div>
@@ -222,6 +224,8 @@
                 <tr><th>v15</th><td class="num" title="13,303,808">+13.3M<br><small>447.5M</small></td><td data-en="unchanged">不变</td><td data-en="unchanged">不变</td><td data-en="unchanged">不变</td><td class="formula"><span class="tex-inline" data-tex-zh="\ell'_{\text{fire}} = \ell_{\text{fire}} + \alpha\cdot\text{ammo\_scale}(\text{弹槽})" data-tex-en="\ell'_{\text{fire}} = \ell_{\text{fire}} + \alpha\cdot\text{ammo\_scale}(\text{slots})">\(\ell'_{\text{fire}} = \ell_{\text{fire}} + \alpha\cdot\text{ammo\_scale}(\text{弹槽})\)</span></td><td data-en="seven generations">七档联赛</td><td data-en="dodge_scale reaches 1.361; visible dodging appears in play">dodge_scale 达 1.361，实机出现明确躲弹行为</td></tr>
                 <tr><th class="em">v16</th><td class="num" title="29,982,720">+30.0M<br><small>477.5M</small></td><td data-en="unchanged">不变</td><td data-en="unchanged">不变</td><td class="formula"><b>L4</b> <span class="tex-inline" data-tex-zh="m(a)=\left\lfloor a/2\right\rfloor\ \ (\text{原为 } a=a_{t-1})" data-tex-en="m(a)=\left\lfloor a/2\right\rfloor\ \ (\text{was } a=a_{t-1})">\(m(a)=\left\lfloor a/2\right\rfloor\ \ (\text{原为 } a=a_{t-1})\)</span></td><td class="formula"><span class="tex-inline" data-tex-zh="\ell'_{\text{fire}} = \ell_{\text{fire}} + \alpha_1\text{hitETA} + \alpha_2\,\text{occupancy}^2 + \alpha_3\,\text{suicideRisk}">\(\ell'_{\text{fire}} = \ell_{\text{fire}} + \alpha_1\text{hitETA} + \alpha_2\,\text{occupancy}^2 + \alpha_3\,\text{suicideRisk}\)</span></td><td data-en="gen6–v15, seven">gen6–v15 七档</td><td data-en="fixed 100-game Laika 90%, trades 4%; the ammo path still needs an ablation">固定 100 局 Laika 90%，双亡 4%；弹夹通路仍需消融确认</td></tr>
                 <tr><th class="em">v17b</th><td class="num" title="31,457,280">+31.5M<br><small>508.99M</small></td><td data-en="unchanged">不变</td><td data-en="unchanged">不变</td><td data-en="unchanged">不变</td><td class="formula"><span class="tex-inline" data-tex-zh="\alpha(s) = \alpha_{\text{old}} + \delta(s),\quad \delta_0=0\ \ (\text{dodge, ammo 各一个 } \delta)" data-tex-en="\alpha(s) = \alpha_{\text{old}} + \delta(s),\quad \delta_0=0\ \ (\text{one }\delta\text{ each for dodge, ammo})">\(\alpha(s) = \alpha_{\text{old}} + \delta(s),\quad \delta_0=0\ \ (\text{dodge, ammo 各一个 } \delta)\)</span></td><td data-en="v13/v14/v15/v16, weighted 10/20/30/40%">v13/v14/v15/v16，权重 10/20/30/40%</td><td data-en="2000-game Laika 97.5%, 1000-game Killfield 92.7% — an exploratory production run, no matched ablation control">2000 局 Laika 97.5%，1000 局 Killfield 92.7% — 探索性生产实验，无匹配消融对照</td></tr>
+                <tr><th>v18</th><td class="num" title="28,049,408">+28.0M<br><small>537.03M</small></td><td data-en="schema 25 · 1029-d: round actuation delay">schema 25 · 1029 维：追加本局动作执行延迟</td><td data-en="unchanged">不变</td><td data-en="unchanged">不变</td><td data-en="new input column zero-padded on warm start">新输入列补零热启动</td><td data-en="v13/v14/v15/v16/v17b">v13/v14/v15/v16/v17b</td><td data-en="policy trained across a uniform 0–3-frame delay">在逐局均匀 0–3 帧延迟下续训</td></tr>
+                <tr><th class="em">v19</th><td class="num" title="22,282,240">+22.3M<br><small>559.32M</small></td><td data-en="schema 26 · 1038-d: the real pending-action FIFO">schema 26 · 1038 维：追加真实待执行动作 FIFO</td><td data-en="unchanged">不变</td><td data-en="unchanged">不变</td><td data-en="nine new columns and Adam moments zero-padded">9 个新输入列与 Adam 动量补零热启动</td><td data-en="unchanged">不变</td><td data-en="100-game random-delay Laika 78.0%; fixed 0/1/2/3-frame: 95.0/85.3/72.8/53.5% over 1000 games each">随机延迟 Laika 100 局 78.0%；固定 0/1/2/3 帧各 1000 局为 95.0/85.3/72.8/53.5%</td></tr>
               </tbody>
             </table>
           </div>
@@ -473,6 +477,6 @@
     </article>
   </main>
 
-  <script type="module" src="paper.js?v=20260908c"></script>
+  <script type="module" src="paper.js?v=20260910-v19"></script>
 </body>
 </html>

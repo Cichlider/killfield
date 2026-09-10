@@ -5,7 +5,7 @@ const MAP_DIM = MAP_W * MAP_H * MAP_C;
 const BULLET_OFFSET = 900;
 const BULLET_SLOTS = 10;
 const BULLET_DIM = 10;
-const OBS_DIM = 1028;
+const OBS_DIM = 1038;
 
 function dense(input, weight, bias, outputs, activation = null) {
   const width = input.length;
@@ -75,8 +75,8 @@ export class HybridPolicy {
   }
 
   constructor(manifest, weights) {
-    if (manifest.schema !== 24 || manifest.observation !== OBS_DIM || manifest.actions !== 18) {
-      throw new Error("Hybrid model does not match engine schema 24 / 1028 / 18");
+    if (manifest.schema !== 26 || manifest.observation !== OBS_DIM || manifest.actions !== 18) {
+      throw new Error("Hybrid model does not match engine schema 26 / 1038 / 18");
     }
     if (weights.length !== manifest.floats) throw new Error("Hybrid weights are truncated");
     this.manifest = manifest;
@@ -117,7 +117,7 @@ export class HybridPolicy {
     if (count) for (let i = 0; i < 32; i += 1) mean[i] /= count;
     else peak.fill(0);
 
-    const scalarInput = new Float32Array(88);
+    const scalarInput = new Float32Array(98);
     scalarInput.set(observation.subarray(MAP_DIM, BULLET_OFFSET), 0);
     scalarInput.set(observation.subarray(BULLET_OFFSET + 100, OBS_DIM), 60);
     const scalars = dense(scalarInput, this.tensor("scalars.0.weight"),

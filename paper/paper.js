@@ -1,4 +1,4 @@
-import { HybridPolicy } from "./hybrid.js?v=20260908a";
+import { HybridPolicy } from "./hybrid.js?v=20260910-v19";
 
 // ---------------------------------------------------------------- paper UI
 const panes = [...document.querySelectorAll(".formula-pane")];
@@ -309,6 +309,18 @@ const observationFields = {
     };
   },
   idle: (o) => ({ rows: [[t("连续原地", "consecutive idle"), `${Math.round(o[0] * 25)} / 25 ${t("帧", "frames")}`]] }),
+  delay: (o) => ({
+    rows: [[t("动作执行延迟", "actuation delay"), t(`${Math.round(o[0] * 3)} 帧`, `${Math.round(o[0] * 3)} frames`)]],
+    note: t("本局固定；数值按 delay / 3 归一化", "fixed for this round; normalised as delay / 3"),
+  }),
+  pending: (o) => ({
+    rows: Array.from({ length: 3 }, (_, i) => {
+      const command = o.subarray(i * 3, i * 3 + 3);
+      const move = (Math.round(command[0] * 2) + 1) * 3 + Math.round(command[1] * 2) + 1;
+      return [t(`队列 ${i + 1}`, `queue ${i + 1}`), `${moveName(move)}${command[2] > .5 ? ` · ${t("开火", "fire")}` : ""}`];
+    }),
+    note: t("下一帧执行的命令排在最前；不足三条的位置为零", "the next command to execute comes first; unused slots are zero"),
+  }),
   state: (o) => ({
     rows: [
       [t("墙射线 840","wall rays 840"), `min ${num(Math.min(...o.subarray(0, 16)))}`],
@@ -327,8 +339,10 @@ const observationFields = {
       [t("变更率 1017","change rate 1017"), `${(o[17] * 100).toFixed(1)}%`],
       ["dodge 1018", `best ${num(Math.max(...o.subarray(18, 27)))}`],
       [t("原地 1027","idle 1027"), `${Math.round(o[27] * 25)}/25`],
+      [t("延迟 1028","delay 1028"), t(`${Math.round(o[28] * 3)} 帧`, `${Math.round(o[28] * 3)} frames`)],
+      ["FIFO 1029", t(`${o.subarray(29).some((v) => Math.abs(v) > .001) ? "有" : "无"}待执行动作`, `${o.subarray(29).some((v) => Math.abs(v) > .001) ? "pending" : "no pending"} commands`)],
     ],
-    note: t("28 个附加通道 · 逐字段请看下方表格","28 appended channels · see the table below for each field"),
+    note: t("38 个附加通道 · 逐字段请看下方表格","38 appended channels · see the table below for each field"),
   }),
 };
 
@@ -351,6 +365,8 @@ const liveSummary = {
   changeRate: (o) => `${(o[0] * 100).toFixed(1)}%`,
   dodge: (o) => `best ${num(Math.max(...o))}`,
   idle: (o) => `${Math.round(o[0] * 25)}/25`,
+  delay: (o) => t(`${Math.round(o[0] * 3)} 帧`, `${Math.round(o[0] * 3)} frames`),
+  pending: (o) => t(`${o.some((v) => Math.abs(v) > .001) ? "有" : "无"}待执行动作`, `${o.some((v) => Math.abs(v) > .001) ? "pending" : "no pending"} commands`),
 };
 
 const liveCells = [...document.querySelectorAll(".obs-table tr[data-obs]")].map((row) => ({
@@ -496,7 +512,7 @@ window.addEventListener("hybrid-frame", (event) => updateActionUI(event.detail))
 const FPS = 25;
 const STEP_MS = 1000 / FPS;
 const HEADER = 18 + 12 * 10;
-const OBS_DIM = 1028;
+const OBS_DIM = 1038;
 const BULLET_SLOTS = 10;
 const DODGE_OFFSET = 1018;
 const DODGE_DIM = 9;
@@ -633,7 +649,7 @@ function drawObservationOverlay(key, buf, ox, oy, scale, mazeW, mazeH, tankBase,
       ctx.beginPath();ctx.moveTo(me.x,me.y);ctx.lineTo(me.x+Math.cos(a)*len,me.y+Math.sin(a)*len);ctx.stroke();
       ctx.fillStyle=TEAL;ctx.beginPath();ctx.arc(me.x+Math.cos(a)*len,me.y+Math.sin(a)*len,2,0,Math.PI*2);ctx.fill();
     }
-  } else if(key==="self"||key==="lastAction"||key==="olderActions"||key==="changeRate"||key==="idle"){
+  } else if(key==="self"||key==="lastAction"||key==="olderActions"||key==="changeRate"||key==="idle"||key==="delay"||key==="pending"){
     ring(me,TEAL);
     if(obs){const a=facing(me);ctx.strokeStyle=TEAL;ctx.lineWidth=2;
       ctx.beginPath();ctx.moveTo(me.x,me.y);ctx.lineTo(me.x+Math.cos(a)*scale*.9,me.y+Math.sin(a)*scale*.9);ctx.stroke();}
@@ -736,7 +752,7 @@ function driveHybrid(target, seat = 0, publish = false) {
   wasm.kf_set_hybrid_action(target,seat,action);
   if (publish) {
     lastAction=action;lastLogits=Array.from(logits);
-    // The whole 1028-value vector goes out, so the table can slice any field.
+    // The whole 1038-value vector goes out, so the table can slice any field.
     window.dispatchEvent(new CustomEvent("hybrid-frame",{detail:{action,logits:lastLogits,obs,mask}}));
     document.querySelector("#live-action").textContent=`action ${action}`;
   }
@@ -770,8 +786,8 @@ function probe() {
 }
 
 function frame(now) {
-  // Ported from the viewer: bound the catch-up so a long stall (a background
-  // tab, a slow load) cannot fast-forward a burst of frames on return.
+  // Match the viewer: never replay multiple overdue policy/physics frames in
+  // one paint, which turns a small browser stall into a visible jump.
   const elapsed = Math.max(0, now - previousTime);
   previousTime = now;
   if (wasm) {
@@ -779,9 +795,9 @@ function frame(now) {
       accumulator = 0;
     } else {
       const total = Math.min(accumulator + elapsed, MAX_CATCHUP_MS);
-      const steps = Math.floor(total / STEP_MS);
+      const steps = Math.min(1, Math.floor(total / STEP_MS));
       for (let i = 0; i < steps; i += 1) { previousState = capture(renderBuffer()); tick(); }
-      accumulator = total - steps * STEP_MS;
+      accumulator = total % STEP_MS;
     }
     draw(paused ? 1 : Math.min(1, accumulator / STEP_MS));
   }
@@ -803,11 +819,11 @@ document.querySelector("#live-pause").addEventListener("click",(event)=>{
 async function bootLive() {
   const base=assetBase();
   const [wasmResult,loadedPolicy]=await Promise.all([
-    fetch(new URL("kf_engine.wasm",base)).then((response)=>{if(!response.ok)throw new Error(`WASM HTTP ${response.status}`);return response.arrayBuffer();}).then((bytes)=>WebAssembly.instantiate(bytes,{})),
-    HybridPolicy.load(new URL("assets/hybrid.json",base).href,new URL("assets/hybrid.bin",base).href),
+    fetch(new URL("kf_engine.wasm?v=bd722f08",base)).then((response)=>{if(!response.ok)throw new Error(`WASM HTTP ${response.status}`);return response.arrayBuffer();}).then((bytes)=>WebAssembly.instantiate(bytes,{})),
+    HybridPolicy.load(new URL("assets/hybrid.json?v=c57da90e",base).href,new URL("assets/hybrid.bin?v=0ccba522",base).href),
   ]);
   wasm=wasmResult.instance.exports;policy=loadedPolicy;
-  if(wasm.kf_hybrid_schema_version()!==24||wasm.kf_hybrid_observation_len()!==OBS_DIM+BULLET_SLOTS)throw new Error("schema mismatch");
+  if(wasm.kf_hybrid_schema_version()!==26||wasm.kf_hybrid_observation_len()!==OBS_DIM+BULLET_SLOTS)throw new Error("schema mismatch");
   newMatch();
   probeHybrid=wasm.kf_new(0x51a17,2);
   probeMpc=wasm.kf_new(0x51a18,2);
