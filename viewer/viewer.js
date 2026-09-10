@@ -873,7 +873,7 @@ function syncImmediateHumanFire() {
 
 function frame(now) {
   const budget = simulationBudget(
-    accumulator, now - last, STEP_MS, MAX_CATCHUP_MS, mode === "play",
+    accumulator, now - last, STEP_MS, MAX_CATCHUP_MS,
   );
   last = now;
   if (paused) {

@@ -26,15 +26,15 @@ export function interpolatePredictedPose(pose, predicted, leadFrames) {
 
 /**
  * Decide how many fixed simulation frames to run for one animation frame.
- * Human play drops overdue whole frames instead of replaying a burst of MPC
- * work; watch/self-play retain the original bounded catch-up behaviour.
+ * Never replay multiple overdue frames in one paint. A short browser stall
+ * should become a moment of slow motion, not a burst of policy inference
+ * followed by a visible multi-frame position jump. Normal 25 Hz operation is
+ * unchanged because only overdue whole frames are discarded.
  */
-export function simulationBudget(accumulator, elapsedMs, stepMs, maxCatchupMs, humanPlay) {
+export function simulationBudget(accumulator, elapsedMs, stepMs, maxCatchupMs) {
   const elapsed = Number.isFinite(elapsedMs) ? Math.max(0, elapsedMs) : 0;
   const total = Math.min(accumulator + elapsed, maxCatchupMs);
   const due = Math.floor(total / stepMs);
-  if (humanPlay && due > 0) {
-    return { steps: 1, remainder: total % stepMs, dropped: due - 1 };
-  }
-  return { steps: due, remainder: total - due * stepMs, dropped: 0 };
+  const steps = Math.min(due, 1);
+  return { steps, remainder: total % stepMs, dropped: due - steps };
 }

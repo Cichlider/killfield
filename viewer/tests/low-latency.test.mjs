@@ -48,13 +48,13 @@ assert.deepEqual(
   { x: 10, y: 20, rotation: 0 },
 );
 
-assert.deepEqual(simulationBudget(0, 100, 40, 250, true), {
+assert.deepEqual(simulationBudget(0, 100, 40, 250), {
   steps: 1, remainder: 20, dropped: 1,
 });
-assert.deepEqual(simulationBudget(0, 100, 40, 250, false), {
-  steps: 2, remainder: 20, dropped: 0,
+assert.deepEqual(simulationBudget(0, 250, 40, 250), {
+  steps: 1, remainder: 10, dropped: 5,
 });
-assert.deepEqual(simulationBudget(30, 5, 40, 250, true), {
+assert.deepEqual(simulationBudget(30, 5, 40, 250), {
   steps: 0, remainder: 35, dropped: 0,
 });
 
