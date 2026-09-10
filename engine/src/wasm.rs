@@ -94,6 +94,8 @@ pub struct Handle {
     semantic_buffer: Vec<f32>,
     hybrid_obs: [DuelObservation; 2],
     hybrid_history: [SeatHistory; 2],
+    hybrid_delay: [u8; 2],
+    hybrid_queue: [VecDeque<u16>; 2],
     hybrid_prev_pose: [[f64; 3]; 2],
     hybrid_boxes: Vec<[f64; 4]>,
     hybrid_buffer: [Vec<f32>; 2],
@@ -180,6 +182,8 @@ pub extern "C" fn kf_new(seed: u32, laika_mask: u32) -> *mut Handle {
         semantic_buffer: vec![0.0; OBS_DIM + BULLET_SLOTS],
         hybrid_obs: std::array::from_fn(|_| DuelObservation::default()),
         hybrid_history: [SeatHistory::default(), SeatHistory::default()],
+        hybrid_delay: [0, 0],
+        hybrid_queue: std::array::from_fn(|_| VecDeque::new()),
         hybrid_prev_pose,
         hybrid_boxes,
         hybrid_buffer: std::array::from_fn(|_| vec![0.0; DUEL_OBS_DIM + DUEL_BULLET_SLOTS]),
@@ -263,8 +267,26 @@ pub unsafe extern "C" fn kf_set_hybrid_action(h: *mut Handle, tank: u32, action:
     // clock here or CHANGE_RATE_OFFSET remains zero forever.
     h.hybrid_history[i].frames = h.hybrid_history[i].frames.saturating_add(1);
     if !h.game.frozen && h.game.tanks[i].alive {
-        apply_duel_action(&mut h.game, i, a);
+        h.hybrid_queue[i].push_back(a);
+        let executed = h.hybrid_queue[i]
+            .pop_front()
+            .expect("the submitted action makes the Hybrid delay queue non-empty");
+        apply_duel_action(&mut h.game, i, executed);
     }
+}
+
+/// Set a Hybrid seat's real 0..3-frame actuation delay. The queue is primed
+/// with neutral commands exactly like the native training environment, so the
+/// delay scalar and pending-action FIFO exposed in the observation remain
+/// truthful from the first frame of a round.
+#[no_mangle]
+pub unsafe extern "C" fn kf_set_hybrid_delay(h: *mut Handle, tank: u32, frames: u32) {
+    let h = &mut *h;
+    let i = (tank as usize).min(1);
+    let delay = frames.min(3) as u8;
+    h.hybrid_delay[i] = delay;
+    h.hybrid_queue[i].clear();
+    h.hybrid_queue[i].extend(std::iter::repeat(8).take(delay as usize));
 }
 
 /// Continuous 0..1 strengths, matching the engine's human-input path — a
@@ -448,6 +470,11 @@ pub unsafe extern "C" fn kf_step(h: *mut Handle) -> u32 {
                 flags |= 1;
                 new_round = true;
                 h.hybrid_history = [SeatHistory::default(), SeatHistory::default()];
+                for i in 0..2 {
+                    h.hybrid_queue[i].clear();
+                    h.hybrid_queue[i]
+                        .extend(std::iter::repeat(8).take(h.hybrid_delay[i] as usize));
+                }
                 h.hybrid_prev_pose = tank_poses(&h.game);
                 h.hybrid_boxes = inflated_boxes(&h.game);
                 for queue in &mut h.agent_queue { queue.clear(); }
@@ -708,8 +735,8 @@ pub extern "C" fn kf_semantic_observation_len() -> u32 {
     (OBS_DIM + BULLET_SLOTS) as u32
 }
 
-/// Encode the schema-24 Hybrid observation for either seat. The returned
-/// buffer contains 1028 semantic floats followed by ten bullet-mask floats.
+/// Encode the schema-26 Hybrid observation for either seat. The returned
+/// buffer contains 1038 semantic floats followed by ten bullet-mask floats.
 #[no_mangle]
 pub unsafe extern "C" fn kf_hybrid_observation(h: *mut Handle, tank: u32) -> *const f32 {
     let h = &mut *h;
@@ -721,6 +748,8 @@ pub unsafe extern "C" fn kf_hybrid_observation(h: *mut Handle, tank: u32) -> *co
         &h.hybrid_prev_pose,
         &h.hybrid_boxes,
         &history,
+        h.hybrid_delay[i],
+        &h.hybrid_queue[i],
         &mut h.hybrid_obs[i],
     );
     h.hybrid_dodge[i] = dodge_safety(&h.game, i, DODGE_HORIZON);
@@ -752,7 +781,7 @@ pub extern "C" fn kf_hybrid_action_count() -> u32 {
 #[cfg(test)]
 mod hybrid_tests {
     use super::*;
-    use crate::duel_obs::CHANGE_RATE_OFFSET;
+    use crate::duel_obs::{CHANGE_RATE_OFFSET, PENDING_ACTIONS_OFFSET, REACTION_DELAY_OFFSET};
 
     #[test]
     fn browser_history_uses_the_same_frame_clock_as_training() {
@@ -767,6 +796,32 @@ mod hybrid_tests {
             assert_eq!((*handle).hybrid_history[0].frames, 2);
             let observation = kf_hybrid_observation(handle, 0);
             assert_eq!(*observation.add(CHANGE_RATE_OFFSET), 1.0);
+            kf_free(handle);
+        }
+    }
+
+    #[test]
+    fn browser_hybrid_delay_is_visible_with_its_real_fifo() {
+        unsafe {
+            let handle = kf_new(321, 2);
+            kf_set_hybrid_delay(handle, 0, 3);
+            kf_set_hybrid_action(handle, 0, 0);
+            let observation = kf_hybrid_observation(handle, 0);
+            assert_eq!(*observation.add(REACTION_DELAY_OFFSET), 1.0);
+
+            // Two priming neutral commands remain ahead of submitted action 0.
+            let neutral = crate::score::CANDIDATES[8];
+            for position in 0..2 {
+                let base = PENDING_ACTIONS_OFFSET + position * 3;
+                assert_eq!(*observation.add(base), neutral[0] as f32 / 2.0);
+                assert_eq!(*observation.add(base + 1), neutral[1] as f32 / 2.0);
+                assert_eq!(*observation.add(base + 2), neutral[2] as f32);
+            }
+            let submitted = crate::score::CANDIDATES[0];
+            let tail = PENDING_ACTIONS_OFFSET + 2 * 3;
+            assert_eq!(*observation.add(tail), submitted[0] as f32 / 2.0);
+            assert_eq!(*observation.add(tail + 1), submitted[1] as f32 / 2.0);
+            assert_eq!(*observation.add(tail + 2), submitted[2] as f32);
             kf_free(handle);
         }
     }

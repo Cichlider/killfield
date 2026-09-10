@@ -45,6 +45,7 @@ use crate::constants as C;
 use crate::duel::DUEL_FRAMES;
 use crate::game::Game;
 use crate::risk::{incoming_risk, reflective_closest};
+use std::collections::VecDeque;
 
 // ---------------------------------------------------------------- layout
 
@@ -94,6 +95,13 @@ pub const DODGE_DIM: usize = 9;
 /// actor decides how strongly to dislike a long streak.
 pub const IDLE_STREAK_DIM: usize = 1;
 pub const IDLE_STREAK_CAP_FRAMES: u32 = 25;
+/// Action-delivery latency assigned to this seat for the current round.
+pub const REACTION_DELAY_DIM: usize = 1;
+pub const REACTION_DELAY_MAX_FRAMES: u8 = 3;
+/// Submitted commands that have not reached the tank yet. Each command uses
+/// `[throttle/2, turn/2, fire]`; position zero executes next.
+pub const PENDING_ACTIONS_DIM: usize =
+    REACTION_DELAY_MAX_FRAMES as usize * LAST_ACTION_DIM;
 
 pub const MAP_OFFSET: usize = 0;
 pub const RAY_OFFSET: usize = MAP_OFFSET + MAP_DIM;
@@ -111,12 +119,14 @@ pub const OLDER_ACTIONS_OFFSET: usize = SELF_THREAT_COUNT_OFFSET + SELF_THREAT_C
 pub const CHANGE_RATE_OFFSET: usize = OLDER_ACTIONS_OFFSET + OLDER_ACTIONS_DIM;
 pub const DODGE_OFFSET: usize = CHANGE_RATE_OFFSET + CHANGE_RATE_DIM;
 pub const IDLE_STREAK_OFFSET: usize = DODGE_OFFSET + DODGE_DIM;
-pub const OBS_DIM: usize = IDLE_STREAK_OFFSET + IDLE_STREAK_DIM;
+pub const REACTION_DELAY_OFFSET: usize = IDLE_STREAK_OFFSET + IDLE_STREAK_DIM;
+pub const PENDING_ACTIONS_OFFSET: usize = REACTION_DELAY_OFFSET + REACTION_DELAY_DIM;
+pub const OBS_DIM: usize = PENDING_ACTIONS_OFFSET + PENDING_ACTIONS_DIM;
 
 /// Bumped whenever any of the above changes. The trainer stamps it into every
 /// checkpoint manifest and the viewer refuses a model that disagrees, so a
 /// layout change can never silently drive an old policy.
-pub const OBS_SCHEMA_VERSION: u32 = 24;
+pub const OBS_SCHEMA_VERSION: u32 = 26;
 
 // ------------------------------------------------------------- normalisers
 
@@ -304,6 +314,8 @@ pub fn encode(
     prev_pose: &[[f64; 3]; 2],
     boxes: &[[f64; 4]],
     history: &SeatHistory,
+    reaction_delay_frames: u8,
+    pending_actions: &VecDeque<u16>,
     out: &mut DuelObservation,
 ) {
     out.values = [0.0; OBS_DIM];
@@ -576,6 +588,25 @@ pub fn encode(
         (history.idle_streak.min(IDLE_STREAK_CAP_FRAMES) as f32
             / IDLE_STREAK_CAP_FRAMES as f32)
             .clamp(0.0, 1.0);
+    v[REACTION_DELAY_OFFSET] =
+        reaction_delay_frames.min(REACTION_DELAY_MAX_FRAMES) as f32
+            / REACTION_DELAY_MAX_FRAMES as f32;
+
+    // Encode the engine's real delivery queue, not a reconstruction from
+    // action history. Unused positions remain zero.
+    for (position, action) in pending_actions
+        .iter()
+        .take(REACTION_DELAY_MAX_FRAMES as usize)
+        .enumerate()
+    {
+        let a = crate::score::CANDIDATES[
+            (*action as usize).min(crate::duel::DUEL_ACTIONS - 1)
+        ];
+        let base = PENDING_ACTIONS_OFFSET + position * LAST_ACTION_DIM;
+        v[base] = a[0] as f32 / 2.0;
+        v[base + 1] = a[1] as f32 / 2.0;
+        v[base + 2] = a[2] as f32;
+    }
 }
 
 #[cfg(test)]
@@ -595,7 +626,10 @@ mod tests {
         if let Some(action) = action {
             history.record(action);
         }
-        encode(game, 0, &state.prev_pose, &state.boxes, &history, &mut obs);
+        encode(
+            game, 0, &state.prev_pose, &state.boxes, &history, 0,
+            &VecDeque::new(), &mut obs,
+        );
         obs
     }
 
@@ -603,14 +637,16 @@ mod tests {
     fn the_layout_adds_up() {
         assert_eq!(MAP_DIM, 840);
         assert_eq!(BULLET_SLOTS * BULLET_DIM, 100);
-        assert_eq!(OBS_DIM, 1028);
-        assert_eq!(IDLE_STREAK_OFFSET + IDLE_STREAK_DIM, OBS_DIM);
+        assert_eq!(OBS_DIM, 1038);
+        assert_eq!(PENDING_ACTIONS_OFFSET + PENDING_ACTIONS_DIM, OBS_DIM);
         // Everything schema 21 had must still be where it was, or a widened
         // checkpoint lands its old weights on the wrong channels.
         assert_eq!(LAST_ACTION_OFFSET, 1007);
         assert_eq!(SELF_THREAT_COUNT_OFFSET, 1010);
         assert_eq!(DODGE_OFFSET, 1018);
         assert_eq!(IDLE_STREAK_OFFSET, 1027);
+        assert_eq!(REACTION_DELAY_OFFSET, 1028);
+        assert_eq!(PENDING_ACTIONS_OFFSET, 1029);
     }
 
     #[test]
@@ -860,7 +896,10 @@ mod tests {
             crate::duel::duel_settle(&game, &mut state, &events);
         }
         let mut obs = DuelObservation::default();
-        encode(&game, 0, &state.prev_pose, &state.boxes, &state.own_history(), &mut obs);
+        encode(
+            &game, 0, &state.prev_pose, &state.boxes, &state.own_history(), 0,
+            &VecDeque::new(), &mut obs,
+        );
 
         let slot = |base: usize| {
             [obs.values[base], obs.values[base + 1], obs.values[base + 2]]
@@ -898,9 +937,16 @@ mod tests {
         }
 
         let mut mine = DuelObservation::default();
-        encode(&game, 0, &state.prev_pose, &state.boxes, &state.own_history(), &mut mine);
+        let pending = VecDeque::from([4, 10, 17]);
+        encode(
+            &game, 0, &state.prev_pose, &state.boxes, &state.own_history(), 3,
+            &pending, &mut mine,
+        );
         let mut theirs = DuelObservation::default();
-        encode(&game, 1, &state.prev_pose, &state.boxes, &state.opponent_history(), &mut theirs);
+        encode(
+            &game, 1, &state.prev_pose, &state.boxes, &state.opponent_history(), 0,
+            &VecDeque::new(), &mut theirs,
+        );
 
         let ours = crate::score::CANDIDATES[4];
         let opponents = crate::score::CANDIDATES[10];
@@ -910,6 +956,16 @@ mod tests {
             mine.values[LAST_ACTION_OFFSET], theirs.values[LAST_ACTION_OFFSET],
             "each seat must read its own action, not the round's"
         );
+        assert_eq!(mine.values[REACTION_DELAY_OFFSET], 1.0);
+        assert_eq!(theirs.values[REACTION_DELAY_OFFSET], 0.0);
+        for (position, action) in pending.iter().enumerate() {
+            let a = crate::score::CANDIDATES[*action as usize];
+            let base = PENDING_ACTIONS_OFFSET + position * LAST_ACTION_DIM;
+            assert_eq!(mine.values[base], a[0] as f32 / 2.0);
+            assert_eq!(mine.values[base + 1], a[1] as f32 / 2.0);
+            assert_eq!(mine.values[base + 2], a[2] as f32);
+        }
+        assert!(theirs.values[PENDING_ACTIONS_OFFSET..].iter().all(|v| *v == 0.0));
     }
 
     #[test]

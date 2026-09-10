@@ -1,11 +1,11 @@
 {
   "format": "killfield-hybrid-f32-v1",
-  "checkpoint": "v17b_gs_league_u352.pt",
-  "schema": 24,
-  "observation": 1028,
+  "checkpoint": "fifo-v19-final-u680",
+  "schema": 26,
+  "observation": 1038,
   "bullet_slots": 10,
   "actions": 18,
-  "floats": 261501,
+  "floats": 262781,
   "gated": {
     "dodge": true,
     "ammo": true
@@ -165,16 +165,16 @@
     "scalars.0.weight": {
       "shape": [
         128,
-        88
+        98
       ],
       "offset": 163306,
-      "length": 11264
+      "length": 12544
     },
     "scalars.0.bias": {
       "shape": [
         128
       ],
-      "offset": 174570,
+      "offset": 175850,
       "length": 128
     },
     "trunk.0.weight": {
@@ -182,14 +182,14 @@
         256,
         320
       ],
-      "offset": 174698,
+      "offset": 175978,
       "length": 81920
     },
     "trunk.0.bias": {
       "shape": [
         256
       ],
-      "offset": 256618,
+      "offset": 257898,
       "length": 256
     },
     "actor.weight": {
@@ -197,19 +197,19 @@
         18,
         256
       ],
-      "offset": 256874,
+      "offset": 258154,
       "length": 4608
     },
     "actor.bias": {
       "shape": [
         18
       ],
-      "offset": 261482,
+      "offset": 262762,
       "length": 18
     },
     "idle_logit_penalty": {
       "shape": [],
-      "offset": 261500,
+      "offset": 262780,
       "length": 1
     }
   }

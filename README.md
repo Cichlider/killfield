@@ -12,10 +12,12 @@ Hybrid 网络。
 上一版在同一批种子与射线数下为 1774 胜 / 122 负 / 103 双杀 / 1 超时（胜率 88.7%，
 最大零封 68）。差异来自 guidance 的来源准入（见下文）：负局 122 → 92，超时 1 → 0。
 
-**Hybrid 基准（v16，2026-09-05 部署验收）：** `outputs/ppo_duel_v16/s11/final.pt`，
-run step `29,982,720`，血统累计 `477,528,064`。1000 局确定性 argmax 评估中，对 Laika
-**94.1%**，对 512-ray Killfield **81.8%**；并接受过该游戏资深玩家的真人长局测试。
-浏览器迁移校验：PyTorch 与 JavaScript 固定输入最大 logit 误差 `9.54e-7`。完整的
+**Hybrid 基准（fifo-v19，2026-09-10 部署验收）：** `outputs/fifo_v19/s11/final.pt`，
+run step `22,282,240`，血统累计 `559,316,992`。固定延迟 0/1/2/3 帧各 1000 局的
+确定性 argmax 对 Laika 胜率依次为 **95.0% / 85.3% / 72.8% / 53.5%**；按训练分布
+随机延迟的交接评估为恰好 100 局 **78.0%**。浏览器中的真实动作 FIFO 与延迟值、
+待执行命令一同进入策略观测。PyTorch 与 JavaScript 固定输入最大 logit 误差
+`3.82e-6`。完整的
 observation / action / reward 定义、训练过程和逐版 loss / actor 改动见
 **[项目报告](https://cichlider.github.io/killfield/paper/)**。
 
@@ -25,8 +27,8 @@ observation / action / reward 定义、训练过程和逐版 loss / actor 改动
 ## 在线体验
 
 - **[对战客户端](https://cichlider.github.io/killfield/viewer/)** —— Watch（双方可独立选择
-  Laika / Hybrid / Killfield，默认 Hybrid vs Laika）与 Play（玩家可选任意一方为对手，默认
-  Hybrid）两个入口。
+  Laika / Hybrid / Killfield，默认 Hybrid vs Laika，Hybrid 固定 0 帧延迟）与 Play（玩家可选
+  任意一方为对手，默认 Hybrid，并可把对手延迟调为 0–3 帧）两个入口。
 - **[项目报告](https://cichlider.github.io/killfield/paper/)** —— 交互式：逐帧观测/动作
   可视化、loss 与 actor 的逐版演化、16 版训练血统。
 

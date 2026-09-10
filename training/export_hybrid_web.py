@@ -44,6 +44,7 @@ def main() -> None:
     parser.add_argument("checkpoint", type=Path)
     parser.add_argument("--source", type=Path, default=Path("../killfield/training"))
     parser.add_argument("--output", type=Path, default=Path("viewer/assets/hybrid"))
+    parser.add_argument("--name", help="Public checkpoint label stored in the web manifest")
     args = parser.parse_args()
 
     source = args.source.resolve()
@@ -57,6 +58,12 @@ def main() -> None:
     # (live.json/complete.json's shape), not inside the .pt payload itself --
     # same place serve_live.py/eval_duel.py read it from.
     manifest_sidecar = args.checkpoint.with_suffix(".json")
+    if not manifest_sidecar.exists():
+        for sibling in (args.checkpoint.with_name("live.json"),
+                        args.checkpoint.with_name("complete.json")):
+            if sibling.exists():
+                manifest_sidecar = sibling
+                break
     side = json.loads(manifest_sidecar.read_text()) if manifest_sidecar.exists() else {}
     dodge_gate = bool(side.get("dodge_gate", False))
     ammo_gate = bool(side.get("ammo_gate", False))
@@ -94,8 +101,8 @@ def main() -> None:
     result = payload.get("result", {})
     manifest = {
         "format": "killfield-hybrid-f32-v1",
-        "checkpoint": args.checkpoint.name,
-        "schema": int(result.get("obs_schema", 24)),
+        "checkpoint": args.name or args.checkpoint.name,
+        "schema": int(side.get("schema_version", result.get("obs_schema", 24))),
         "observation": OBS_DIM,
         "bullet_slots": BULLET_SLOTS,
         "actions": 18,

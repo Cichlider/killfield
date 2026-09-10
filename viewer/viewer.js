@@ -25,12 +25,12 @@
  */
 
 import * as C from "./src/constants.js";
-import { STRINGS, loadLang, saveLang } from "./src/i18n.js?v=controls-help";
+import { STRINGS, loadLang, saveLang } from "./src/i18n.js?v=08cb7c15-help";
 import { Keyboard, TouchControls } from "./src/input.js?v=wheel-360";
 import { SoundEffects } from "./src/audio.js";
 import { Rng } from "./src/rng.js";
 import { interpolatePredictedPose, simulationBudget } from "./src/low-latency.js";
-import { HybridPolicy } from "./src/hybrid.js?v=4be8a6e2";
+import { HybridPolicy } from "./src/hybrid.js?v=88cfa648-v19";
 
 const STEP_MS = 1000 / C.FPS; // 40 ms
 const MAX_CATCHUP_MS = 250;
@@ -41,12 +41,12 @@ const REACTION_DELAY_STORAGE_KEY = "killfield-reaction-delay-frames";
 const DEFAULT_OPENING_DELAY_SECONDS = 0.5;
 const KILLFIELD_RAYS = 512;
 
-// engine/src/duel_obs.rs: the Hybrid observation is schema 24, 1028 semantic
+// engine/src/duel_obs.rs: the Hybrid observation is schema 26, 1038 semantic
 // floats then 10 bullet-mask floats. DODGE_OFFSET/DODGE_DIM are the 9-value
 // per-movement survival block `dodge_scale` biases the actor with — see
 // src/hybrid.js's `logits()`, which needs it as a separate argument because
 // that bias bypasses the shared trunk entirely.
-const HYBRID_OBS_DIM = 1028;
+const HYBRID_OBS_DIM = 1038;
 const HYBRID_BULLET_SLOTS = 10;
 const HYBRID_DODGE_OFFSET = 1018;
 const HYBRID_DODGE_DIM = 9;
@@ -592,11 +592,6 @@ let previousRenderState = null;
 let seatController = ["hybrid", "laika"];
 /** Seats a Hybrid policy must drive this tick — see driveHybridSeats(). */
 let hybridSeats = [];
-/** One pending-action queue per Hybrid seat, for the Play-mode opponent
- *  delay — mirrors kf_set_mpc_delay's semantics for Killfield exactly, since
- *  the engine has no equivalent hook for a JS-driven seat. */
-let hybridQueues = {};
-const HYBRID_NEUTRAL_ACTION = 8; // stationary, no fire — CANDIDATES[1*6 + 1*2 + 0]
 
 // Match score and win streak are tallied here, outside the engine: rebuilding
 // the handle via kf_new (reroll or mode/controller change) resets the
@@ -663,7 +658,6 @@ function newGame() {
   if (handle !== null) wasm.kf_free(handle);
 
   syncPlayOpponentControls();
-  hybridQueues = {};
   if (mode === "play") {
     // Tank 1 is always the human; tank 0 is whichever opponent is selected.
     // The planner's opponent model must be honest here — a human is not
@@ -672,6 +666,7 @@ function newGame() {
     handle = wasm.kf_new(seed, opponent === "laika" ? 1 : 0);
     hybridSeats = opponent === "hybrid" ? [0] : [];
     if (opponent === "killfield") wasm.kf_attach_mpc(handle, 0, 7, KILLFIELD_RAYS, 1);
+    if (opponent === "hybrid") wasm.kf_set_hybrid_delay(handle, 0, reactionDelayFrames);
   } else {
     seatController = controllerSelects.map((select) => select.value);
     let laikaMask = 0;
@@ -687,6 +682,8 @@ function newGame() {
         wasm.kf_attach_mpc(handle, i, i === 0 ? 7 : 11, KILLFIELD_RAYS, otherIsLaika ? 0 : 1);
       } else if (c === "hybrid") {
         hybridSeats.push(i);
+        // Watch mode is the unmodified capability view: no artificial delay.
+        wasm.kf_set_hybrid_delay(handle, i, 0);
       }
     });
   }
@@ -768,16 +765,12 @@ function updateScoreboard() {
  *  back to the engine, before kf_step consumes this frame's controls. */
 function driveHybridSeats() {
   if (hybridPolicy === null) return;
-  // Mirrors kf_step's own agent_queue/agent_delay handling for a Killfield
-  // seat (see engine/src/wasm.rs) so the Play-mode opponent delay behaves
-  // identically whether the opponent is Killfield or Hybrid: while the
-  // opening pause holds, nothing is planned or queued and the seat sits
-  // neutral; once it lifts, actions are pushed to a FIFO and only the
-  // oldest one is actuated once the queue is deep enough.
+  // Hybrid delay lives inside the engine, not in JavaScript. That same real
+  // FIFO is appended to the policy observation, so changing the Play control
+  // changes both action delivery and what the model observes.
   const opponentPaused = mode === "play" && killfieldDelayFrames > 0;
   for (const seat of hybridSeats) {
     if (opponentPaused) {
-      wasm.kf_set_hybrid_action(handle, seat, HYBRID_NEUTRAL_ACTION);
       continue;
     }
     const ptr = wasm.kf_hybrid_observation(handle, seat);
@@ -786,13 +779,7 @@ function driveHybridSeats() {
     const mask = new Array(HYBRID_BULLET_SLOTS);
     for (let i = 0; i < HYBRID_BULLET_SLOTS; i++) mask[i] = buf[HYBRID_OBS_DIM + i] > 0.5;
     const dodge = buf.subarray(HYBRID_DODGE_OFFSET, HYBRID_DODGE_OFFSET + HYBRID_DODGE_DIM);
-    const rawAction = hybridPolicy.act(buf, mask, dodge);
-    let action = rawAction;
-    if (mode === "play") {
-      const queue = hybridQueues[seat] || (hybridQueues[seat] = []);
-      queue.push(rawAction);
-      action = queue.length > reactionDelayFrames ? queue.shift() : HYBRID_NEUTRAL_ACTION;
-    }
+    const action = hybridPolicy.act(buf, mask, dodge);
     wasm.kf_set_hybrid_action(handle, seat, action);
   }
 }
@@ -828,7 +815,6 @@ function tick() {
   const playsAsKillfield = mode === "play" && playOpponentSelect.value === "killfield";
   if (flags & 1) { // new_round
     roundFrames = 0;
-    hybridQueues = {};
     killfieldDelayFrames = openingDelayApplies() ? openingDelayFrameCount() : 0;
     if (playsAsKillfield) wasm.kf_set_mpc_enabled(handle, 0, killfieldDelayFrames === 0 ? 1 : 0);
   }
@@ -1029,14 +1015,14 @@ function toggleLanguage() {
 
 async function boot() {
   const [wasmResult, hybrid] = await Promise.all([
-    fetch("kf_engine.wasm?v=7aea2a29").then((res) => res.arrayBuffer())
+    fetch("kf_engine.wasm?v=bd722f08").then((res) => res.arrayBuffer())
       .then((bytes) => WebAssembly.instantiate(bytes, {})),
-    HybridPolicy.load("assets/hybrid.json?v=942cb5c9", "assets/hybrid.bin?v=a6919c8f"),
+    HybridPolicy.load("assets/hybrid.json?v=c57da90e", "assets/hybrid.bin?v=0ccba522"),
   ]);
   wasm = wasmResult.instance.exports;
   hybridPolicy = hybrid;
   scratchPtr = wasm.kf_scratch_ptr();
-  if (wasm.kf_hybrid_schema_version() !== 24 || wasm.kf_hybrid_observation_len() !== HYBRID_OBS_DIM + HYBRID_BULLET_SLOTS) {
+  if (wasm.kf_hybrid_schema_version() !== 26 || wasm.kf_hybrid_observation_len() !== HYBRID_OBS_DIM + HYBRID_BULLET_SLOTS) {
     throw new Error("Hybrid observation layout mismatch between engine and viewer");
   }
   initialiseThemedPickers();
@@ -1072,7 +1058,13 @@ async function boot() {
     try {
       localStorage.setItem(REACTION_DELAY_STORAGE_KEY, String(reactionDelayFrames));
     } catch { /* optional */ }
-    if (handle !== null && mode === "play") wasm.kf_set_mpc_delay(handle, 0, reactionDelayFrames);
+    if (handle !== null && mode === "play") {
+      if (playOpponentSelect.value === "killfield") {
+        wasm.kf_set_mpc_delay(handle, 0, reactionDelayFrames);
+      } else if (playOpponentSelect.value === "hybrid") {
+        wasm.kf_set_hybrid_delay(handle, 0, reactionDelayFrames);
+      }
+    }
   });
   openingDelayInput.addEventListener("input", () => {
     openingDelaySeconds = normaliseOpeningDelay(openingDelayInput.value);
