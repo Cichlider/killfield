@@ -1,4 +1,19 @@
 {
-  "updated": null,
-  "entries": []
+  "updated": "2026-09-12T23:47:37.112Z",
+  "entries": [
+    {
+      "name": "rekursion",
+      "github": "Cichlider",
+      "submitter": "636295d2f7a60018",
+      "board": "hybrid",
+      "score": 3,
+      "rounds": 4,
+      "firstRound": 1,
+      "seed": 1459237744,
+      "frames": 1464,
+      "issue": 1,
+      "trackHash": "3616280ff93947d15f6d2e5c4e039e83",
+      "verifiedAt": "2026-09-12T23:47:37.112Z"
+    }
+  ]
 }
