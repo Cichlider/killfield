@@ -1,5 +1,5 @@
 {
-  "updated": "2026-09-12T23:47:37.112Z",
+  "updated": "2026-09-12T23:51:56.384Z",
   "entries": [
     {
       "name": "rekursion",
@@ -14,6 +14,20 @@
       "issue": 1,
       "trackHash": "3616280ff93947d15f6d2e5c4e039e83",
       "verifiedAt": "2026-09-12T23:47:37.112Z"
+    },
+    {
+      "name": "rekursion",
+      "github": "Cichlider",
+      "submitter": "636295d2f7a60018",
+      "board": "killfield",
+      "score": 3,
+      "rounds": 4,
+      "firstRound": 1,
+      "seed": 1508339922,
+      "frames": 1054,
+      "issue": 2,
+      "trackHash": "dc12457cef09d3f08d7e44ccbbcd1b5d",
+      "verifiedAt": "2026-09-12T23:51:56.383Z"
     }
   ]
 }
