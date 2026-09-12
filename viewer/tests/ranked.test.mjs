@@ -6,7 +6,7 @@ import {
 } from "../src/replay.js";
 import {
   FPS, NEUTRAL_ACTION, OpponentDriver, RANKED_OPENING_DELAY_SECONDS,
-  SessionRecorder, replaySession,
+  SessionRecorder, policyActionToInput, replaySession,
 } from "../src/ranked.js";
 import { HybridPolicy } from "../src/hybrid.js";
 
@@ -18,6 +18,16 @@ const policy = new HybridPolicy(manifest, new Float32Array(
 ));
 
 const instantiate = async () => (await WebAssembly.instantiate(WASM, {})).instance.exports;
+
+assert.deepEqual(policyActionToInput(0), {
+  forward: 0, backup: 1, turnLeft: 1, turnRight: 0, fire: 0,
+});
+assert.deepEqual(policyActionToInput(15), {
+  forward: 1, backup: 0, turnLeft: 0, turnRight: 0, fire: 1,
+});
+assert.deepEqual(policyActionToInput(17), {
+  forward: 1, backup: 0, turnLeft: 0, turnRight: 1, fire: 1,
+});
 
 function mulberry32(seed) {
   let s = seed >>> 0;

@@ -31,6 +31,21 @@ export const HYBRID_BULLET_SLOTS = 10;
 export const HYBRID_DODGE_OFFSET = 1018;
 export const HYBRID_DODGE_DIM = 9;
 
+/** Convert Discrete(18) into the exact full-strength human input recorded by
+ * the browser. This is used by the opt-in policy pilot and mirrors
+ * engine/src/score.rs CANDIDATES. */
+export function policyActionToInput(action) {
+  const throttle = Math.floor(action / 6);
+  const turn = Math.floor((action % 6) / 2);
+  return {
+    forward: throttle === 2 ? 1 : 0,
+    backup: throttle === 0 ? 1 : 0,
+    turnLeft: turn === 0 ? 1 : 0,
+    turnRight: turn === 2 ? 1 : 0,
+    fire: action % 2,
+  };
+}
+
 /**
  * How far below the best logit a submitted opponent action may sit before the
  * audit calls it forged.
