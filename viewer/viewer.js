@@ -47,7 +47,7 @@ import {
   SessionRecorder,
   policyActionToInput,
   readObservation,
-} from "./src/ranked.js";
+} from "./src/ranked.js?v=policy-pilot";
 import { buildStamps, buildSubmission, submitToGateway } from "./src/submit.js";
 
 const STEP_MS = 1000 / C.FPS; // 40 ms
