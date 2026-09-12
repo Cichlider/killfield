@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#f7f7f5">
+<title>Hybrid · Leaderboard</title>
+<meta name="description" content="Verified longest shutouts against Hybrid and Killfield. Every record is replayed frame by frame before it lands.">
+<meta name="robots" content="index,follow">
+<link rel="canonical" href="https://cichlider.github.io/killfield/viewer/leaderboard.html">
+<link rel="icon" type="image/png" sizes="32x32" href="assets/brand/hybrid-32.png">
+<link rel="icon" type="image/svg+xml" sizes="any" href="assets/brand/hybrid.svg">
+<link rel="apple-touch-icon" sizes="180x180" href="assets/brand/hybrid-180.png">
+<link rel="stylesheet" href="style.css?v=6f794e10">
+</head>
+<body>
+<main class="board-page">
+  <header>
+    <a class="board-link" href="./">
+      <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M9.5 3 5 8l4.5 5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span id="back-label">Back to the game</span>
+    </a>
+    <button id="lang-toggle" type="button" class="quiet" aria-label="Switch to Chinese">中文</button>
+  </header>
+
+  <div class="board-title">
+    <h1 id="board-heading">Longest shutout</h1>
+    <p id="board-blurb">How many rounds running you can take off the agent before it takes one back. Every record here was replayed frame by frame before it landed.</p>
+  </div>
+
+  <nav class="mode-switch" id="board-tabs" aria-label="Board">
+    <button type="button" class="mode-btn active" data-board="hybrid">Hybrid</button>
+    <button type="button" class="mode-btn" data-board="killfield">Killfield</button>
+  </nav>
+
+  <section class="board-panel">
+    <table class="board-table">
+      <thead>
+        <tr>
+          <th class="col-rank" id="col-rank">#</th>
+          <th class="col-name" id="col-name">Player</th>
+          <th class="col-score" id="col-score">Shutout</th>
+          <th class="col-rounds" id="col-rounds">Rounds</th>
+          <th class="col-when" id="col-when">Verified</th>
+        </tr>
+      </thead>
+      <tbody id="board-body"></tbody>
+    </table>
+    <p class="board-empty" id="board-empty" hidden></p>
+  </section>
+
+  <section class="board-rules">
+    <h2 id="rules-heading">What counts</h2>
+    <dl id="rules-list"></dl>
+  </section>
+
+  <p class="board-note" id="board-note"></p>
+  <footer class="site-footer"><a href="https://github.com/Cichlider/killfield" target="_blank" rel="noreferrer">github.com/Cichlider/killfield</a><span>© 2026 Cichlider. All rights reserved.</span></footer>
+</main>
+<script type="module" src="leaderboard.js"></script>
+</body>
+</html>

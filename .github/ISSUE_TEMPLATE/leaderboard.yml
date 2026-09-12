@@ -1,0 +1,28 @@
+name: Leaderboard record
+description: Submit a ranked run for verification
+title: "[score] "
+labels: ["leaderboard"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Play a ranked run in [the game](https://cichlider.github.io/killfield/viewer/),
+        press **Upload record**, and paste what it copied below.
+
+        The record is the seed and every frame of your input — not a score.
+        CI replays it through the same engine build and works the score out for
+        itself, so there is nothing to fill in by hand and nothing worth editing.
+  - type: textarea
+    id: record
+    attributes:
+      label: Record
+      description: Paste it exactly as copied. Do not add code fences; this box adds its own.
+      render: json
+    validations:
+      required: true
+  - type: markdown
+    attributes:
+      value: |
+        A bot will reply with the verdict. If it disagrees with what the page
+        told you, the replay is what counts — say so in a comment and it can be
+        looked at.

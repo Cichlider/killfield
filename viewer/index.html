@@ -28,11 +28,15 @@
 <link rel="icon" type="image/svg+xml" sizes="any" href="assets/brand/hybrid.svg">
 <link rel="apple-touch-icon" sizes="180x180" href="assets/brand/hybrid-180.png">
 <link rel="manifest" href="manifest.webmanifest?v=hybrid-1">
-<link rel="stylesheet" href="style.css?v=controls-360">
+<link rel="stylesheet" href="style.css?v=6f794e10">
 </head>
 <body>
 <main>
   <header>
+    <a id="ranked-board" class="board-link" href="leaderboard.html">
+      <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M2 13.2h12M4.2 13V7.4M8 13V3.2M11.8 13v-3.4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+      <span id="ranked-board-label">Leaderboard</span>
+    </a>
     <button id="lang-toggle" type="button" class="quiet" aria-label="Switch to Chinese">中文</button>
   </header>
 
@@ -126,6 +130,23 @@
     <label class="range-field" id="opening-delay-field"><span id="opening-delay-label">Opening pause</span><input id="opening-delay" type="range" min="0" max="3" step="0.1" value="0.5"><output id="opening-delay-value" for="opening-delay">0.5 s</output></label>
   </section>
 
+  <section class="ranked" id="ranked-row" hidden aria-label="Ranked run">
+    <div class="ranked-head">
+      <div class="ranked-figure">
+        <strong class="ranked-score" id="ranked-score">0</strong>
+        <span class="ranked-unit" id="ranked-unit">best shutout</span>
+      </div>
+      <p class="ranked-status" id="ranked-status" role="status"></p>
+      <button id="ranked-start" type="button" class="toggle ranked-toggle">Ranked run</button>
+    </div>
+    <div class="ranked-submit" id="ranked-submit" hidden>
+      <input id="ranked-name" type="text" maxlength="24" autocomplete="off" spellcheck="false" required placeholder="Your name" aria-label="Your name">
+      <input id="ranked-github" type="text" maxlength="39" autocomplete="off" spellcheck="false" placeholder="GitHub (optional)" aria-label="GitHub account, optional">
+      <button id="ranked-upload" type="button" class="solid-btn">Upload record</button>
+      <textarea id="ranked-payload" class="ranked-payload" rows="3" readonly spellcheck="false" hidden></textarea>
+    </div>
+  </section>
+
   <div class="actions">
     <button id="reroll" type="button" class="ghost-btn">New maze</button>
     <button id="reset-score" type="button" class="ghost-btn">Reset score</button>
@@ -146,6 +167,6 @@
   </div>
   <footer class="site-footer"><a href="https://github.com/Cichlider/killfield" target="_blank" rel="noreferrer">github.com/Cichlider/killfield</a><span>© 2026 Cichlider. All rights reserved.</span></footer>
 </main>
-<script type="module" src="viewer.js?v=controls-360"></script>
+<script type="module" src="viewer.js?v=df8a2006"></script>
 </body>
 </html>

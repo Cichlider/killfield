@@ -1,0 +1,193 @@
+# The leaderboard
+
+Two boards, one number each: the longest run of consecutive rounds a human took
+off the agent before it took one back. One board faces Hybrid, the other faces
+Killfield, the 512-ray planner. A run qualifies at six.
+
+Nothing on the board is a number somebody typed. A submission carries the seed
+and every frame of input, and CI replays it through the same engine binary the
+player used, works the score out itself, and ignores whatever the record
+claimed.
+
+## Why a replay and not a score
+
+The game runs entirely in the browser. A score posted from the browser is a
+string the player can edit, so the only thing worth transmitting is the thing
+that produces the score. The engine makes this cheap: `engine/src/rng.rs` is a
+mulberry32 chain seeded by a `u32`, physics is `f64` throughout, and one
+`kf_new(seed)` handle plays round after round off that single chain. Identical
+seed plus identical inputs gives an identical game, bit for bit.
+
+Measured, not assumed: two fresh wasm instances fed the same scripted session
+produce byte-identical render buffers on every frame, for both opponents and at
+every delay. `viewer/tests/ranked.test.mjs` is that check.
+
+## What a record contains
+
+`viewer/src/replay.js` is the codec, imported by both the browser and CI so the
+format cannot drift between them. Per frame: the four movement strengths
+exactly as they crossed into `kf_set_input`, the held trigger, and the
+opponent's action. Trigger edges land between ticks — `kf_set_fire_immediate`
+applies them off the keyboard event, not the frame — so they are stored
+separately, anchored to the frame count at the moment they reached the engine.
+
+Pausing needs no representation: the loop simply stops calling `kf_step`, so a
+pause produces no frames at all.
+
+The whole thing is deflated and base64'd. It runs about 1.2 characters per
+frame, so a 30-round session is under 6,000 characters and even 80 rounds sits
+at a quarter of what a GitHub issue body holds.
+
+## How a forged record is caught
+
+Killfield needs no defence. The planner runs inside `kf_step`, so a submission
+has no way to express what it did — an engine-driven opponent that carries any
+action at all is rejected outright.
+
+Hybrid is driven from JavaScript, so its action is recorded, and a forger could
+write "stood still" on every frame. The audit in `replaySession` re-derives the
+opponent's decision frame by frame while driving the engine from the *recorded*
+actions. Because the trajectory therefore never diverges, every comparison
+happens on the identical observation the player's browser saw, and a
+cross-browser floating-point difference can only ever surface as a near-tie.
+
+The tolerance comes from measurement rather than taste. Over 3,000 frames of
+real play:
+
+| | min | p1 | median |
+|---|---|---|---|
+| best logit minus runner-up | 9.0e-3 | 0.19 | 4.97 |
+| best logit minus a forged idle action | 7.8e-2 | 1.07 | 15.1 |
+
+A `Math.tanh` difference of an ulp moves a logit by around 1e-5. `AUDIT_EPSILON`
+is 1e-3: two orders above that noise, one order below the narrowest genuine tie,
+two orders below the cheapest forgery.
+
+## What is not caught
+
+Say so rather than implying otherwise:
+
+- **A bot playing the game.** A scripted controller produces a record that
+  replays perfectly, because it really did play the rounds. The board measures
+  a controller, not a pair of hands.
+- **Playing in slow motion.** A modified client can step the engine slowly and
+  give a human seconds per frame. The record carries wall-clock timing, but a
+  modified client can write whatever timing it likes, so those figures are
+  advisory and are not used to reject anything.
+
+Both need a server-authoritative loop to close, which this design deliberately
+does not have.
+
+## Ranked settings
+
+The rules players read are on the board page itself, in one block, written out
+in both languages — `RULES` in `viewer/leaderboard.js`. This is the same list
+from the enforcement side.
+
+Ranked is the default match with no handicap. Every setting that would make the
+opponent easier is pinned when a run starts *and* refused again at verification,
+because the page's copy of a rule is only advisory once a submission is text
+somebody can write:
+
+- **Actuation delay must be 0 frames.** This is the handicap that holds the
+  agent's controls back by whole frames.
+- **Opening pause at most 0.5s**, the default. Shorter is allowed — it only
+  makes the run harder.
+- **Instant turn off.** The assist removes the turn-rate limit outright.
+
+Settings that change nothing about the match are deliberately unrestricted: the
+wheel's forward region is a client-side mapping that resolves into the same
+strengths before anything crosses the FFI, touch and keyboard are equivalent,
+and pausing produces no frames at all.
+
+The score qualifies at six consecutive rounds, counted as the longest run
+anywhere in one continuous session rather than from the opening round. Losing
+does not end the attempt; it ends that streak. Anything that changes the match
+closes the recording — a reroll, a different opponent, a change to either delay
+— and whatever was recorded stays submittable.
+
+## Who a record belongs to
+
+Every record carries a name, and there is no anonymous entry: a submission
+without one is refused at both ends.
+
+Showing the GitHub account behind it is optional and never self-asserted. A
+declared handle is kept only when it matches the account that opened the issue,
+so a record cannot arrive wearing somebody else's name; a mismatch is rejected
+rather than quietly dropped.
+
+Opting out must not become a way around the rate limit, so the limit keys on a
+truncated hash of the submitting account rather than on the displayed handle.
+That hash is a counting key and not a secret — the issue it came from is public
+— but it keeps plaintext accounts out of a file whose whole purpose is to be
+read.
+
+## The submission path
+
+The page copies the record to the clipboard and opens a prefilled issue; the
+player pastes and submits under their own account. The clipboard carries the
+bare JSON and nothing else — the issue form wraps it in a ```json fence itself,
+and a fence inside a fence is what CI would try to parse.
+
+`.github/workflows/leaderboard.yml` verifies it. That workflow runs on input
+from anyone on the internet while holding a token that can write to the repo,
+so two rules hold:
+
+1. **Nothing from the issue reaches a shell.** The body is passed with `env:`
+   and parsed in Node. `${{ github.event.issue.body }}` inside a `run:` block
+   would be remote code execution, and the verdict is written to a file rather
+   than returned on stdout so no downstream step has to parse it either.
+2. **Every bound is checked before the expensive work**, cheapest first: issue
+   body size, the fenced block's size, JSON shape, settings, binary hashes,
+   rate limit, duplicate check, and only then the inflate and the replay.
+
+Specific things the verifier refuses, each with a test in
+`viewer/tests/submission.test.mjs`:
+
+- a payload that inflates past 4 MB, aborted while the stream runs rather than
+  after it lands
+- any non-finite or out-of-range movement strength — a NaN propagates into tank
+  coordinates and can leave a round that never ends, which hangs rather than
+  crashes
+- a track whose header disagrees with its length, an action outside
+  `Discrete(18)`, an event past the end of the track
+- a record naming an engine or policy hash this repo does not ship
+- a display name carrying control characters, zero-width joiners or the
+  bidirectional overrides that let one string render as another
+- a record already on the board, by track hash, since records are public and
+  the cheapest forgery is submitting someone else's verbatim
+- more than ten accepted records from one account in a day
+- a GitHub handle that is not the account that opened the issue
+
+The board itself renders every name through `textContent`. A name that looks
+like markup shows as the characters somebody typed.
+
+## Publishing
+
+Pages is composed from two branches — the player from `main`, the paper from
+`rl` — so the accepted record, which lands on `main`, cannot simply reuse
+`deploy-paper.yml`: that workflow only fires on pushes to `rl`. Rather than
+reaching across branches to trigger it, the leaderboard workflow's `publish`
+job composes the identical artifact itself. Both share the `pages` concurrency
+group, so the two can never deploy over each other.
+
+## Running it
+
+```bash
+node viewer/tests/replay.test.mjs       # codec, scoring, rejection paths
+node viewer/tests/ranked.test.mjs       # determinism and the action audit
+node viewer/tests/submission.test.mjs   # the verifier, end to end
+node tools/verify_replay.mjs --file some-issue-body.md   # one record, locally
+```
+
+`viewer/tests/fixtures/qualifying-run.json` is a real run that clears the bar,
+recorded once by `tools/make_test_fixture.mjs`. Regenerate it whenever
+`kf_engine.wasm` or the policy weights change — it names both, and the test
+refuses it otherwise.
+
+Finding one takes minutes, which is itself worth knowing: the "human" in that
+search is the policy driving itself through the keyboard path, and it is
+distinctly weaker there than in the discrete path it was trained on, managing
+at best a four-round streak across 146 rounds. Continuous input deliberately
+skips the ten-degree turn lattice (`engine/src/game.rs`, `continuous_turn`),
+and that snap is worth more to aim than it looks.

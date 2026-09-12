@@ -1,0 +1,112 @@
+name: Verify a leaderboard record
+
+# Anyone on the internet can open an issue, so this workflow runs on untrusted
+# input while holding a token that can write to the repository. The issue body
+# is therefore passed to the verifier through the environment and parsed in
+# Node — never interpolated into a `run:` block, which would let a crafted
+# record execute commands here. Nothing the submitter controls reaches a shell.
+on:
+  issues:
+    types: [opened, edited, labeled]
+
+permissions:
+  contents: write
+  issues: write
+  pages: write
+  id-token: write
+
+# One at a time: the board is a file in the repo, and two runs appending to it
+# at once would race. This also bounds what a burst of submissions can spend.
+concurrency:
+  group: leaderboard
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    if: contains(github.event.issue.labels.*.name, 'leaderboard')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Replay the record
+        id: replay
+        continue-on-error: true
+        env:
+          ISSUE_BODY: ${{ github.event.issue.body }}
+          ISSUE_AUTHOR: ${{ github.event.issue.user.login }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: node tools/verify_replay.mjs --write
+
+      - name: Post the verdict
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: gh issue comment "$ISSUE_NUMBER" --body-file comment.md
+
+      - name: Commit the board
+        if: steps.replay.outcome == 'success'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add viewer/leaderboard.json
+          git commit -m "Add a verified leaderboard record"
+          git push
+
+      - name: Close the issue
+        if: steps.replay.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: gh issue close "$ISSUE_NUMBER" --reason completed
+
+      - name: Fail the run when the record was rejected
+        if: steps.replay.outcome != 'success'
+        run: exit 1
+
+  # Pages is built from two branches — the player from main, the paper from rl
+  # — so a commit to main cannot simply reuse deploy-paper.yml, which only
+  # fires on pushes to rl. This composes the identical artifact rather than
+  # reaching across branches to trigger that workflow. The `pages` concurrency
+  # group is shared with it so the two can never deploy over each other.
+  publish:
+    needs: verify
+    runs-on: ubuntu-latest
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Read the player, board included, from main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: site
+
+      - name: Read the paper from rl
+        uses: actions/checkout@v4
+        with:
+          ref: rl
+          path: paper-source
+
+      - name: Compose one Pages artifact
+        run: |
+          cp -R paper-source/paper site/paper
+          touch site/.nojekyll
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - id: deployment
+        uses: actions/deploy-pages@v4

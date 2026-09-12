@@ -405,6 +405,11 @@ export class TouchControls {
    *
    * `rotation` is the tank's current heading in degrees, needed by the
    * joystick's world-heading math (see joystickButtons above).
+   *
+   * Returns the snapped heading, when instant turn took one, alongside the
+   * exact values handed to the engine: a ranked replay is reproducible only
+   * from the numbers that actually crossed the FFI boundary, not from the key
+   * state they were derived from.
    */
   applyTo(wasm, handle, tank, keyboardStrengths, rotation, instantTurn = false) {
     const movement = this.resolveMovement(keyboardStrengths, rotation);
@@ -416,10 +421,16 @@ export class TouchControls {
       movement.turnRight = 0;
       snappedRotation = movement.targetRotation;
     }
-    const fire = (keyboardStrengths.fire > 0 || this.firePointers.size > 0) ? 1 : 0;
-    wasm.kf_set_input(handle, tank, movement.forward, movement.backup,
-      movement.turnLeft, movement.turnRight, fire, 1);
-    return snappedRotation;
+    const input = {
+      forward: movement.forward,
+      backup: movement.backup,
+      turnLeft: movement.turnLeft,
+      turnRight: movement.turnRight,
+      fire: (keyboardStrengths.fire > 0 || this.firePointers.size > 0) ? 1 : 0,
+    };
+    wasm.kf_set_input(handle, tank, input.forward, input.backup,
+      input.turnLeft, input.turnRight, input.fire, 1);
+    return { snappedRotation, input };
   }
 
   clearMovement() {

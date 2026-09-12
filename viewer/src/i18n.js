@@ -38,6 +38,22 @@ export const STRINGS = {
     openingDelayLabel: "Opening pause",
     openingDelayValue: (seconds) => `${seconds.toFixed(1)} s`,
     openingDelayCountdown: (seconds) => `Opponent starts in ${seconds.toFixed(1)}s`,
+    rankedStart: "Ranked run",
+    rankedStop: "End run",
+    rankedIdle: "A ranked run records every frame, so the board can replay it.",
+    rankedRecording: (best, rounds, need) =>
+      `Recording · best shutout ${best} · ${rounds} rounds played`
+      + (best >= need ? " · good to upload" : ` · ${need} in a row to qualify`),
+    rankedFinished: (best) => `Run closed on a ${best}-round shutout. Name it and upload.`,
+    rankedTooShort: (best, need) =>
+      `Run closed on a ${best}-round shutout — the board starts at ${need}.`,
+    rankedUpload: "Upload record",
+    rankedBoard: "Leaderboard",
+    rankedUnit: "best shutout",
+    rankedNamePlaceholder: "Your name",
+    rankedGithubPlaceholder: "GitHub (optional)",
+    rankedCopied: "Record copied — paste it into the issue GitHub just opened.",
+    rankedCopyManually: "Copy the text below into the issue GitHub just opened.",
     controlsHelp: {
       trigger: "Controls",
       title: "Desktop controls",
@@ -98,6 +114,20 @@ export const STRINGS = {
     openingDelayLabel: "开局停顿",
     openingDelayValue: (seconds) => `${seconds.toFixed(1)} 秒`,
     openingDelayCountdown: (seconds) => `对手将在 ${seconds.toFixed(1)} 秒后行动`,
+    rankedStart: "排位记录",
+    rankedStop: "结束记录",
+    rankedIdle: "排位会逐帧录下这一局，榜单靠重放它来核验成绩。",
+    rankedRecording: (best, rounds, need) => `录制中 · 最大零封 ${best} · 已打 ${rounds} 局`
+      + (best >= need ? " · 已够上榜" : ` · 满 ${need} 连封才能提交`),
+    rankedFinished: (best) => `本次最大零封 ${best} 连胜。填个名字就能上传。`,
+    rankedTooShort: (best, need) => `本次最大零封 ${best} 连胜，不满 ${need} 连封，上不了榜。`,
+    rankedUpload: "上传成绩",
+    rankedBoard: "排行榜",
+    rankedUnit: "最大零封",
+    rankedNamePlaceholder: "你的名字",
+    rankedGithubPlaceholder: "GitHub 账号（可选）",
+    rankedCopied: "记录已复制——粘贴到刚打开的 GitHub issue 里即可。",
+    rankedCopyManually: "把下面这段复制到刚打开的 GitHub issue 里。",
     controlsHelp: {
       trigger: "操作",
       title: "电脑端按键",

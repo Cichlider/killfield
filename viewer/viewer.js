@@ -31,6 +31,23 @@ import { SoundEffects } from "./src/audio.js";
 import { Rng } from "./src/rng.js";
 import { interpolatePredictedPose, simulationBudget } from "./src/low-latency.js";
 import { HybridPolicy } from "./src/hybrid.js?v=4be8a6e2";
+import {
+  HUMAN_SEAT, LIMITS, MIN_SUBMITTABLE_SHUTOUT, longestShutout,
+} from "./src/replay.js";
+// engine/src/duel_obs.rs: the Hybrid observation is schema 24, 1028 semantic
+// floats then 10 bullet-mask floats. These live in src/ranked.js because the
+// leaderboard verifier reads the same layout out of the same wasm memory.
+import {
+  HYBRID_BULLET_SLOTS,
+  HYBRID_OBS_DIM,
+  KILLFIELD_RAYS,
+  OpponentDriver,
+  RANKED_DELAY_FRAMES,
+  RANKED_OPENING_DELAY_SECONDS,
+  SessionRecorder,
+  readObservation,
+} from "./src/ranked.js";
+import { buildStamps, buildSubmission, openSubmissionIssue } from "./src/submit.js";
 
 const STEP_MS = 1000 / C.FPS; // 40 ms
 const MAX_CATCHUP_MS = 250;
@@ -38,18 +55,9 @@ const STREAK_STORAGE_KEY = "killfield-streak";
 const INSTANT_TURN_STORAGE_KEY = "killfield-human-instant-turn-v2";
 const OPENING_DELAY_STORAGE_KEY = "killfield-opening-delay-seconds";
 const REACTION_DELAY_STORAGE_KEY = "killfield-reaction-delay-frames";
+const RANKED_NAME_STORAGE_KEY = "killfield-ranked-name";
+const RANKED_GITHUB_STORAGE_KEY = "killfield-ranked-github";
 const DEFAULT_OPENING_DELAY_SECONDS = 0.5;
-const KILLFIELD_RAYS = 512;
-
-// engine/src/duel_obs.rs: the Hybrid observation is schema 24, 1028 semantic
-// floats then 10 bullet-mask floats. DODGE_OFFSET/DODGE_DIM are the 9-value
-// per-movement survival block `dodge_scale` biases the actor with — see
-// src/hybrid.js's `logits()`, which needs it as a separate argument because
-// that bias bypasses the shared trunk entirely.
-const HYBRID_OBS_DIM = 1028;
-const HYBRID_BULLET_SLOTS = 10;
-const HYBRID_DODGE_OFFSET = 1018;
-const HYBRID_DODGE_DIM = 9;
 
 // Render buffer layout, matching engine/src/wasm.rs's build_render() doc
 // comment: 18 header slots, then 120 paint flags (unused here — killfield has
@@ -136,6 +144,17 @@ const pauseButton = document.getElementById("pause");
 const soundButton = document.getElementById("sound");
 const fullscreenButton = document.getElementById("fullscreen");
 const langToggle = document.getElementById("lang-toggle");
+const rankedRow = document.getElementById("ranked-row");
+const rankedStartButton = document.getElementById("ranked-start");
+const rankedStatus = document.getElementById("ranked-status");
+const rankedSubmit = document.getElementById("ranked-submit");
+const rankedNameInput = document.getElementById("ranked-name");
+const rankedGithubInput = document.getElementById("ranked-github");
+const rankedUploadButton = document.getElementById("ranked-upload");
+const rankedBoardLabel = document.getElementById("ranked-board-label");
+const rankedPayload = document.getElementById("ranked-payload");
+const rankedScore = document.getElementById("ranked-score");
+const rankedUnit = document.getElementById("ranked-unit");
 const touchControlsRoot = document.getElementById("touch-controls");
 const touchVisibilityButton = document.getElementById("touch-visibility");
 const orientationHint = document.getElementById("orientation-hint");
@@ -586,17 +605,23 @@ let paused = false;
 let currentRound = 1;
 let frozen = false;
 let roundFrames = 0;
-let killfieldDelayFrames = 0;
 let previousRenderState = null;
 /** Watch-mode controller assignment per seat, refreshed by newGame(). */
 let seatController = ["hybrid", "laika"];
 /** Seats a Hybrid policy must drive this tick — see driveHybridSeats(). */
 let hybridSeats = [];
-/** One pending-action queue per Hybrid seat, for the Play-mode opponent
- *  delay — mirrors kf_set_mpc_delay's semantics for Killfield exactly, since
- *  the engine has no equivalent hook for a JS-driven seat. */
-let hybridQueues = {};
-const HYBRID_NEUTRAL_ACTION = 8; // stationary, no fire — CANDIDATES[1*6 + 1*2 + 0]
+/** Play mode's opponent state machine: the actuation delay queue and the
+ *  opening pause, in the same implementation the leaderboard verifier replays
+ *  with (src/ranked.js). Null in Watch mode, which has neither. */
+let opponentDriver = null;
+
+/** The ranked session being recorded, and the finished one awaiting upload.
+ *  Recording is only ever armed from the ranked button, and any change to the
+ *  match — a reroll, a new opponent, a different delay — closes it. */
+let ranked = null;
+let rankedResult = null;
+/** Hashes of the two binaries a replay is only reproducible against. */
+let binaryStamps = { engine: "", policy: "" };
 
 // Match score and win streak are tallied here, outside the engine: rebuilding
 // the handle via kf_new (reroll or mode/controller change) resets the
@@ -633,11 +658,24 @@ function resetScore() {
   updateScoreboard();
 }
 
+/** Whose run the streak line reports: your own when you are playing, and the
+ *  left seat when you are watching two agents. */
+function streakSeat() {
+  return mode === "play" ? HUMAN_SEAT : 0;
+}
+
 function applyRoundEnd(winner) {
+  if (ranked) {
+    // Every outcome, draws included, so the run is scored by exactly the
+    // function the verifier will re-run against its own replay.
+    ranked.winners.push(winner);
+    ranked.best = longestShutout(ranked.winners).best;
+    if (ranked.winners.length >= LIMITS.maxRounds) closeRankedSession();
+  }
   // -1: no winner yet; 2: double kill. Neither changes score or streak.
   if (winner !== 0 && winner !== 1) return;
   matchScore[winner] += 1;
-  if (winner === 0) {
+  if (winner === streakSeat()) {
     streak.current += 1;
     if (streak.current > streak.longest) streak.longest = streak.current;
   } else {
@@ -654,16 +692,15 @@ function syncPlayOpponentControls() {
   openingDelayField.hidden = hideDelays;
 }
 
-function openingDelayApplies() {
-  return mode === "play" && playOpponentSelect.value !== "laika";
-}
-
-function newGame() {
+/** Any new handle is a new match, so it ends whatever ranked session was
+ *  running — a reroll, a different opponent and a mode switch all land here. */
+function newGame({ ranked: startRanked = false } = {}) {
+  closeRankedSession();
   const seed = (Math.random() * 0xffffffff) >>> 0;
   if (handle !== null) wasm.kf_free(handle);
 
   syncPlayOpponentControls();
-  hybridQueues = {};
+  opponentDriver = null;
   if (mode === "play") {
     // Tank 1 is always the human; tank 0 is whichever opponent is selected.
     // The planner's opponent model must be honest here — a human is not
@@ -671,7 +708,15 @@ function newGame() {
     const opponent = playOpponentSelect.value;
     handle = wasm.kf_new(seed, opponent === "laika" ? 1 : 0);
     hybridSeats = opponent === "hybrid" ? [0] : [];
-    if (opponent === "killfield") wasm.kf_attach_mpc(handle, 0, 7, KILLFIELD_RAYS, 1);
+    // The delay queue, the opening pause and Killfield's attachment all live
+    // in the driver, which the leaderboard verifier replays with verbatim.
+    opponentDriver = new OpponentDriver({
+      opponent,
+      delayFrames: reactionDelayFrames,
+      openingDelayFrames: openingDelayFrameCount(),
+      policy: hybridPolicy,
+    });
+    opponentDriver.attach(wasm, handle);
   } else {
     seatController = controllerSelects.map((select) => select.value);
     let laikaMask = 0;
@@ -692,22 +737,132 @@ function newGame() {
   }
   syncTeamColors();
 
-  // In human play the world and human controls start immediately. Only the
-  // opponent's tank waits, giving the player genuine reaction/movement time;
-  // the same seat also carries the configurable reaction delay. Laika has
-  // neither hook — the engine drives it unconditionally inside kf_step — so
-  // both controls are hidden for that choice (see syncPlayOpponentControls).
-  const playsAsKillfield = mode === "play" && playOpponentSelect.value === "killfield";
-  killfieldDelayFrames = openingDelayApplies() ? openingDelayFrameCount() : 0;
-  if (playsAsKillfield) {
-    wasm.kf_set_mpc_enabled(handle, 0, killfieldDelayFrames === 0 ? 1 : 0);
-    wasm.kf_set_mpc_delay(handle, 0, reactionDelayFrames);
-  }
   roundFrames = 0;
   previousRenderState = captureRenderState(renderBuffer());
   const buf = renderBuffer();
   currentRound = buf[9];
   frozen = buf[14] > 0.5;
+
+  // In human play the world and human controls start immediately; only the
+  // opponent's tank waits out the opening pause, which is what gives the
+  // player real reaction time. Laika has no such hook — the engine drives it
+  // unconditionally inside kf_step — so both delay controls are hidden for
+  // that choice (see syncPlayOpponentControls).
+  if (startRanked) beginRankedSession(seed);
+}
+
+/** Start recording from a fresh handle. The seed is the one the session must
+ *  be replayed from, so it is captured here and nowhere else. */
+function beginRankedSession(seed) {
+  ranked = {
+    recorder: new SessionRecorder(),
+    winners: [],
+    best: 0,
+    startedAt: Date.now(),
+    config: {
+      seed,
+      opponent: playOpponentSelect.value,
+      delayFrames: reactionDelayFrames,
+      openingDelaySeconds,
+    },
+  };
+  rankedResult = null;
+  matchScore = [0, 0];
+  streak.current = 0;
+  saveStreak();
+  syncRankedUI();
+}
+
+/** Close the recording without discarding it: whatever run it captured stays
+ *  submittable. Anything that changes the match calls this. */
+function closeRankedSession() {
+  if (!ranked) return;
+  // Kept even when it falls short of the threshold, so the run can say how
+  // close it came instead of silently vanishing.
+  rankedResult = { ...ranked, frames: ranked.recorder.frameCount, endedAt: Date.now() };
+  ranked = null;
+  syncRankedUI();
+}
+
+function syncRankedUI() {
+  const s = t();
+  const set = (node, key, value) => { if (node[key] !== value) node[key] = value; };
+  set(rankedRow, "hidden", mode !== "play");
+  set(rankedStartButton, "textContent", ranked ? s.rankedStop : s.rankedStart);
+  rankedStartButton.classList.toggle("active", Boolean(ranked));
+  set(rankedUploadButton, "textContent", s.rankedUpload);
+  set(rankedBoardLabel, "textContent", s.rankedBoard);
+  set(rankedNameInput, "placeholder", s.rankedNamePlaceholder);
+  set(rankedGithubInput, "placeholder", s.rankedGithubPlaceholder);
+  // A record goes on the board under a name; there is no anonymous entry.
+  rankedUploadButton.disabled = rankedNameInput.value.trim() === "";
+  const eligible = rankedResult !== null && rankedResult.best >= MIN_SUBMITTABLE_SHUTOUT;
+  const shown = ranked ?? rankedResult;
+  set(rankedScore, "textContent", String(shown ? shown.best : 0));
+  set(rankedUnit, "textContent", s.rankedUnit);
+  rankedRow.classList.toggle("live", Boolean(ranked));
+  rankedRow.classList.toggle("qualified", eligible);
+  let status = s.rankedIdle;
+  if (ranked) {
+    status = s.rankedRecording(ranked.best, ranked.winners.length, MIN_SUBMITTABLE_SHUTOUT);
+  } else if (rankedResult) {
+    status = eligible
+      ? s.rankedFinished(rankedResult.best)
+      : s.rankedTooShort(rankedResult.best, MIN_SUBMITTABLE_SHUTOUT);
+  }
+  set(rankedStatus, "textContent", status);
+  set(rankedSubmit, "hidden", !eligible);
+}
+
+/**
+ * Hand the finished record over to GitHub. Nothing is uploaded from here: the
+ * payload goes to the clipboard and the player opens the issue themselves, so
+ * the submission is always an action they took under their own account.
+ */
+async function uploadRankedResult() {
+  if (rankedResult === null) return;
+  rankedUploadButton.disabled = true;
+  try {
+    try {
+      localStorage.setItem(RANKED_NAME_STORAGE_KEY, rankedNameInput.value);
+      localStorage.setItem(RANKED_GITHUB_STORAGE_KEY, rankedGithubInput.value);
+    } catch { /* They just won't be remembered next time. */ }
+    const submission = await buildSubmission({
+      result: rankedResult,
+      name: rankedNameInput.value,
+      github: rankedGithubInput.value,
+      stamps: binaryStamps,
+    });
+    const { url, body, copied } = await openSubmissionIssue(submission);
+    rankedStatus.textContent = copied ? t().rankedCopied : t().rankedCopyManually;
+    rankedPayload.hidden = copied;
+    if (!copied) {
+      rankedPayload.value = body;
+      rankedPayload.select();
+    }
+    window.open(url, "_blank", "noopener");
+  } catch (error) {
+    rankedStatus.textContent = error.message ?? String(error);
+  } finally {
+    rankedUploadButton.disabled = false;
+  }
+}
+
+/** Ranked runs face the default match: no actuation delay, the default opening
+ *  pause, and the turn-rate assist off. Anything that would make the opponent
+ *  easier is reset here rather than merely rejected later. */
+function startRankedSession() {
+  if (mode !== "play") setMode("play");
+  if (playOpponentSelect.value === "laika") playOpponentSelect.value = "hybrid";
+  reactionDelayFrames = RANKED_DELAY_FRAMES;
+  reactionDelaySelect.value = String(RANKED_DELAY_FRAMES);
+  openingDelaySeconds = Math.min(openingDelaySeconds, RANKED_OPENING_DELAY_SECONDS);
+  themedPickers.forEach(syncThemedPicker);
+  syncReactionDelayControl();
+  syncOpeningDelayControl();
+  if (instantTurn) toggleInstantTurn();
+  rankedResult = null;
+  newGame({ ranked: true });
 }
 
 function setMode(next) {
@@ -755,46 +910,37 @@ function updateScoreboard() {
     if (scoreLabels[i].textContent !== score) scoreLabels[i].textContent = score;
   }
   let text = frozen ? s.roundOver(currentRound) : s.round(currentRound);
-  if (mode === "play" && killfieldDelayFrames > 0 && !frozen) {
-    text += ` · ${s.openingDelayCountdown(killfieldDelayFrames / C.FPS)}`;
+  const pause = opponentDriver ? opponentDriver.pause : 0;
+  if (mode === "play" && pause > 0 && !frozen) {
+    text += ` · ${s.openingDelayCountdown(pause / C.FPS)}`;
   }
   if (paused) text += ` · ${s.paused}`;
   if (roundline.textContent !== text) roundline.textContent = text;
   const streakText = s.streakLine(streak.current, streak.longest);
   if (streakline.textContent !== streakText) streakline.textContent = streakText;
+  syncRankedUI();
 }
 
-/** Run the Hybrid policy for every seat assigned to it and hand its action
- *  back to the engine, before kf_step consumes this frame's controls. */
+/**
+ * Hand the opponent's action to the engine before kf_step consumes this
+ * frame's controls, and return the Play-mode decision so it can be recorded.
+ *
+ * Play mode routes through OpponentDriver, which owns the actuation delay and
+ * the opening pause; Watch mode has neither, and can drive both seats straight
+ * from the policy.
+ */
 function driveHybridSeats() {
-  if (hybridPolicy === null) return;
-  // Mirrors kf_step's own agent_queue/agent_delay handling for a Killfield
-  // seat (see engine/src/wasm.rs) so the Play-mode opponent delay behaves
-  // identically whether the opponent is Killfield or Hybrid: while the
-  // opening pause holds, nothing is planned or queued and the seat sits
-  // neutral; once it lifts, actions are pushed to a FIFO and only the
-  // oldest one is actuated once the queue is deep enough.
-  const opponentPaused = mode === "play" && killfieldDelayFrames > 0;
-  for (const seat of hybridSeats) {
-    if (opponentPaused) {
-      wasm.kf_set_hybrid_action(handle, seat, HYBRID_NEUTRAL_ACTION);
-      continue;
-    }
-    const ptr = wasm.kf_hybrid_observation(handle, seat);
-    const len = wasm.kf_hybrid_observation_len();
-    const buf = new Float32Array(wasm.memory.buffer, ptr, len);
-    const mask = new Array(HYBRID_BULLET_SLOTS);
-    for (let i = 0; i < HYBRID_BULLET_SLOTS; i++) mask[i] = buf[HYBRID_OBS_DIM + i] > 0.5;
-    const dodge = buf.subarray(HYBRID_DODGE_OFFSET, HYBRID_DODGE_OFFSET + HYBRID_DODGE_DIM);
-    const rawAction = hybridPolicy.act(buf, mask, dodge);
-    let action = rawAction;
-    if (mode === "play") {
-      const queue = hybridQueues[seat] || (hybridQueues[seat] = []);
-      queue.push(rawAction);
-      action = queue.length > reactionDelayFrames ? queue.shift() : HYBRID_NEUTRAL_ACTION;
-    }
-    wasm.kf_set_hybrid_action(handle, seat, action);
+  if (hybridPolicy === null) return null;
+  if (mode === "play") {
+    const decision = opponentDriver ? opponentDriver.decide(wasm, handle) : null;
+    if (decision) opponentDriver.apply(wasm, handle, decision.action);
+    return decision;
   }
+  for (const seat of hybridSeats) {
+    const { observation, mask, dodge } = readObservation(wasm, handle, seat);
+    wasm.kf_set_hybrid_action(handle, seat, hybridPolicy.act(observation, mask, dodge));
+  }
+  return null;
 }
 
 function tick() {
@@ -802,6 +948,7 @@ function tick() {
   // killfield's JS loop this only needs to push human input and any Hybrid
   // seat's chosen action before stepping.
   const human = MODES[mode].humanTank;
+  let humanInput = null;
   if (human !== null) {
     // Movement is the share of this 40 ms frame each key was really held, so a
     // tap that falls between two ticks still registers instead of being lost.
@@ -810,35 +957,28 @@ function tick() {
     // trigger is never resurrected by the window.
     const strengths = keyboard.sampleWindowStrengths(STEP_MS);
     const rotation = previousRenderState?.tanks[human]?.rotation ?? 0;
-    const snappedRotation = touchControls.applyTo(
+    const applied = touchControls.applyTo(
       wasm, handle, human, strengths, rotation, instantTurn,
     );
-    if (snappedRotation !== null && previousRenderState?.tanks[human]) {
+    humanInput = applied.input;
+    if (applied.snappedRotation !== null && previousRenderState?.tanks[human]) {
       // Physics and presentation both snap in the same frame.
-      previousRenderState.tanks[human].rotation = snappedRotation;
+      previousRenderState.tanks[human].rotation = applied.snappedRotation;
     }
   }
-  driveHybridSeats();
+  const decision = driveHybridSeats();
+  if (ranked && humanInput) {
+    ranked.recorder.frame(humanInput, decision ? decision.action : null);
+  }
   roundFrames += 1;
   const flags = wasm.kf_step(handle);
+  if (opponentDriver) opponentDriver.afterStep(wasm, handle, flags);
   playSoundsForFlags(flags);
   const buf = renderBuffer();
   currentRound = buf[9];
   frozen = buf[14] > 0.5;
-  const playsAsKillfield = mode === "play" && playOpponentSelect.value === "killfield";
-  if (flags & 1) { // new_round
-    roundFrames = 0;
-    hybridQueues = {};
-    killfieldDelayFrames = openingDelayApplies() ? openingDelayFrameCount() : 0;
-    if (playsAsKillfield) wasm.kf_set_mpc_enabled(handle, 0, killfieldDelayFrames === 0 ? 1 : 0);
-  }
-  if (mode === "play" && killfieldDelayFrames > 0 && !(flags & 1)) {
-    killfieldDelayFrames -= 1;
-    if (killfieldDelayFrames === 0 && playsAsKillfield) wasm.kf_set_mpc_enabled(handle, 0, 1);
-  }
-  if (flags & 64) { // round_end
-    applyRoundEnd(buf[15]);
-  }
+  if (flags & 1) roundFrames = 0; // new_round
+  if (flags & 64) applyRoundEnd(buf[15]); // round_end
 }
 
 let last = performance.now();
@@ -880,6 +1020,9 @@ function syncImmediateHumanFire() {
   // A release is always safe and must not be lost while paused/frozen, or the
   // next press could inherit a latched trigger. Only creation is gated.
   if (pressed && (paused || frozen)) return;
+  // Recorded at the point the edge really reaches the engine, not where the
+  // key changed: the two differ whenever an edge is swallowed above.
+  if (ranked) ranked.recorder.fireEdge(pressed);
   if (wasm.kf_set_fire_immediate(handle, human, pressed ? 1 : 0)) {
     sounds.playEvent(["fire"]);
   }
@@ -1028,11 +1171,14 @@ function toggleLanguage() {
 // -------------------------------------------------------------------- boot
 
 async function boot() {
-  const [wasmResult, hybrid] = await Promise.all([
-    fetch("kf_engine.wasm?v=7aea2a29").then((res) => res.arrayBuffer())
-      .then((bytes) => WebAssembly.instantiate(bytes, {})),
+  const [wasmBytes, hybrid] = await Promise.all([
+    fetch("kf_engine.wasm?v=7aea2a29").then((res) => res.arrayBuffer()),
     HybridPolicy.load("assets/hybrid.json?v=942cb5c9", "assets/hybrid.bin?v=a6919c8f"),
   ]);
+  // Hashed before instantiation so a record names the exact binaries it is
+  // reproducible against, rather than a version string someone could bump.
+  binaryStamps = await buildStamps(new Uint8Array(wasmBytes), hybrid.weights);
+  const wasmResult = await WebAssembly.instantiate(wasmBytes, {});
   wasm = wasmResult.instance.exports;
   hybridPolicy = hybrid;
   scratchPtr = wasm.kf_scratch_ptr();
@@ -1056,6 +1202,16 @@ async function boot() {
     touchFirePressed = pressed;
     syncImmediateHumanFire();
   };
+  rankedStartButton.addEventListener("click", () => {
+    if (ranked) closeRankedSession(); else startRankedSession();
+    rankedStartButton.blur();
+  });
+  rankedUploadButton.addEventListener("click", uploadRankedResult);
+  try {
+    rankedNameInput.value = localStorage.getItem(RANKED_NAME_STORAGE_KEY) ?? "";
+    rankedGithubInput.value = localStorage.getItem(RANKED_GITHUB_STORAGE_KEY) ?? "";
+  } catch { /* The boxes just start empty. */ }
+  rankedNameInput.addEventListener("input", syncRankedUI);
   rerollButton.addEventListener("click", () => { newGame(); rerollButton.blur(); });
   resetScoreButton.addEventListener("click", () => { resetScore(); resetScoreButton.blur(); });
   instantTurnButton.addEventListener("click", toggleInstantTurn);
@@ -1073,6 +1229,10 @@ async function boot() {
       localStorage.setItem(REACTION_DELAY_STORAGE_KEY, String(reactionDelayFrames));
     } catch { /* optional */ }
     if (handle !== null && mode === "play") wasm.kf_set_mpc_delay(handle, 0, reactionDelayFrames);
+    // Handing the opponent a delay mid-run changes the match the record says
+    // it was played under, so the run ends here rather than failing later.
+    if (opponentDriver) opponentDriver.delayFrames = reactionDelayFrames;
+    closeRankedSession();
   });
   openingDelayInput.addEventListener("input", () => {
     openingDelaySeconds = normaliseOpeningDelay(openingDelayInput.value);
@@ -1080,6 +1240,11 @@ async function boot() {
       localStorage.setItem(OPENING_DELAY_STORAGE_KEY, String(openingDelaySeconds));
     } catch { /* optional */ }
     syncOpeningDelayControl();
+    if (opponentDriver) {
+      opponentDriver.openingDelayFrames = opponentDriver.opponent === "laika"
+        ? 0 : openingDelayFrameCount();
+    }
+    closeRankedSession();
   });
   watchButton.addEventListener("click", () => setMode("watch"));
   playButton.addEventListener("click", () => setMode("play"));
@@ -1093,6 +1258,17 @@ async function boot() {
   // keyboard makes watch mode and keyboard-only play behave the same way.
   window.addEventListener("pointerdown", () => sounds.unlock(), { once: true, capture: true });
   window.addEventListener("keydown", () => sounds.unlock(), { once: true, capture: true });
+
+  // A hook for checking the recorder against the engine from outside this
+  // file — the leaderboard's whole claim is that a recorded session replays to
+  // the same rounds, and that is only checkable with both in hand. It exposes
+  // no capability a reader of this file does not already have.
+  window.__kf = {
+    get wasm() { return wasm; },
+    get handle() { return handle; },
+    get policy() { return hybridPolicy; },
+    get ranked() { return ranked ?? rankedResult; },
+  };
 
   setMode("watch");
   applyLanguage();
