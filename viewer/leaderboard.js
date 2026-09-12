@@ -35,8 +35,8 @@ const RULES = {
     ["Anything else is yours", "The wheel's forward region, touch or keyboard, pausing "
       + "to think — none of it changes the match, so none of it is restricted."],
     ["A name, and optionally an account", "Every record goes up under a name. Showing "
-      + "your GitHub account is optional, and only kept when it is the account that "
-      + "opened the issue."],
+      + "a GitHub account is optional. In one-click submissions it is a self-reported "
+      + "profile link, not proof that the player owns that account."],
   ],
   zh: [
     [`${MIN_SUBMITTABLE_SHUTOUT} 连起步`, `一次成绩要连续拿下 ${MIN_SUBMITTABLE_SHUTOUT} 个回合。`
@@ -50,7 +50,7 @@ const RULES = {
     ["两个榜分开排", "Hybrid 和 Killfield 各排各的。Laika 不计入排名。"],
     ["其余随意", "轮盘的前向区域、用触屏还是键盘、中途暂停思考——都不改变对局本身，所以都不限制。"],
     ["名字必填，账号可选", "每条记录都要有名字。是否显示 GitHub 账号由你决定，"
-      + "且只有确实是开 issue 的那个账号才会被保留。"],
+      + "一键提交里的账号只是自报的主页链接，不代表平台核验过账号归属。"],
   ],
 };
 

@@ -49,6 +49,7 @@ const BOARDS = { hybrid: "hybrid", killfield: "killfield" };
 /** Ceiling on entries one account can land in a day, to bound Actions spend. */
 const DAILY_SUBMISSION_LIMIT = 10;
 const MAX_JSON_CHARS = 80_000;
+const GATEWAY_MARKER = /<!-- killfield-gateway:v1:([a-f0-9]{16}) -->/;
 
 const reject = (why) => { throw new RejectedSubmission(why); };
 
@@ -169,9 +170,13 @@ function checkNotADuplicate(board, trackHash) {
  * a handle is only kept when it is the account that opened the issue, so a
  * record cannot arrive wearing somebody else's name.
  */
-function declaredHandle(raw, author) {
+function declaredHandle(raw, author, gatewaySubmitter) {
   const declared = sanitiseHandle(raw);
   if (declared === null) return null;
+  // A one-click gateway deliberately removes GitHub login from the player
+  // flow. Its Issue is authored by the gateway account, so the optional
+  // handle is display text rather than an ownership proof.
+  if (gatewaySubmitter !== null) return declared;
   if (author === null) reject("a GitHub handle was declared with no issue to check it against");
   if (declared.toLowerCase() !== author.toLowerCase()) {
     reject(`the record claims @${declared} but the issue was opened by @${author}`);
@@ -186,10 +191,28 @@ function declaredHandle(raw, author) {
  * came from is public — but it keeps plaintext accounts out of a file that
  * exists to be read.
  */
-function submitterKey(author) {
+function submitterKey(author, gatewaySubmitter) {
+  if (gatewaySubmitter !== null) return gatewaySubmitter;
   return author === null
     ? null
     : createHash("sha256").update(author.toLowerCase()).digest("hex").slice(0, 16);
+}
+
+/**
+ * Gateway-created Issues carry an opaque, per-client rate-limit key. Trust it
+ * only when the Issue author is the configured service account: anybody can
+ * copy the public marker, but they cannot make GitHub attribute their Issue to
+ * that account. The Worker computes the key; the replay contains no IP data.
+ */
+function gatewaySubmitter(body, author) {
+  const marker = GATEWAY_MARKER.exec(body ?? "");
+  if (marker === null) return null;
+  const gatewayAuthor = process.env.LEADERBOARD_GATEWAY_AUTHOR ?? "";
+  if (gatewayAuthor === "" || author === null
+      || author.toLowerCase() !== gatewayAuthor.toLowerCase()) {
+    reject("the one-click gateway marker was not posted by the configured gateway account");
+  }
+  return marker[1];
 }
 
 function checkRateLimit(board, key) {
@@ -208,6 +231,7 @@ function checkRateLimit(board, key) {
 async function verify({ body, author, issue }) {
   const submission = extractSubmission(body);
   const config = validateShape(submission);
+  const gateway = gatewaySubmitter(body, author);
 
   const engine = loadEngine();
   if (submission.engine !== engine.stamp) {
@@ -219,7 +243,7 @@ async function verify({ body, author, issue }) {
   }
 
   const board = loadBoard();
-  const submitter = submitterKey(author);
+  const submitter = submitterKey(author, gateway);
   checkRateLimit(board, submitter);
 
   // Bounded and shape-checked before a single frame is stepped.
@@ -267,7 +291,7 @@ async function verify({ body, author, issue }) {
     board,
     entry: {
       name: sanitiseName(submission.name),
-      github: declaredHandle(submission.github, author),
+      github: declaredHandle(submission.github, author, gateway),
       submitter,
       board: BOARDS[config.opponent],
       score: scored.best,

@@ -45,6 +45,9 @@ jobs:
           ISSUE_BODY: ${{ github.event.issue.body }}
           ISSUE_AUTHOR: ${{ github.event.issue.user.login }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
+          # Issues created by the one-click Worker are attributed to this
+          # service account. Only those Issues may carry a gateway rate key.
+          LEADERBOARD_GATEWAY_AUTHOR: Cichlider
         run: node tools/verify_replay.mjs --write
 
       - name: Post the verdict

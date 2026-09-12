@@ -83,6 +83,22 @@ export function submissionTitle(submission) {
   return `[score] ${submission.name} — ${submission.claim} vs ${label}`;
 }
 
+/** Submit without exposing a repository credential to the static page. */
+export async function submitToGateway(endpoint, submission, turnstileToken) {
+  if (!endpoint) throw new Error("Score submission is not configured yet.");
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ submission, turnstileToken }),
+  });
+  let result;
+  try { result = await response.json(); } catch { result = null; }
+  if (!response.ok || result?.ok !== true) {
+    throw new Error(result?.error ?? "Score submission failed. Try again shortly.");
+  }
+  return result;
+}
+
 /**
  * Hand the record to GitHub. The payload goes to the clipboard rather than
  * into the URL: a long session's track runs to tens of thousands of characters

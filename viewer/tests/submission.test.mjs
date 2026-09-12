@@ -46,6 +46,7 @@ let isolatedBoardNumber = 0;
  *  record is written by the initial acceptance case. */
 function runVerifier(body, {
   author = "tester", write = false, shared = false,
+  gatewayAuthor = "",
   boardContents = JSON.stringify({ updated: null, entries: [] }),
 } = {}) {
   const bodyPath = path.join(workdir, "body.md");
@@ -58,10 +59,22 @@ function runVerifier(body, {
   if (write) args.push("--write");
   try {
     execFileSync(process.execPath, args, {
-      cwd: workdir, env: { ...process.env, ISSUE_AUTHOR: author, ISSUE_NUMBER: "7" },
+      cwd: workdir, env: {
+        ...process.env,
+        ISSUE_AUTHOR: author,
+        ISSUE_NUMBER: "7",
+        LEADERBOARD_GATEWAY_AUTHOR: gatewayAuthor,
+      },
       stdio: "pipe",
+      // A genuine replay of the ~12k-frame fixture takes several seconds; this
+      // is a backstop against an actual hang (e.g. a malformed record that
+      // stalls the engine), not a performance budget.
+      timeout: 60_000,
     });
-  } catch {
+  } catch (error) {
+    if (error.signal === "SIGTERM" || error.code === "ETIMEDOUT") {
+      throw new Error(`verifier hung (>60s) on: ${body.slice(0, 200)}`);
+    }
     // A rejection exits non-zero; the verdict file still holds the reason.
   }
   return {
@@ -88,6 +101,23 @@ const owned = runVerifier(submissionBody({ ...fixture, github: "tester" }));
 assert.equal(owned.verdict.entry.github, "tester");
 const atPrefixed = runVerifier(submissionBody({ ...fixture, github: "@TESTER" }));
 assert.equal(atPrefixed.verdict.entry.github, "tester", "handles compare case-insensitively");
+
+// One-click submissions are opened by the service account, not the player.
+// Their optional GitHub field is intentionally self-reported, while the
+// opaque gateway key keeps different clients out of one shared rate bucket.
+const gatewayBody = submissionBody({ ...fixture, github: "someone-else" })
+  + "\n<!-- killfield-gateway:v1:0123456789abcdef -->\n";
+const gateway = runVerifier(gatewayBody, {
+  author: "Cichlider", gatewayAuthor: "Cichlider",
+});
+assert.equal(gateway.verdict.ok, true);
+assert.equal(gateway.verdict.entry.github, "someone-else");
+assert.equal(gateway.verdict.entry.submitter, "0123456789abcdef");
+const forgedGateway = runVerifier(gatewayBody, {
+  author: "attacker", gatewayAuthor: "Cichlider",
+});
+assert.equal(forgedGateway.verdict.ok, false);
+assert.match(forgedGateway.verdict.reason, /configured gateway account/);
 
 // The score is the replay's, never the submission's.
 const inflated = runVerifier(submissionBody({ ...fixture, claim: fixture.claim + 50 }));

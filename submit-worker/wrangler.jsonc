@@ -1,0 +1,21 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "killfield-leaderboard-submit",
+  "main": "worker.js",
+  "compatibility_date": "2026-09-12",
+  "workers_dev": true,
+  "preview_urls": false,
+  "observability": { "enabled": true },
+  "vars": {
+    "ALLOWED_ORIGIN": "https://cichlider.github.io",
+    "TURNSTILE_HOSTNAME": "cichlider.github.io",
+    "GITHUB_REPOSITORY": "Cichlider/killfield",
+    "DAILY_LIMIT": "10"
+  },
+  "kv_namespaces": [
+    {
+      "binding": "RATE_LIMITS",
+      "id": "4eecbf8655614d39be9aae9c90fc8dae"
+    }
+  ]
+}

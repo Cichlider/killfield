@@ -450,17 +450,7 @@ header { gap: 4px; }
 .solid-btn:hover { border-color: transparent; background: #274c4f; }
 .solid-btn:disabled { opacity: .5; }
 
-.ranked-payload {
-  width: 100%;
-  padding: 8px 10px;
-  color: var(--muted);
-  border: 1px solid var(--line);
-  border-radius: 9px;
-  background: rgba(255,255,255,.7);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 10px;
-  resize: vertical;
-}
+.ranked-turnstile { flex-basis: 100%; min-height: 0; }
 
 /* ------------------------------------------------------- the board itself */
 

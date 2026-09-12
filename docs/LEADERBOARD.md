@@ -111,23 +111,26 @@ closes the recording — a reroll, a different opponent, a change to either dela
 Every record carries a name, and there is no anonymous entry: a submission
 without one is refused at both ends.
 
-Showing the GitHub account behind it is optional and never self-asserted. A
-declared handle is kept only when it matches the account that opened the issue,
-so a record cannot arrive wearing somebody else's name; a mismatch is rejected
-rather than quietly dropped.
+Showing a GitHub account is optional. In the normal one-click path it is a
+self-reported profile link, not proof of ownership. In the manual Issue fallback,
+a declared handle is kept only when it matches the account that opened the Issue.
 
-Opting out must not become a way around the rate limit, so the limit keys on a
-truncated hash of the submitting account rather than on the displayed handle.
-That hash is a counting key and not a secret — the issue it came from is public
-— but it keeps plaintext accounts out of a file whose whole purpose is to be
-read.
+Opting out must not become a way around the rate limit. The one-click gateway
+keys on a salted, truncated hash of the client address; the replay and public
+Issue never contain the address. Manual submissions key on a truncated hash of
+the Issue author's account. Neither limit relies on the optional displayed
+handle.
 
 ## The submission path
 
-The page copies the record to the clipboard and opens a prefilled issue; the
-player pastes and submits under their own account. The clipboard carries the
-bare JSON and nothing else — the issue form wraps it in a ```json fence itself,
-and a fence inside a fence is what CI would try to parse.
+The normal player flow is name, optional GitHub handle, then **Submit**. The
+page obtains a single-use Turnstile token and sends the replay to a Cloudflare
+Worker. The Worker holds the repository credential, applies an edge rate limit,
+and opens the labelled Issue that starts verification. The credential is never
+sent to the browser. GitHub login is not required.
+
+The repository Issue form remains as a manual maintainer fallback. It expects
+bare JSON because the form adds the ```json fence itself.
 
 `.github/workflows/leaderboard.yml` verifies it. That workflow runs on input
 from anyone on the internet while holding a token that can write to the repo,
@@ -158,8 +161,8 @@ Specific things the verifier refuses, each with a test in
 - a record already on the board, by a hash of the decoded canonical track and
   ranked settings, since hashing submitted compression would let the same
   public replay be recompressed and claimed under another name
-- more than ten accepted records from one account in a day
-- a GitHub handle that is not the account that opened the issue
+- more than ten accepted records from one submitter in a rolling day
+- a GitHub handle on a manual submission that is not the Issue author's account
 
 The board itself renders every name through `textContent`. A name that looks
 like markup shows as the characters somebody typed.

@@ -3,6 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="killfield-submit-endpoint" content="https://killfield-leaderboard-submit.2665318958.workers.dev/submit">
+<meta name="killfield-turnstile-sitekey" content="0x4AAAAAAEx3XzNil8HxSk6H">
 <meta name="theme-color" content="#f7f7f5">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -142,8 +144,8 @@
     <div class="ranked-submit" id="ranked-submit" hidden>
       <input id="ranked-name" type="text" maxlength="24" autocomplete="off" spellcheck="false" required placeholder="Your name" aria-label="Your name">
       <input id="ranked-github" type="text" maxlength="39" autocomplete="off" spellcheck="false" placeholder="GitHub (optional)" aria-label="GitHub account, optional">
-      <button id="ranked-upload" type="button" class="solid-btn">Upload record</button>
-      <textarea id="ranked-payload" class="ranked-payload" rows="3" readonly spellcheck="false" hidden></textarea>
+      <button id="ranked-upload" type="button" class="solid-btn">Submit</button>
+      <div id="ranked-turnstile" class="ranked-turnstile"></div>
     </div>
   </section>
 
@@ -167,6 +169,7 @@
   </div>
   <footer class="site-footer"><a href="https://github.com/Cichlider/killfield" target="_blank" rel="noreferrer">github.com/Cichlider/killfield</a><span>© 2026 Cichlider. All rights reserved.</span></footer>
 </main>
-<script type="module" src="viewer.js?v=v17b-leaderboard-1"></script>
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" defer></script>
+<script type="module" src="viewer.js?v=v17b-leaderboard-2"></script>
 </body>
 </html>

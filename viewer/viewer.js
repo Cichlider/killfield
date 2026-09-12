@@ -47,7 +47,7 @@ import {
   SessionRecorder,
   readObservation,
 } from "./src/ranked.js";
-import { buildStamps, buildSubmission, openSubmissionIssue } from "./src/submit.js";
+import { buildStamps, buildSubmission, submitToGateway } from "./src/submit.js";
 
 const STEP_MS = 1000 / C.FPS; // 40 ms
 const MAX_CATCHUP_MS = 250;
@@ -58,6 +58,8 @@ const REACTION_DELAY_STORAGE_KEY = "killfield-reaction-delay-frames";
 const RANKED_NAME_STORAGE_KEY = "killfield-ranked-name";
 const RANKED_GITHUB_STORAGE_KEY = "killfield-ranked-github";
 const DEFAULT_OPENING_DELAY_SECONDS = 0.5;
+const SUBMIT_ENDPOINT = document.querySelector('meta[name="killfield-submit-endpoint"]')?.content ?? "";
+const TURNSTILE_SITEKEY = document.querySelector('meta[name="killfield-turnstile-sitekey"]')?.content ?? "";
 
 // Render buffer layout, matching engine/src/wasm.rs's build_render() doc
 // comment: 18 header slots, then 120 paint flags (unused here — killfield has
@@ -152,7 +154,7 @@ const rankedNameInput = document.getElementById("ranked-name");
 const rankedGithubInput = document.getElementById("ranked-github");
 const rankedUploadButton = document.getElementById("ranked-upload");
 const rankedBoardLabel = document.getElementById("ranked-board-label");
-const rankedPayload = document.getElementById("ranked-payload");
+const rankedTurnstile = document.getElementById("ranked-turnstile");
 const rankedScore = document.getElementById("ranked-score");
 const rankedUnit = document.getElementById("ranked-unit");
 const touchControlsRoot = document.getElementById("touch-controls");
@@ -620,6 +622,11 @@ let opponentDriver = null;
  *  match — a reroll, a new opponent, a different delay — closes it. */
 let ranked = null;
 let rankedResult = null;
+let rankedSubmitting = false;
+let rankedSubmitted = false;
+let rankedSubmissionError = null;
+let pendingGatewaySubmission = null;
+let turnstileWidgetId = null;
 /** Hashes of the two binaries a replay is only reproducible against. */
 let binaryStamps = { engine: "", policy: "" };
 
@@ -767,6 +774,10 @@ function beginRankedSession(seed) {
     },
   };
   rankedResult = null;
+  rankedSubmitting = false;
+  rankedSubmitted = false;
+  rankedSubmissionError = null;
+  pendingGatewaySubmission = null;
   matchScore = [0, 0];
   streak.current = 0;
   saveStreak();
@@ -789,13 +800,15 @@ function syncRankedUI() {
   const set = (node, key, value) => { if (node[key] !== value) node[key] = value; };
   set(rankedRow, "hidden", mode !== "play");
   set(rankedStartButton, "textContent", ranked ? s.rankedStop : s.rankedStart);
+  rankedStartButton.disabled = rankedSubmitting;
   rankedStartButton.classList.toggle("active", Boolean(ranked));
-  set(rankedUploadButton, "textContent", s.rankedUpload);
+  set(rankedUploadButton, "textContent", rankedSubmitting ? s.rankedSubmittingButton : s.rankedUpload);
   set(rankedBoardLabel, "textContent", s.rankedBoard);
   set(rankedNameInput, "placeholder", s.rankedNamePlaceholder);
   set(rankedGithubInput, "placeholder", s.rankedGithubPlaceholder);
   // A record goes on the board under a name; there is no anonymous entry.
-  rankedUploadButton.disabled = rankedNameInput.value.trim() === "";
+  rankedUploadButton.disabled = rankedSubmitting || rankedSubmitted
+    || rankedNameInput.value.trim() === "";
   const eligible = rankedResult !== null && rankedResult.best >= MIN_SUBMITTABLE_SHUTOUT;
   const shown = ranked ?? rankedResult;
   set(rankedScore, "textContent", String(shown ? shown.best : 0));
@@ -803,7 +816,13 @@ function syncRankedUI() {
   rankedRow.classList.toggle("live", Boolean(ranked));
   rankedRow.classList.toggle("qualified", eligible);
   let status = s.rankedIdle;
-  if (ranked) {
+  if (rankedSubmissionError) {
+    status = rankedSubmissionError;
+  } else if (rankedSubmitted) {
+    status = s.rankedSubmitted;
+  } else if (rankedSubmitting) {
+    status = s.rankedSubmitting;
+  } else if (ranked) {
     status = s.rankedRecording(ranked.best, ranked.winners.length, MIN_SUBMITTABLE_SHUTOUT);
   } else if (rankedResult) {
     status = eligible
@@ -811,40 +830,73 @@ function syncRankedUI() {
       : s.rankedTooShort(rankedResult.best, MIN_SUBMITTABLE_SHUTOUT);
   }
   set(rankedStatus, "textContent", status);
-  set(rankedSubmit, "hidden", !eligible);
+  set(rankedSubmit, "hidden", !eligible || rankedSubmitted);
 }
 
 /**
- * Hand the finished record over to GitHub. Nothing is uploaded from here: the
- * payload goes to the clipboard and the player opens the issue themselves, so
- * the submission is always an action they took under their own account.
+ * Submit through the credential-isolating Worker. Turnstile executes only
+ * after this one button press; most visitors get a token in the background,
+ * while suspicious traffic may see the managed challenge in this same row.
  */
 async function uploadRankedResult() {
-  if (rankedResult === null) return;
-  rankedUploadButton.disabled = true;
+  if (rankedResult === null || rankedSubmitting || rankedSubmitted) return;
   try {
     try {
       localStorage.setItem(RANKED_NAME_STORAGE_KEY, rankedNameInput.value);
       localStorage.setItem(RANKED_GITHUB_STORAGE_KEY, rankedGithubInput.value);
     } catch { /* They just won't be remembered next time. */ }
-    const submission = await buildSubmission({
+    pendingGatewaySubmission = await buildSubmission({
       result: rankedResult,
       name: rankedNameInput.value,
       github: rankedGithubInput.value,
       stamps: binaryStamps,
     });
-    const { url, body, copied } = await openSubmissionIssue(submission);
-    rankedStatus.textContent = copied ? t().rankedCopied : t().rankedCopyManually;
-    rankedPayload.hidden = copied;
-    if (!copied) {
-      rankedPayload.value = body;
-      rankedPayload.select();
+    if (!SUBMIT_ENDPOINT || !TURNSTILE_SITEKEY) {
+      throw new Error(t().rankedNotConfigured);
     }
-    window.open(url, "_blank", "noopener");
+    if (!globalThis.turnstile) throw new Error(t().rankedChallengeUnavailable);
+    rankedSubmitting = true;
+    rankedSubmissionError = null;
+    syncRankedUI();
+    if (turnstileWidgetId === null) {
+      turnstileWidgetId = globalThis.turnstile.render(rankedTurnstile, {
+        sitekey: TURNSTILE_SITEKEY,
+        action: "leaderboard-submit",
+        appearance: "interaction-only",
+        execution: "execute",
+        callback: async (token) => {
+          try {
+            await submitToGateway(SUBMIT_ENDPOINT, pendingGatewaySubmission, token);
+            rankedSubmitting = false;
+            rankedSubmitted = true;
+            pendingGatewaySubmission = null;
+            globalThis.turnstile.reset(turnstileWidgetId);
+          } catch (error) {
+            rankedSubmitting = false;
+            rankedSubmissionError = error.message ?? String(error);
+            globalThis.turnstile.reset(turnstileWidgetId);
+          }
+          syncRankedUI();
+        },
+        "error-callback": () => {
+          rankedSubmitting = false;
+          rankedSubmissionError = t().rankedChallengeFailed;
+          globalThis.turnstile.reset(turnstileWidgetId);
+          syncRankedUI();
+        },
+        "expired-callback": () => {
+          rankedSubmitting = false;
+          rankedSubmissionError = t().rankedChallengeFailed;
+          globalThis.turnstile.reset(turnstileWidgetId);
+          syncRankedUI();
+        },
+      });
+    }
+    globalThis.turnstile.execute(turnstileWidgetId);
   } catch (error) {
-    rankedStatus.textContent = error.message ?? String(error);
-  } finally {
-    rankedUploadButton.disabled = false;
+    rankedSubmitting = false;
+    rankedSubmissionError = error.message ?? String(error);
+    syncRankedUI();
   }
 }
 
