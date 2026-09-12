@@ -1,13 +1,15 @@
 name: Leaderboard record
 description: Manual fallback for maintainers and troubleshooting
 title: "[score] "
-labels: ["leaderboard"]
+labels: []
 body:
   - type: markdown
     attributes:
       value: |
         The game normally submits a qualifying run with one click. This form is
-        the manual fallback for maintainers and troubleshooting.
+        the manual fallback for maintainers and troubleshooting. A maintainer
+        must add the `leaderboard` label after checking the request before the
+        verifier will run.
 
         The record is the seed and every frame of your input — not a score.
         CI replays it through the same engine build and works the score out for

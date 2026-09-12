@@ -10,7 +10,10 @@ on:
     # One automatic attempt per issue. Allowing `edited` made it possible to
     # rerun a near-60,000-frame replay indefinitely by editing one public
     # issue; a rejected player can open a fresh issue after correcting it.
-    types: [opened]
+    # Gateway Issues arrive already labelled. The manual fallback arrives
+    # unlabelled and only runs after a maintainer deliberately adds the label;
+    # ordinary users therefore cannot bypass the gateway to spend Actions.
+    types: [opened, labeled]
 
 # One at a time: the board is a file in the repo, and two runs appending to it
 # at once would race. This also bounds what a burst of submissions can spend.
@@ -20,7 +23,13 @@ concurrency:
 
 jobs:
   verify:
-    if: contains(github.event.issue.labels.*.name, 'leaderboard')
+    # An API-created gateway Issue can also emit a `labeled` event. Run it on
+    # `opened` only; manual records have no marker and run when a maintainer
+    # adds the label. This prevents duplicate verifier jobs for one Issue.
+    if: >-
+      contains(github.event.issue.labels.*.name, 'leaderboard') &&
+      ((github.event.action == 'opened' && contains(github.event.issue.body, '<!-- killfield-gateway:v1:')) ||
+       (github.event.action == 'labeled' && github.event.label.name == 'leaderboard' && !contains(github.event.issue.body, '<!-- killfield-gateway:v1:')))
     permissions:
       contents: write
       issues: write

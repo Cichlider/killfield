@@ -76,7 +76,26 @@ function cleanSubmission(value) {
   if (!/^[a-f0-9]{16}$/.test(value.engine) || !/^[a-f0-9]{16}$/.test(value.policy)) {
     fail("The record does not identify a supported build.");
   }
-  const record = { ...value, name, github };
+  // Forward only the versioned record schema. Besides keeping Issues small and
+  // predictable, this prevents extra attacker-controlled fields from looking
+  // like gateway metadata to downstream tooling.
+  const record = {
+    v: value.v,
+    name,
+    github,
+    seed: value.seed,
+    opponent: value.opponent,
+    delayFrames: value.delayFrames,
+    openingDelaySeconds: value.openingDelaySeconds,
+    engine: value.engine,
+    policy: value.policy,
+    claim: value.claim,
+    rounds: value.rounds,
+    frames: value.frames,
+    startedAt: value.startedAt,
+    endedAt: value.endedAt,
+    track: value.track,
+  };
   const encoded = JSON.stringify(record);
   if (encoded.length > 80_000) fail("The record is too large.", 413);
   return { value: record, encoded, name };
@@ -107,7 +126,10 @@ async function opaqueClientKey(ip, env) {
 
 async function createIssue(record, encoded, submitter, env) {
   const board = record.opponent === "hybrid" ? "Hybrid" : "Killfield";
-  const title = `[score] ${record.name} — ${record.claim} vs ${board}`;
+  // Do not place the player-controlled name in the title: an @handle there can
+  // generate unwanted mention notifications. The name stays inside JSON code
+  // fencing and is rendered as text on the board.
+  const title = `[score] ${record.claim} vs ${board}`;
   const body = `### Record\n\n\`\`\`json\n${encoded}\n\`\`\`\n\n`
     + `<!-- killfield-gateway:v1:${submitter} -->\n`;
   const response = await fetch(`https://api.github.com/repos/${env.GITHUB_REPOSITORY}/issues`, {

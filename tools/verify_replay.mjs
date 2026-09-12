@@ -49,7 +49,10 @@ const BOARDS = { hybrid: "hybrid", killfield: "killfield" };
 /** Ceiling on entries one account can land in a day, to bound Actions spend. */
 const DAILY_SUBMISSION_LIMIT = 10;
 const MAX_JSON_CHARS = 80_000;
-const GATEWAY_MARKER = /<!-- killfield-gateway:v1:([a-f0-9]{16}) -->/;
+// The Worker appends exactly one marker after the fenced record. Anchoring it
+// to the end prevents a marker-shaped string inside attacker-controlled JSON
+// from being mistaken for the trusted rate-limit identity.
+const GATEWAY_MARKER = /\n<!-- killfield-gateway:v1:([a-f0-9]{16}) -->\s*$/;
 
 const reject = (why) => { throw new RejectedSubmission(why); };
 

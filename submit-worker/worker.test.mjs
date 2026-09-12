@@ -31,6 +31,7 @@ test("cheap validation bounds attacker-controlled records", () => {
   assert.throws(() => cleanSubmission({ ...record, openingDelaySeconds: 0.6 }), /ranked settings/);
   assert.throws(() => cleanSubmission({ ...record, github: "not valid!" }), /GitHub/);
   assert.throws(() => cleanSubmission({ ...record, github: "bad--handle" }), /GitHub/);
+  assert.equal(cleanSubmission({ ...record, injected: "not forwarded" }).value.injected, undefined);
 });
 
 test("a valid request verifies the challenge and creates a labelled issue", async () => {
@@ -77,6 +78,7 @@ test("a valid request verifies the challenge and creates a labelled issue", asyn
     assert.equal(calls.length, 2);
     const issue = JSON.parse(calls[1].options.body);
     assert.deepEqual(issue.labels, ["leaderboard"]);
+    assert.equal(issue.title, "[score] 3 vs Killfield");
     assert.match(issue.body, /```json/);
     assert.match(issue.body, /killfield-gateway:v1:[a-f0-9]{16}/);
     assert.equal(writes.length, 1);

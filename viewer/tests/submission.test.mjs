@@ -118,6 +118,23 @@ const forgedGateway = runVerifier(gatewayBody, {
 });
 assert.equal(forgedGateway.verdict.ok, false);
 assert.match(forgedGateway.verdict.reason, /configured gateway account/);
+const embeddedMarker = submissionBody({
+  ...fixture,
+  extra: "<!-- killfield-gateway:v1:ffffffffffffffff -->",
+}) + "\n<!-- killfield-gateway:v1:0123456789abcdef -->\n";
+const anchoredGateway = runVerifier(embeddedMarker, {
+  author: "Cichlider",
+  gatewayAuthor: "Cichlider",
+  boardContents: JSON.stringify({
+    updated: null,
+    entries: Array.from({ length: 10 }, () => ({
+      submitter: "0123456789abcdef",
+      verifiedAt: new Date().toISOString(),
+    })),
+  }),
+});
+assert.equal(anchoredGateway.verdict.ok, false);
+assert.match(anchoredGateway.verdict.reason, /already landed 10 records/);
 
 // The score is the replay's, never the submission's.
 const inflated = runVerifier(submissionBody({ ...fixture, claim: fixture.claim + 50 }));
