@@ -979,6 +979,10 @@ function tick() {
   frozen = buf[14] > 0.5;
   if (flags & 1) roundFrames = 0; // new_round
   if (flags & 64) applyRoundEnd(buf[15]); // round_end
+  // The verifier refuses longer tracks. Close at the same boundary in the
+  // browser so an unusually long qualifying session is not offered for upload
+  // only to be rejected later.
+  if (ranked && ranked.recorder.frameCount >= LIMITS.maxFrames) closeRankedSession();
 }
 
 let last = performance.now();
@@ -1030,7 +1034,7 @@ function syncImmediateHumanFire() {
 
 function frame(now) {
   const budget = simulationBudget(
-    accumulator, now - last, STEP_MS, MAX_CATCHUP_MS, mode === "play",
+    accumulator, now - last, STEP_MS, MAX_CATCHUP_MS,
   );
   last = now;
   if (paused) {
@@ -1214,7 +1218,13 @@ async function boot() {
   rankedNameInput.addEventListener("input", syncRankedUI);
   rerollButton.addEventListener("click", () => { newGame(); rerollButton.blur(); });
   resetScoreButton.addEventListener("click", () => { resetScore(); resetScoreButton.blur(); });
-  instantTurnButton.addEventListener("click", toggleInstantTurn);
+  instantTurnButton.addEventListener("click", () => {
+    toggleInstantTurn();
+    // Ranked pins this assist off. Rotation snaps are not part of the replay,
+    // so changing it mid-run closes the record instead of creating a result
+    // that the verifier cannot reproduce.
+    closeRankedSession();
+  });
   pauseButton.addEventListener("click", () => { togglePause(); pauseButton.blur(); });
   soundButton.addEventListener("click", () => { toggleSound(); soundButton.blur(); });
   controllerSelects.forEach((select) => select.addEventListener("change", newGame));

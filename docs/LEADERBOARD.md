@@ -2,7 +2,7 @@
 
 Two boards, one number each: the longest run of consecutive rounds a human took
 off the agent before it took one back. One board faces Hybrid, the other faces
-Killfield, the 512-ray planner. A run qualifies at six.
+Killfield, the 512-ray planner. A run qualifies at three.
 
 Nothing on the board is a number somebody typed. A submission carries the seed
 and every frame of input, and CI replays it through the same engine binary the
@@ -100,7 +100,7 @@ wheel's forward region is a client-side mapping that resolves into the same
 strengths before anything crosses the FFI, touch and keyboard are equivalent,
 and pausing produces no frames at all.
 
-The score qualifies at six consecutive rounds, counted as the longest run
+The score qualifies at three consecutive rounds, counted as the longest run
 anywhere in one continuous session rather than from the opening round. Losing
 does not end the attempt; it ends that streak. Anything that changes the match
 closes the recording — a reroll, a different opponent, a change to either delay
@@ -137,9 +137,10 @@ so two rules hold:
    and parsed in Node. `${{ github.event.issue.body }}` inside a `run:` block
    would be remote code execution, and the verdict is written to a file rather
    than returned on stdout so no downstream step has to parse it either.
-2. **Every bound is checked before the expensive work**, cheapest first: issue
-   body size, the fenced block's size, JSON shape, settings, binary hashes,
-   rate limit, duplicate check, and only then the inflate and the replay.
+2. **Every bound is checked before the expensive replay**, cheapest first:
+   issue body size, fenced block size, JSON shape, settings, binary hashes and
+   rate limit; inflate is size-capped as it streams, then the canonical-track
+   duplicate check runs before a single game frame is stepped.
 
 Specific things the verifier refuses, each with a test in
 `viewer/tests/submission.test.mjs`:
@@ -154,8 +155,9 @@ Specific things the verifier refuses, each with a test in
 - a record naming an engine or policy hash this repo does not ship
 - a display name carrying control characters, zero-width joiners or the
   bidirectional overrides that let one string render as another
-- a record already on the board, by track hash, since records are public and
-  the cheapest forgery is submitting someone else's verbatim
+- a record already on the board, by a hash of the decoded canonical track and
+  ranked settings, since hashing submitted compression would let the same
+  public replay be recompressed and claimed under another name
 - more than ten accepted records from one account in a day
 - a GitHub handle that is not the account that opened the issue
 

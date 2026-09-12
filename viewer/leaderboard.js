@@ -195,8 +195,9 @@ try {
   const loaded = await response.json();
   if (Array.isArray(loaded.entries)) board = loaded;
 } catch {
-  // An absent board is the normal state before the first record lands; only a
-  // malformed one is worth reporting, and either way the page still renders.
-  failed = false;
+  // The committed board exists even before the first record. A fetch or parse
+  // failure is therefore different from a valid empty board and must not be
+  // presented as "nobody has submitted yet".
+  failed = true;
 }
 render();

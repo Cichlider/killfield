@@ -7,13 +7,10 @@ name: Verify a leaderboard record
 # record execute commands here. Nothing the submitter controls reaches a shell.
 on:
   issues:
-    types: [opened, edited, labeled]
-
-permissions:
-  contents: write
-  issues: write
-  pages: write
-  id-token: write
+    # One automatic attempt per issue. Allowing `edited` made it possible to
+    # rerun a near-60,000-frame replay indefinitely by editing one public
+    # issue; a rejected player can open a fresh issue after correcting it.
+    types: [opened]
 
 # One at a time: the board is a file in the repo, and two runs appending to it
 # at once would race. This also bounds what a burst of submissions can spend.
@@ -24,12 +21,18 @@ concurrency:
 jobs:
   verify:
     if: contains(github.event.issue.labels.*.name, 'leaderboard')
+    permissions:
+      contents: write
+      issues: write
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
           ref: main
+          # The replay processes public input. Do not leave a write credential
+          # in its checkout; authenticate only after verification succeeded.
+          persist-credentials: false
 
       - uses: actions/setup-node@v4
         with:
@@ -52,7 +55,10 @@ jobs:
 
       - name: Commit the board
         if: steps.replay.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
+          gh auth setup-git
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add viewer/leaderboard.json
@@ -78,6 +84,10 @@ jobs:
   publish:
     needs: verify
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
     concurrency:
       group: pages
       cancel-in-progress: false

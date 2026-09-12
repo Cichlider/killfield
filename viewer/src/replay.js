@@ -138,7 +138,11 @@ export function decodeSession(bytes) {
       kind: view.getUint8(offset + 4),
       value: view.getUint8(offset + 5),
     };
-    if (event.frame > frameCount) reject(`event ${i} lands past the end of the track`);
+    // There is no replay iteration at frameCount, so accepting an event there
+    // would preserve attacker-controlled bytes that can never affect the
+    // match. Apart from being malformed, that gives a copied replay an easy
+    // way to evade its canonical identity hash.
+    if (event.frame >= frameCount) reject(`event ${i} lands past the end of the track`);
     if (event.frame < previousFrame) reject(`event ${i} is out of order`);
     if (event.kind !== EVENT_FIRE) reject(`event ${i} has unknown kind ${event.kind}`);
     if (event.value > 1) reject(`event ${i} has value ${event.value}`);

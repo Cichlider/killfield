@@ -21,21 +21,29 @@
  * Usage:
  *   ISSUE_BODY=... ISSUE_AUTHOR=... ISSUE_NUMBER=... node tools/verify_replay.mjs
  *   node tools/verify_replay.mjs --file submission.md   (local dry run)
+ *   node tools/verify_replay.mjs --file submission.md --board /tmp/board.json (test isolation)
  */
 
 import fs from "node:fs";
 import { createHash } from "node:crypto";
 import {
   LIMITS, MIN_SUBMITTABLE_SHUTOUT, RejectedSubmission,
-  longestShutout, sanitiseHandle, sanitiseName, unpackSession,
+  encodeSession, longestShutout, sanitiseHandle, sanitiseName, unpackSession,
 } from "../viewer/src/replay.js";
 import {
-  RANKED_DELAY_FRAMES, RANKED_OPENING_DELAY_SECONDS, replaySession,
+  FPS, RANKED_DELAY_FRAMES, RANKED_OPENING_DELAY_SECONDS, replaySession,
 } from "../viewer/src/ranked.js";
 import { HybridPolicy } from "../viewer/src/hybrid.js";
 
 const VIEWER = new URL("../viewer/", import.meta.url);
-const BOARD_PATH = new URL("leaderboard.json", VIEWER);
+// Overridable so the test suite never reads or writes the real, committed
+// board — a prior run of these same tests left "Test Runner" sitting in
+// viewer/leaderboard.json and CI itself has no other way to test --write
+// without mutating production data.
+const boardFlagIndex = process.argv.indexOf("--board");
+const BOARD_PATH = boardFlagIndex === -1
+  ? new URL("leaderboard.json", VIEWER)
+  : process.argv[boardFlagIndex + 1];
 const SUBMISSION_VERSION = 1;
 const BOARDS = { hybrid: "hybrid", killfield: "killfield" };
 /** Ceiling on entries one account can land in a day, to bound Actions spend. */
@@ -121,14 +129,31 @@ function loadPolicy() {
 
 // --------------------------------------------------------------------- board
 
+/**
+ * A missing board starts empty — the normal state before the first record
+ * lands. Anything else wrong with it (corrupt JSON, the wrong shape, a read
+ * error that isn't "not found") aborts instead: silently treating a damaged
+ * board as empty would mean the very next accepted record commits a file that
+ * has quietly dropped every entry before it.
+ */
 function loadBoard() {
+  let text;
   try {
-    const board = JSON.parse(fs.readFileSync(BOARD_PATH, "utf8"));
-    if (Array.isArray(board.entries)) return board;
-  } catch {
-    // A missing or unreadable board starts empty rather than failing the run.
+    text = fs.readFileSync(BOARD_PATH, "utf8");
+  } catch (error) {
+    if (error.code === "ENOENT") return { updated: null, entries: [] };
+    reject("the leaderboard file cannot be read; refusing to replace it");
   }
-  return { updated: null, entries: [] };
+  let board;
+  try {
+    board = JSON.parse(text);
+  } catch {
+    reject("the leaderboard file is corrupt; refusing to replace it");
+  }
+  if (!Array.isArray(board.entries)) {
+    reject("the leaderboard file has no entries array; refusing to replace it");
+  }
+  return board;
 }
 
 function checkNotADuplicate(board, trackHash) {
@@ -196,12 +221,27 @@ async function verify({ body, author, issue }) {
   const board = loadBoard();
   const submitter = submitterKey(author);
   checkRateLimit(board, submitter);
-  const trackHash = createHash("sha256").update(submission.track).digest("hex").slice(0, 32);
-  checkNotADuplicate(board, trackHash);
 
   // Bounded and shape-checked before a single frame is stepped.
   const session = await unpackSession(submission.track);
   if (session.frames.length === 0) reject("the track has no frames");
+
+  // Fingerprinted from the DECODED, re-encoded session plus the settings it
+  // was played under — never from the submitted base64 itself. Compression
+  // has slack (padding and block-size choices) that lets many different
+  // base64 strings decode to the identical replay;
+  // hashing the raw string would let each of those bypass the duplicate check
+  // under a different name.
+  const canonical = encodeSession(session);
+  const identity = Buffer.concat([
+    Buffer.from(JSON.stringify([
+      config.seed, config.opponent, config.delayFrames,
+      Math.round(config.openingDelaySeconds * FPS),
+    ])),
+    Buffer.from(canonical.buffer, canonical.byteOffset, canonical.byteLength),
+  ]);
+  const trackHash = createHash("sha256").update(identity).digest("hex").slice(0, 32);
+  checkNotADuplicate(board, trackHash);
 
   const { instance } = await WebAssembly.instantiate(engine.bytes, {});
   const { winners, suspect } = replaySession({
