@@ -1,5 +1,5 @@
 {
-  "updated": "2026-09-13T07:35:58.757Z",
+  "updated": "2026-09-13T12:03:54.957Z",
   "entries": [
     {
       "name": "rekursion",
@@ -42,6 +42,20 @@
       "issue": 3,
       "trackHash": "af2d334c1322fa3f628752e40b77c427",
       "verifiedAt": "2026-09-13T07:35:58.756Z"
+    },
+    {
+      "name": "King of Thunder",
+      "github": null,
+      "submitter": "d2d8d345117550c1",
+      "board": "laika",
+      "score": 2,
+      "rounds": 3,
+      "firstRound": 0,
+      "seed": 2763835470,
+      "frames": 840,
+      "issue": 4,
+      "trackHash": "e62cf5e9fafb4447090162c82e975712",
+      "verifiedAt": "2026-09-13T12:03:54.957Z"
     }
   ]
 }
