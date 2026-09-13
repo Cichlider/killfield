@@ -25,7 +25,7 @@
  */
 
 import * as C from "./src/constants.js";
-import { STRINGS, loadLang, saveLang } from "./src/i18n.js?v=controls-help";
+import { STRINGS, loadLang, saveLang } from "./src/i18n.js?v=network-submit";
 import { Keyboard, TouchControls } from "./src/input.js?v=wheel-360";
 import { SoundEffects } from "./src/audio.js";
 import { Rng } from "./src/rng.js";
@@ -48,7 +48,7 @@ import {
   policyActionToInput,
   readObservation,
 } from "./src/ranked.js?v=policy-pilot";
-import { buildStamps, buildSubmission, submitToGateway } from "./src/submit.js";
+import { buildStamps, buildSubmission, submitToGateway } from "./src/submit.js?v=network-submit";
 
 const STEP_MS = 1000 / C.FPS; // 40 ms
 const MAX_CATCHUP_MS = 250;
