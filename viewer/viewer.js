@@ -63,7 +63,16 @@ const SUBMIT_ENDPOINT = document.querySelector('meta[name="killfield-submit-endp
 const TURNSTILE_SITEKEY = document.querySelector('meta[name="killfield-turnstile-sitekey"]')?.content ?? "";
 // Owner/testing aid: the public policy can drive the human input path without
 // bypassing recording or verification. It is opt-in and has no visible toggle.
-const POLICY_PILOT = new URLSearchParams(location.search).get("pilot") === "policy";
+const QUERY = new URLSearchParams(location.search);
+const POLICY_PILOT = QUERY.get("pilot") === "policy";
+const requestedPilotTarget = Number(QUERY.get("target"));
+const POLICY_PILOT_TARGET = Number.isInteger(requestedPilotTarget)
+  ? Math.min(20, Math.max(MIN_SUBMITTABLE_SHUTOUT, requestedPilotTarget))
+  : MIN_SUBMITTABLE_SHUTOUT;
+const requestedPilotSeed = Number(QUERY.get("seed"));
+const POLICY_PILOT_SEED = Number.isInteger(requestedPilotSeed)
+  && requestedPilotSeed >= 0 && requestedPilotSeed <= 0xffffffff
+  ? requestedPilotSeed >>> 0 : null;
 const POLICY_PILOT_STEPS_PER_FRAME = 64;
 
 // Render buffer layout, matching engine/src/wasm.rs's build_render() doc
@@ -683,7 +692,7 @@ function applyRoundEnd(winner) {
     ranked.winners.push(winner);
     ranked.best = longestShutout(ranked.winners).best;
     if (ranked.winners.length >= LIMITS.maxRounds
-        || (POLICY_PILOT && ranked.best >= MIN_SUBMITTABLE_SHUTOUT)) {
+        || (POLICY_PILOT && ranked.best >= POLICY_PILOT_TARGET)) {
       closeRankedSession();
     }
   }
@@ -711,7 +720,8 @@ function syncPlayOpponentControls() {
  *  running — a reroll, a different opponent and a mode switch all land here. */
 function newGame({ ranked: startRanked = false } = {}) {
   closeRankedSession();
-  const seed = (Math.random() * 0xffffffff) >>> 0;
+  const seed = POLICY_PILOT && POLICY_PILOT_SEED !== null
+    ? POLICY_PILOT_SEED : (Math.random() * 0xffffffff) >>> 0;
   if (handle !== null) wasm.kf_free(handle);
 
   syncPlayOpponentControls();
