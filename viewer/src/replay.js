@@ -33,7 +33,7 @@ export const NO_ACTION = 255;
  * submission, and the verifier enforces it again because the page's copy of
  * the rule is advisory — a submission is just text, and anyone can write it.
  */
-export const MIN_SUBMITTABLE_SHUTOUT = 3;
+export const MIN_SUBMITTABLE_SHUTOUT = 2;
 
 export const LIMITS = {
   /** ~200 rounds at the ~165 frames/round this engine averages, with headroom. */

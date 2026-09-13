@@ -33,7 +33,7 @@ import { interpolatePredictedPose, simulationBudget } from "./src/low-latency.js
 import { HybridPolicy } from "./src/hybrid.js?v=4be8a6e2";
 import {
   HUMAN_SEAT, LIMITS, MIN_SUBMITTABLE_SHUTOUT, longestShutout,
-} from "./src/replay.js";
+} from "./src/replay.js?v=two-win-floor";
 // engine/src/duel_obs.rs: the Hybrid observation is schema 24, 1028 semantic
 // floats then 10 bullet-mask floats. These live in src/ranked.js because the
 // leaderboard verifier reads the same layout out of the same wasm memory.

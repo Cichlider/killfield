@@ -2,7 +2,7 @@
 
 Two boards, one number each: the longest run of consecutive rounds a human took
 off the agent before it took one back. One board faces Hybrid, the other faces
-Killfield, the 512-ray planner. A run qualifies at three.
+Killfield, the 512-ray planner. A run qualifies at two.
 
 Nothing on the board is a number somebody typed. A submission carries the seed
 and every frame of input, and CI replays it through the same engine binary the
@@ -100,7 +100,7 @@ wheel's forward region is a client-side mapping that resolves into the same
 strengths before anything crosses the FFI, touch and keyboard are equivalent,
 and pausing produces no frames at all.
 
-The score qualifies at three consecutive rounds, counted as the longest run
+The score qualifies at two consecutive rounds, counted as the longest run
 anywhere in one continuous session rather than from the opening round. Losing
 does not end the attempt; it ends that streak. Anything that changes the match
 closes the recording — a reroll, a different opponent, a change to either delay
@@ -195,7 +195,7 @@ refuses it otherwise.
 
 Finding one takes minutes, which is itself worth knowing: the "human" in that
 search is the policy driving itself through the keyboard path, and it is
-distinctly weaker there than in the discrete path it was trained on, managing
-at best a four-round streak across 146 rounds. Continuous input deliberately
+distinctly weaker there than in the discrete path it was trained on. The
+current fixture reaches three across 31 rounds. Continuous input deliberately
 skips the ten-degree turn lattice (`engine/src/game.rs`, `continuous_turn`),
 and that snap is worth more to aim than it looks.

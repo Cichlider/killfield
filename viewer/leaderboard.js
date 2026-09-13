@@ -8,7 +8,7 @@
  */
 
 import { loadLang, saveLang } from "./src/i18n.js";
-import { MIN_SUBMITTABLE_SHUTOUT } from "./src/replay.js";
+import { MIN_SUBMITTABLE_SHUTOUT } from "./src/replay.js?v=two-win-floor";
 import { RANKED_OPENING_DELAY_SECONDS } from "./src/ranked.js";
 
 /**
