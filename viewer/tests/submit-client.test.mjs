@@ -1,10 +1,32 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { submissionTitle, submitToGateway } from "../src/submit.js";
+import { openSubmissionIssue, submissionTitle, submitToGateway } from "../src/submit.js";
 
 test("Laika submissions name the correct board", () => {
   assert.equal(submissionTitle({ opponent: "laika", name: "player", claim: 2 }),
-    "[score] player — 2 vs Laika");
+    "[score] 2 vs Laika");
+});
+
+test("manual fallback opens the form without bypassing maintainer approval", async () => {
+  const submission = { opponent: "laika", name: "player", claim: 2 };
+  const clipboardDescriptor = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+  let copied = null;
+  Object.defineProperty(navigator, "clipboard", {
+    configurable: true,
+    value: { writeText: async (text) => { copied = text; } },
+  });
+  try {
+    const fallback = await openSubmissionIssue(submission);
+    const url = new URL(fallback.url);
+    assert.equal(fallback.copied, true);
+    assert.equal(copied, JSON.stringify(submission));
+    assert.equal(url.searchParams.get("template"), "leaderboard.yml");
+    assert.equal(url.searchParams.get("labels"), null);
+    assert.equal(url.searchParams.get("title"), "[score] 2 vs Laika");
+  } finally {
+    if (clipboardDescriptor) Object.defineProperty(navigator, "clipboard", clipboardDescriptor);
+    else delete navigator.clipboard;
+  }
 });
 
 test("one-click submission posts the record and challenge token", async () => {

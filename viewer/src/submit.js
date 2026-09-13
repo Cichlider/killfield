@@ -81,7 +81,9 @@ export function submissionBody(submission) {
 export function submissionTitle(submission) {
   const label = { hybrid: "Hybrid", laika: "Laika", killfield: "Killfield" }[submission.opponent]
     ?? submission.opponent;
-  return `[score] ${submission.name} — ${submission.claim} vs ${label}`;
+  // Keep player-controlled text out of the title: a name containing @handle
+  // must not generate a mention when the player submits the fallback Issue.
+  return `[score] ${submission.claim} vs ${label}`;
 }
 
 /** Submit without exposing a repository credential to the static page. */
@@ -128,7 +130,6 @@ export async function openSubmissionIssue(submission) {
   }
   const url = new URL(`https://github.com/${REPO}/issues/new`);
   url.searchParams.set("template", "leaderboard.yml");
-  url.searchParams.set("labels", "leaderboard");
   url.searchParams.set("title", submissionTitle(submission));
   return { url: url.href, body, copied };
 }

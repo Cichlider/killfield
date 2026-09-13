@@ -130,11 +130,12 @@ Worker. The Worker holds the repository credential, applies an edge rate limit,
 and opens the labelled Issue that starts verification. The credential is never
 sent to the browser. GitHub login is not required.
 
-The repository Issue form remains as a manual maintainer fallback. It expects
-bare JSON because the form adds the ```json fence itself. It does not apply the
-`leaderboard` label: a maintainer must add that label to start verification, so
-public users cannot bypass the gateway's Turnstile and edge limit to spend
-Actions minutes.
+When the gateway is unreachable, the page exposes **Submit with GitHub**. It
+copies the bare record JSON and opens the repository Issue form; the player
+pastes it into Record and submits. The form adds the ```json fence itself. It
+does not apply the `leaderboard` label: a maintainer must add that label to
+start verification, so public users cannot bypass the gateway's Turnstile and
+edge limit to spend Actions minutes.
 
 `.github/workflows/leaderboard.yml` verifies it. That workflow runs on input
 from anyone on the internet while holding a token that can write to the repo,
