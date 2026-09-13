@@ -483,7 +483,11 @@ header { gap: 4px; }
   line-height: 1.6;
 }
 
-.board-page .mode-switch { margin: 0 auto 16px; }
+.board-page .mode-switch {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  width: min(450px, 100%);
+  margin: 0 auto 16px;
+}
 
 .board-panel {
   padding: 6px 8px;
