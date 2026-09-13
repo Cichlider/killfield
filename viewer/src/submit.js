@@ -79,7 +79,8 @@ export function submissionBody(submission) {
 }
 
 export function submissionTitle(submission) {
-  const label = submission.opponent === "hybrid" ? "Hybrid" : "Killfield";
+  const label = { hybrid: "Hybrid", laika: "Laika", killfield: "Killfield" }[submission.opponent]
+    ?? submission.opponent;
   return `[score] ${submission.name} — ${submission.claim} vs ${label}`;
 }
 

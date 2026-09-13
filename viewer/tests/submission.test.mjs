@@ -175,7 +175,7 @@ assert.match(corruptBoard.verdict.reason, /leaderboard file is corrupt/);
 rejected("no record here at all", /no ```json record block/);
 rejected("```json\n{not json}\n```", /not valid JSON/);
 rejected(submissionBody({ ...fixture, v: 99 }), /unsupported record version/);
-rejected(submissionBody({ ...fixture, opponent: "laika" }), /is not a board/);
+rejected(submissionBody({ ...fixture, opponent: "unknown" }), /is not a board/);
 rejected(submissionBody({ ...fixture, opponent: { toString: 1 } }), /is not a board/);
 rejected(submissionBody({ ...fixture, seed: -1 }), /seed is not a u32/);
 rejected(submissionBody({ ...fixture, seed: 1.5 }), /seed is not a u32/);

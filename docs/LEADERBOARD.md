@@ -1,8 +1,8 @@
 # The leaderboard
 
-Two boards, one number each: the longest run of consecutive rounds a human took
-off the agent before it took one back. One board faces Hybrid, the other faces
-Killfield, the 512-ray planner. A run qualifies at two.
+Three boards, one number each: the longest run of consecutive rounds a human took
+off the agent before it took one back. Hybrid, Laika and Killfield (the 512-ray
+planner) are ranked separately. A run qualifies at two.
 
 Nothing on the board is a number somebody typed. A submission carries the seed
 and every frame of input, and CI replays it through the same engine binary the
@@ -19,8 +19,8 @@ mulberry32 chain seeded by a `u32`, physics is `f64` throughout, and one
 seed plus identical inputs gives an identical game, bit for bit.
 
 Measured, not assumed: two fresh wasm instances fed the same scripted session
-produce byte-identical render buffers on every frame, for both opponents and at
-every delay. `viewer/tests/ranked.test.mjs` is that check.
+produce byte-identical round results for all three opponents under their ranked
+settings. `viewer/tests/ranked.test.mjs` is that check.
 
 ## What a record contains
 
@@ -40,9 +40,10 @@ at a quarter of what a GitHub issue body holds.
 
 ## How a forged record is caught
 
-Killfield needs no defence. The planner runs inside `kf_step`, so a submission
-has no way to express what it did — an engine-driven opponent that carries any
-action at all is rejected outright.
+Laika and Killfield need no action audit. Both run inside `kf_step`, so a
+submission has no way to express what they did — an engine-driven opponent
+that carries any action at all is rejected outright. Laika's seat bit is also
+reconstructed from the submitted opponent name before replay begins.
 
 Hybrid is driven from JavaScript, so its action is recorded, and a forger could
 write "stood still" on every frame. The audit in `replaySession` re-derives the

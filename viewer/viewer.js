@@ -790,7 +790,10 @@ function beginRankedSession(seed) {
       seed,
       opponent: playOpponentSelect.value,
       delayFrames: reactionDelayFrames,
-      openingDelaySeconds,
+      // Laika is driven unconditionally inside kf_step and has no opening
+      // pause control; record the effective setting rather than the hidden
+      // slider's stale value.
+      openingDelaySeconds: playOpponentSelect.value === "laika" ? 0 : openingDelaySeconds,
     },
   };
   rankedResult = null;
@@ -931,7 +934,6 @@ async function uploadRankedResult() {
  *  easier is reset here rather than merely rejected later. */
 function startRankedSession() {
   if (mode !== "play") setMode("play");
-  if (playOpponentSelect.value === "laika") playOpponentSelect.value = "hybrid";
   reactionDelayFrames = RANKED_DELAY_FRAMES;
   reactionDelaySelect.value = String(RANKED_DELAY_FRAMES);
   openingDelaySeconds = Math.min(openingDelaySeconds, RANKED_OPENING_DELAY_SECONDS);

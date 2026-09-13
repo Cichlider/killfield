@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { submitToGateway } from "../src/submit.js";
+import { submissionTitle, submitToGateway } from "../src/submit.js";
+
+test("Laika submissions name the correct board", () => {
+  assert.equal(submissionTitle({ opponent: "laika", name: "player", claim: 2 }),
+    "[score] player — 2 vs Laika");
+});
 
 test("one-click submission posts the record and challenge token", async () => {
   const originalFetch = globalThis.fetch;

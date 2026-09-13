@@ -31,7 +31,7 @@ const RULES = {
       + "shorter. A shorter pause only makes the run harder, so it is allowed."],
     ["No turn-rate assist", "Instant turn is switched off when a ranked run starts and "
       + "has to stay off."],
-    ["Two boards", "Hybrid and Killfield are ranked separately. Laika is not ranked."],
+    ["Three boards", "Hybrid, Laika and Killfield are ranked separately."],
     ["Anything else is yours", "The wheel's forward region, touch or keyboard, pausing "
       + "to think — none of it changes the match, so none of it is restricted."],
     ["A name, and optionally an account", "Every record goes up under a name. Showing "
@@ -47,7 +47,7 @@ const RULES = {
     ["开局停顿不超过 0.5 秒", `默认的 ${RANKED_OPENING_DELAY_SECONDS} 秒或更短。`
       + "更短只会更难，所以允许。"],
     ["关闭瞬间转向", "开始排位时会自动关掉，并且必须保持关闭。"],
-    ["两个榜分开排", "Hybrid 和 Killfield 各排各的。Laika 不计入排名。"],
+    ["三个榜分开排", "Hybrid、Laika 和 Killfield 各排各的。"],
     ["其余随意", "轮盘的前向区域、用触屏还是键盘、中途暂停思考——都不改变对局本身，所以都不限制。"],
     ["名字必填，账号可选", "每条记录都要有名字。是否显示 GitHub 账号由你决定，"
       + "一键提交里的账号只是自报的主页链接，不代表平台核验过账号归属。"],

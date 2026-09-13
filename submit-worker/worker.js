@@ -53,7 +53,7 @@ function cleanSubmission(value) {
   if (value.github != null && String(value.github).trim() !== "" && github === null) {
     fail("The optional GitHub handle is not valid.");
   }
-  if (value.v !== 1 || !["hybrid", "killfield"].includes(value.opponent)) {
+  if (value.v !== 1 || !["hybrid", "laika", "killfield"].includes(value.opponent)) {
     fail("The record version or opponent is not supported.");
   }
   if (!Number.isInteger(value.seed) || value.seed < 0 || value.seed > 0xffffffff) {
@@ -125,7 +125,7 @@ async function opaqueClientKey(ip, env) {
 }
 
 async function createIssue(record, encoded, submitter, env) {
-  const board = record.opponent === "hybrid" ? "Hybrid" : "Killfield";
+  const board = { hybrid: "Hybrid", laika: "Laika", killfield: "Killfield" }[record.opponent];
   // Do not place the player-controlled name in the title: an @handle there can
   // generate unwanted mention notifications. The name stays inside JSON code
   // fencing and is rendered as text on the board.

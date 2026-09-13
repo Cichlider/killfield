@@ -45,7 +45,7 @@ const BOARD_PATH = boardFlagIndex === -1
   ? new URL("leaderboard.json", VIEWER)
   : process.argv[boardFlagIndex + 1];
 const SUBMISSION_VERSION = 1;
-const BOARDS = { hybrid: "hybrid", killfield: "killfield" };
+const BOARDS = { hybrid: "hybrid", laika: "laika", killfield: "killfield" };
 /** Ceiling on entries one account can land in a day, to bound Actions spend. */
 const DAILY_SUBMISSION_LIMIT = 10;
 const MAX_JSON_CHARS = 80_000;
@@ -343,7 +343,7 @@ fs.writeFileSync("verdict.json", `${JSON.stringify(verdict, null, 2)}\n`);
 const fenced = (text) => `\`\`\`\n${text.replaceAll("`", "'")}\n\`\`\`\n`;
 fs.writeFileSync("comment.md", verdict.ok
   ? `**Verified.** A ${verdict.entry.score}-round shutout against `
-    + `${verdict.entry.board === "hybrid" ? "Hybrid" : "Killfield"}, replayed over `
+    + `${{ hybrid: "Hybrid", laika: "Laika", killfield: "Killfield" }[verdict.entry.board]}, replayed over `
     + `${verdict.entry.rounds} rounds and ${verdict.entry.frames} frames.\n\n`
     + "It is on the board now. The score above is the replay's, not the one "
     + "the record claimed.\n"

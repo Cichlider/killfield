@@ -31,6 +31,8 @@ test("cheap validation bounds attacker-controlled records", () => {
   assert.throws(() => cleanSubmission({ ...record, openingDelaySeconds: 0.6 }), /ranked settings/);
   assert.throws(() => cleanSubmission({ ...record, github: "not valid!" }), /GitHub/);
   assert.throws(() => cleanSubmission({ ...record, github: "bad--handle" }), /GitHub/);
+  assert.equal(cleanSubmission({ ...record, opponent: "laika" }).value.opponent, "laika");
+  assert.throws(() => cleanSubmission({ ...record, opponent: "unknown" }), /not supported/);
   assert.equal(cleanSubmission({ ...record, injected: "not forwarded" }).value.injected, undefined);
 });
 
@@ -68,7 +70,9 @@ test("a valid request verifies the challenge and creates a labelled issue", asyn
         "cf-connecting-ip": "203.0.113.5",
         "content-type": "application/json",
       },
-      body: JSON.stringify({ submission: record, turnstileToken: "challenge" }),
+      body: JSON.stringify({
+        submission: { ...record, opponent: "laika" }, turnstileToken: "challenge",
+      }),
     });
     const response = await worker.fetch(request, env);
     assert.equal(response.status, 202);
@@ -78,7 +82,7 @@ test("a valid request verifies the challenge and creates a labelled issue", asyn
     assert.equal(calls.length, 2);
     const issue = JSON.parse(calls[1].options.body);
     assert.deepEqual(issue.labels, ["leaderboard"]);
-    assert.equal(issue.title, "[score] 3 vs Killfield");
+    assert.equal(issue.title, "[score] 3 vs Laika");
     assert.match(issue.body, /```json/);
     assert.match(issue.body, /killfield-gateway:v1:[a-f0-9]{16}/);
     assert.equal(writes.length, 1);

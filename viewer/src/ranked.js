@@ -218,7 +218,11 @@ export function replaySession({ wasm, policy, config, session }) {
     openingDelayFrames: Math.round(config.openingDelaySeconds * FPS),
     policy,
   });
-  const handle = wasm.kf_new(config.seed, 0);
+  // Match the browser's engine setup. Laika is selected by the engine's seat
+  // mask; without this bit a purported Laika replay would actually run seat 0
+  // as an inert tank.
+  const laikaMask = config.opponent === "laika" ? (1 << OPPONENT_SEAT) : 0;
+  const handle = wasm.kf_new(config.seed, laikaMask);
   driver.attach(wasm, handle);
 
   const winners = [];

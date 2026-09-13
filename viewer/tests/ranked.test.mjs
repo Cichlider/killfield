@@ -54,7 +54,7 @@ async function playSession({ seed, opponent, delayFrames, frames: frameCount }) 
     policy,
   });
   const recorder = new SessionRecorder();
-  const handle = wasm.kf_new(seed, 0);
+  const handle = wasm.kf_new(seed, opponent === "laika" ? 1 : 0);
   driver.attach(wasm, handle);
 
   const rng = mulberry32(seed ^ 0x9e3779b9);
@@ -166,6 +166,16 @@ assert.ok(kf.session.frames.every((f) => f.action === NO_ACTION),
 const kfReplay = await verify(killfieldConfig, kf.session);
 assert.deepEqual(kfReplay.winners, kf.winners);
 assert.deepEqual(kfReplay.suspect, []);
+
+const laikaConfig = {
+  seed: 0x1a1ca, opponent: "laika", delayFrames: 0, openingDelaySeconds: 0,
+};
+const laika = await playSession({ ...laikaConfig, frames: 1200 });
+assert.ok(laika.session.frames.every((f) => f.action === NO_ACTION),
+  "Laika is driven inside kf_step and has no action to record");
+const laikaReplay = await verify(laikaConfig, laika.session);
+assert.deepEqual(laikaReplay.winners, laika.winners);
+assert.deepEqual(laikaReplay.suspect, []);
 
 // Smuggling opponent actions into an engine-driven match is rejected outright
 // rather than merely flagged.
