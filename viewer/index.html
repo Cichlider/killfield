@@ -142,8 +142,14 @@
       <button id="ranked-start" type="button" class="toggle ranked-toggle">Ranked run</button>
     </div>
     <div class="ranked-submit" id="ranked-submit" hidden>
-      <input id="ranked-name" type="text" maxlength="24" autocomplete="off" spellcheck="false" required placeholder="Your name" aria-label="Your name">
-      <input id="ranked-github" type="text" maxlength="39" autocomplete="off" spellcheck="false" placeholder="GitHub (optional)" aria-label="GitHub account, optional">
+      <label class="ranked-field">
+        <span id="ranked-name-label">Your name</span>
+        <input id="ranked-name" type="text" maxlength="24" autocomplete="off" spellcheck="false" required placeholder="Your name" aria-labelledby="ranked-name-label">
+      </label>
+      <label class="ranked-field">
+        <span id="ranked-github-label">GitHub (optional)</span>
+        <input id="ranked-github" type="text" maxlength="39" autocomplete="off" spellcheck="false" placeholder="GitHub (optional)" aria-labelledby="ranked-github-label">
+      </label>
       <button id="ranked-upload" type="button" class="solid-btn">Submit</button>
       <div id="ranked-turnstile" class="ranked-turnstile"></div>
     </div>

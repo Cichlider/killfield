@@ -54,8 +54,11 @@ export const STRINGS = {
     rankedNotConfigured: "Score submission is not configured yet.",
     rankedChallengeUnavailable: "Human verification is still loading. Try Submit again.",
     rankedChallengeFailed: "Human verification failed. Try Submit again.",
+    rankedNetworkFailed: "Cannot reach the submission service. Your replay is still here—switch networks and press Submit again; do not refresh this page.",
     rankedBoard: "Leaderboard",
     rankedUnit: "best shutout",
+    rankedNameLabel: "Player name",
+    rankedGithubLabel: "GitHub account (optional)",
     rankedNamePlaceholder: "Your name",
     rankedGithubPlaceholder: "GitHub (optional)",
     controlsHelp: {
@@ -132,8 +135,11 @@ export const STRINGS = {
     rankedNotConfigured: "成绩提交服务尚未配置。",
     rankedChallengeUnavailable: "人机验证仍在加载，请再次点击提交。",
     rankedChallengeFailed: "人机验证失败，请再次点击提交。",
+    rankedNetworkFailed: "无法连接提交服务。录像还在本页，请切换网络后再次点“提交”，不要刷新页面。",
     rankedBoard: "排行榜",
     rankedUnit: "最大零封",
+    rankedNameLabel: "玩家名字",
+    rankedGithubLabel: "GitHub 账号（可选）",
     rankedNamePlaceholder: "你的名字",
     rankedGithubPlaceholder: "GitHub 账号（可选）",
     controlsHelp: {

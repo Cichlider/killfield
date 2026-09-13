@@ -417,15 +417,25 @@ header { gap: 4px; }
 .ranked-submit {
   display: flex;
   flex-wrap: wrap;
+  align-items: end;
   gap: 8px;
   margin-top: 12px;
   padding-top: 12px;
   border-top: 1px solid var(--line);
 }
 
-.ranked-submit input {
+.ranked-field {
   flex: 1;
   min-width: 0;
+  display: grid;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 10.5px;
+}
+
+.ranked-field input {
+  width: 100%;
+  box-sizing: border-box;
   padding: 7px 11px;
   color: var(--ink);
   border: 1px solid var(--line);
@@ -434,7 +444,7 @@ header { gap: 4px; }
   font-size: 12px;
 }
 
-.ranked-submit input:focus { border-color: var(--accent); outline: none; }
+.ranked-field input:focus { border-color: var(--accent); outline: none; }
 
 .solid-btn {
   flex: none;

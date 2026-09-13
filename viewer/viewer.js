@@ -164,7 +164,9 @@ const rankedRow = document.getElementById("ranked-row");
 const rankedStartButton = document.getElementById("ranked-start");
 const rankedStatus = document.getElementById("ranked-status");
 const rankedSubmit = document.getElementById("ranked-submit");
+const rankedNameLabel = document.getElementById("ranked-name-label");
 const rankedNameInput = document.getElementById("ranked-name");
+const rankedGithubLabel = document.getElementById("ranked-github-label");
 const rankedGithubInput = document.getElementById("ranked-github");
 const rankedUploadButton = document.getElementById("ranked-upload");
 const rankedBoardLabel = document.getElementById("ranked-board-label");
@@ -822,6 +824,8 @@ function syncRankedUI() {
   rankedStartButton.classList.toggle("active", Boolean(ranked));
   set(rankedUploadButton, "textContent", rankedSubmitting ? s.rankedSubmittingButton : s.rankedUpload);
   set(rankedBoardLabel, "textContent", s.rankedBoard);
+  set(rankedNameLabel, "textContent", s.rankedNameLabel);
+  set(rankedGithubLabel, "textContent", s.rankedGithubLabel);
   set(rankedNameInput, "placeholder", s.rankedNamePlaceholder);
   set(rankedGithubInput, "placeholder", s.rankedGithubPlaceholder);
   // A record goes on the board under a name; there is no anonymous entry.
@@ -891,7 +895,9 @@ async function uploadRankedResult() {
             globalThis.turnstile.reset(turnstileWidgetId);
           } catch (error) {
             rankedSubmitting = false;
-            rankedSubmissionError = error.message ?? String(error);
+            rankedSubmissionError = error.code === "SUBMISSION_NETWORK_ERROR"
+              ? t().rankedNetworkFailed
+              : error.message ?? String(error);
             globalThis.turnstile.reset(turnstileWidgetId);
           }
           syncRankedUI();
@@ -913,7 +919,9 @@ async function uploadRankedResult() {
     globalThis.turnstile.execute(turnstileWidgetId);
   } catch (error) {
     rankedSubmitting = false;
-    rankedSubmissionError = error.message ?? String(error);
+    rankedSubmissionError = error.code === "SUBMISSION_NETWORK_ERROR"
+      ? t().rankedNetworkFailed
+      : error.message ?? String(error);
     syncRankedUI();
   }
 }

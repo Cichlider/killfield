@@ -86,11 +86,22 @@ export function submissionTitle(submission) {
 /** Submit without exposing a repository credential to the static page. */
 export async function submitToGateway(endpoint, submission, turnstileToken) {
   if (!endpoint) throw new Error("Score submission is not configured yet.");
-  const response = await fetch(endpoint, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ submission, turnstileToken }),
-  });
+  let response;
+  try {
+    response = await fetch(endpoint, {
+      method: "POST",
+      // text/plain is CORS-safelisted, so browsers can send the record in one
+      // request instead of relying on an OPTIONS preflight that some networks
+      // and privacy filters block. The Worker still parses the JSON body and
+      // enforces the exact Origin plus Turnstile verification.
+      headers: { "content-type": "text/plain;charset=UTF-8" },
+      body: JSON.stringify({ submission, turnstileToken }),
+    });
+  } catch (cause) {
+    const error = new Error("Could not reach the score submission service.", { cause });
+    error.code = "SUBMISSION_NETWORK_ERROR";
+    throw error;
+  }
   let result;
   try { result = await response.json(); } catch { result = null; }
   if (!response.ok || result?.ok !== true) {
