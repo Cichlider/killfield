@@ -32,10 +32,10 @@
 import * as C from "./constants.js";
 
 const BINDINGS = {
-  forward: ["e", "w", "arrowup"],
-  backup: ["d", "s", "arrowdown"],
+  forward: ["w", "arrowup"],
+  backup: ["s", "arrowdown"],
   turnLeft: ["a", "arrowleft"],
-  turnRight: ["f", "arrowright"],
+  turnRight: ["d", "arrowright"],
   fire: ["q", " ", "m"],
 };
 

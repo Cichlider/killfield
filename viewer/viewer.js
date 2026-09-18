@@ -26,7 +26,7 @@
 
 import * as C from "./src/constants.js";
 import { STRINGS, loadLang, saveLang } from "./src/i18n.js?v=github-fallback";
-import { Keyboard, TouchControls } from "./src/input.js?v=wheel-360";
+import { Keyboard, TouchControls } from "./src/input.js?v=wasd-1";
 import { SoundEffects } from "./src/audio.js";
 import { Rng } from "./src/rng.js";
 import { interpolatePredictedPose, simulationBudget } from "./src/low-latency.js";
