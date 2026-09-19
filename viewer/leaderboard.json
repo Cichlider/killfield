@@ -1,5 +1,5 @@
 {
-  "updated": "2026-09-19T11:55:56.662Z",
+  "updated": "2026-09-19T12:06:41.105Z",
   "entries": [
     {
       "name": "Kobi💯",
@@ -80,6 +80,22 @@
       "issue": 16,
       "trackHash": "4cc5b291ad4acb63e00bbdf1fd2f0f2f",
       "verifiedAt": "2026-09-19T11:55:56.662Z"
+    },
+    {
+      "name": "KD419",
+      "github": null,
+      "submitter": "e64b0d667203e595",
+      "board": "laika",
+      "score": 5,
+      "wins": 5,
+      "losses": 0,
+      "doubleKills": 2,
+      "rounds": 7,
+      "seed": 3662405045,
+      "frames": 1544,
+      "issue": 17,
+      "trackHash": "3c29bdaa84d7da6b8c26ecbb37c4c805",
+      "verifiedAt": "2026-09-19T12:06:41.104Z"
     },
     {
       "name": "rekursion",
