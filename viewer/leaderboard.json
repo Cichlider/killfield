@@ -1,5 +1,5 @@
 {
-  "updated": "2026-09-19T02:20:14.796Z",
+  "updated": "2026-09-19T02:26:04.499Z",
   "entries": [
     {
       "name": "Lichen (Doggy Bag :P)",
@@ -96,6 +96,22 @@
       "issue": 5,
       "trackHash": "603bcf2dc68ed10c5d2a3870f1953878",
       "verifiedAt": "2026-09-19T02:08:13.851Z"
+    },
+    {
+      "name": "Lichen (Killfield is OP)",
+      "github": null,
+      "submitter": "6c3f355980159c40",
+      "board": "killfield",
+      "score": 1,
+      "wins": 1,
+      "losses": 0,
+      "doubleKills": 0,
+      "rounds": 1,
+      "seed": 116700613,
+      "frames": 465,
+      "issue": 7,
+      "trackHash": "0faa70d1483401489eb3df0982814b25",
+      "verifiedAt": "2026-09-19T02:26:04.499Z"
     }
   ]
 }
