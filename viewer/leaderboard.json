@@ -1,5 +1,5 @@
 {
-  "updated": "2026-09-19T02:49:25.755Z",
+  "updated": "2026-09-19T02:59:55.464Z",
   "entries": [
     {
       "name": "Kobi💯",
@@ -16,6 +16,22 @@
       "issue": 9,
       "trackHash": "d0d8142232b8f1b4b321f46f18cc7ab3",
       "verifiedAt": "2026-09-19T02:49:25.754Z"
+    },
+    {
+      "name": "Kobi💯",
+      "github": null,
+      "submitter": "ba8768560e8b3c54",
+      "board": "laika",
+      "score": 25,
+      "wins": 25,
+      "losses": 0,
+      "doubleKills": 1,
+      "rounds": 26,
+      "seed": 3825649449,
+      "frames": 6677,
+      "issue": 10,
+      "trackHash": "0f6815d57954e8a7a6361039dae93387",
+      "verifiedAt": "2026-09-19T02:59:55.464Z"
     },
     {
       "name": "Lichen (Doggy Bag :P)",
