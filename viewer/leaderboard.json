@@ -1,5 +1,5 @@
 {
-  "updated": "2026-09-19T18:10:51.487Z",
+  "updated": "2026-09-19T22:35:22.025Z",
   "entries": [
     {
       "name": "Kobi💯",
@@ -128,6 +128,22 @@
       "issue": 17,
       "trackHash": "3c29bdaa84d7da6b8c26ecbb37c4c805",
       "verifiedAt": "2026-09-19T12:06:41.104Z"
+    },
+    {
+      "name": "kaag's first run",
+      "github": null,
+      "submitter": "6da7b2f43793a7ff",
+      "board": "hybrid",
+      "score": 5,
+      "wins": 5,
+      "losses": 15,
+      "doubleKills": 1,
+      "rounds": 21,
+      "seed": 1588960060,
+      "frames": 13264,
+      "issue": 27,
+      "trackHash": "6f6ca14f291dcfad40eacc10b58606a0",
+      "verifiedAt": "2026-09-19T22:35:22.025Z"
     },
     {
       "name": "yourdesutrction",
