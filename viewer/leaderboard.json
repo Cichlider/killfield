@@ -1,5 +1,5 @@
 {
-  "updated": "2026-09-19T12:47:01.630Z",
+  "updated": "2026-09-19T12:50:24.643Z",
   "entries": [
     {
       "name": "Kobi💯",
@@ -320,6 +320,22 @@
       "issue": 20,
       "trackHash": "c4da74b79c23c4f2133a31284f673b45",
       "verifiedAt": "2026-09-19T12:47:01.630Z"
+    },
+    {
+      "name": "KD419",
+      "github": null,
+      "submitter": "c2d8aa46035cee0a",
+      "board": "killfield",
+      "score": 1,
+      "wins": 1,
+      "losses": 0,
+      "doubleKills": 0,
+      "rounds": 1,
+      "seed": 1947627650,
+      "frames": 334,
+      "issue": 21,
+      "trackHash": "75a1adee0bb5bc3907faace518495d16",
+      "verifiedAt": "2026-09-19T12:50:24.643Z"
     }
   ]
 }
