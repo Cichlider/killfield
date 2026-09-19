@@ -1,5 +1,5 @@
 {
-  "updated": "2026-09-19T13:13:24.466Z",
+  "updated": "2026-09-19T13:15:40.868Z",
   "entries": [
     {
       "name": "Kobi💯",
@@ -128,6 +128,22 @@
       "issue": 17,
       "trackHash": "3c29bdaa84d7da6b8c26ecbb37c4c805",
       "verifiedAt": "2026-09-19T12:06:41.104Z"
+    },
+    {
+      "name": "yourdesutrction",
+      "github": null,
+      "submitter": "f0564571c37adcab",
+      "board": "killfield",
+      "score": 4,
+      "wins": 4,
+      "losses": 1,
+      "doubleKills": 1,
+      "rounds": 6,
+      "seed": 2222504493,
+      "frames": 2692,
+      "issue": 23,
+      "trackHash": "e8e7c3d1ee6224a963fe41cd50d5904e",
+      "verifiedAt": "2026-09-19T13:15:40.867Z"
     },
     {
       "name": "rekursion",
