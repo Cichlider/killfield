@@ -17,7 +17,7 @@
  */
 
 import fs from "node:fs";
-import { HUMAN_SEAT, MIN_SUBMITTABLE_SHUTOUT, longestShutout } from "../viewer/src/replay.js";
+import { HUMAN_SEAT, MIN_SUBMITTABLE_WINS, summariseResults } from "../viewer/src/replay.js";
 import {
   FPS, OpponentDriver, RANKED_DELAY_FRAMES, RANKED_OPENING_DELAY_SECONDS,
   SessionRecorder, readObservation,
@@ -77,13 +77,13 @@ async function playSession({ seed, frameBudget, target, opponent }) {
       const render = new Float32Array(wasm.memory.buffer,
         wasm.kf_render_ptr(handle), wasm.kf_render_len(handle));
       winners.push(render[15]);
-      // Stop as soon as the target is reached: a longer track is only a
-      // slower test, and every extra round is another chance to lose it.
-      if (longestShutout(winners).best >= target) break;
+      // Stop as soon as the target is reached: a longer track only slows the
+      // verifier fixture without changing what the test covers.
+      if (summariseResults(winners).wins >= target) break;
     }
   }
   wasm.kf_free(handle);
-  return { recorder, winners, best: longestShutout(winners).best };
+  return { recorder, winners, stats: summariseResults(winners) };
 }
 
 function flag(name, fallback) {
@@ -99,7 +99,7 @@ const name = flag("name", "Test Runner");
 // Stopping the moment the target is hit keeps the record short; asking for more
 // than the threshold is how one specific run gets reproduced.
 const target = Math.max(
-  MIN_SUBMITTABLE_SHUTOUT, Number(flag("target", MIN_SUBMITTABLE_SHUTOUT)),
+  MIN_SUBMITTABLE_WINS, Number(flag("target", MIN_SUBMITTABLE_WINS)),
 );
 
 for (let attempt = 0; attempt < seedsToTry; attempt += 1) {
@@ -107,15 +107,15 @@ for (let attempt = 0; attempt < seedsToTry; attempt += 1) {
   const started = Date.now();
   const run = await playSession({ seed, frameBudget: 45_000, target, opponent });
   const seconds = ((Date.now() - started) / 1000).toFixed(0);
-  process.stdout.write(`${opponent} seed ${seed}: best ${run.best} over `
+  process.stdout.write(`${opponent} seed ${seed}: ${run.stats.wins} wins over `
     + `${run.winners.length} rounds (${run.recorder.frameCount} frames, ${seconds}s)\n`);
-  if (run.best < target) continue;
+  if (run.stats.wins < target) continue;
 
   const submission = await buildSubmission({
     result: {
       recorder: run.recorder,
       winners: run.winners,
-      best: run.best,
+      stats: run.stats,
       config: {
         seed, opponent, delayFrames: RANKED_DELAY_FRAMES,
         openingDelaySeconds: RANKED_OPENING_DELAY_SECONDS,

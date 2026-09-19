@@ -27,8 +27,8 @@
 import fs from "node:fs";
 import { createHash } from "node:crypto";
 import {
-  LIMITS, MIN_SUBMITTABLE_SHUTOUT, RejectedSubmission,
-  encodeSession, longestShutout, sanitiseHandle, sanitiseName, unpackSession,
+  LIMITS, MIN_SUBMITTABLE_WINS, RejectedSubmission,
+  encodeSession, sanitiseHandle, sanitiseName, summariseResults, unpackSession,
 } from "../viewer/src/replay.js";
 import {
   FPS, RANKED_DELAY_FRAMES, RANKED_OPENING_DELAY_SECONDS, replaySession,
@@ -281,13 +281,13 @@ async function verify({ body, author, issue }) {
       + `expected ${worst.expected}, ${worst.gap.toFixed(3)} below the best logit)`);
   }
 
-  const scored = longestShutout(winners);
-  if (scored.best < MIN_SUBMITTABLE_SHUTOUT) {
-    reject(`the replay scores ${scored.best}; the board starts at ${MIN_SUBMITTABLE_SHUTOUT}`);
+  const stats = summariseResults(winners);
+  if (stats.wins < MIN_SUBMITTABLE_WINS) {
+    reject(`the replay has ${stats.wins} wins; the board starts at ${MIN_SUBMITTABLE_WINS}`);
   }
-  if (submission.claim !== scored.best) {
+  if (submission.claim !== stats.wins) {
     // Not fatal. The claim is decoration; the replay is the record.
-    process.stderr.write(`claimed ${submission.claim}, replayed ${scored.best}\n`);
+    process.stderr.write(`claimed ${submission.claim}, replayed ${stats.wins}\n`);
   }
 
   return {
@@ -297,9 +297,13 @@ async function verify({ body, author, issue }) {
       github: declaredHandle(submission.github, author, gateway),
       submitter,
       board: BOARDS[config.opponent],
-      score: scored.best,
-      rounds: winners.length,
-      firstRound: scored.firstRound,
+      // `score` remains as a compatibility alias for the three existing
+      // records and any cached board client; all new UI calls it wins.
+      score: stats.wins,
+      wins: stats.wins,
+      losses: stats.losses,
+      doubleKills: stats.doubleKills,
+      rounds: stats.rounds,
       seed: config.seed,
       frames: session.frames.length,
       issue: issue ?? null,
@@ -324,7 +328,8 @@ try {
   const { board, entry } = await verify({ body, author, issue });
   if (write) {
     board.entries.push(entry);
-    board.entries.sort((a, b) => b.score - a.score || Date.parse(a.verifiedAt) - Date.parse(b.verifiedAt));
+    board.entries.sort((a, b) => (b.wins ?? b.score) - (a.wins ?? a.score)
+      || Date.parse(a.verifiedAt) - Date.parse(b.verifiedAt));
     board.updated = new Date().toISOString();
     fs.writeFileSync(BOARD_PATH, `${JSON.stringify(board, null, 2)}\n`);
   }
@@ -342,9 +347,10 @@ fs.writeFileSync("verdict.json", `${JSON.stringify(verdict, null, 2)}\n`);
  *  character that could break out of the fence they are shown in. */
 const fenced = (text) => `\`\`\`\n${text.replaceAll("`", "'")}\n\`\`\`\n`;
 fs.writeFileSync("comment.md", verdict.ok
-  ? `**Verified.** A ${verdict.entry.score}-round shutout against `
+  ? `**Verified.** ${verdict.entry.wins} wins against `
     + `${{ hybrid: "Hybrid", laika: "Laika", killfield: "Killfield" }[verdict.entry.board]}, replayed over `
-    + `${verdict.entry.rounds} rounds and ${verdict.entry.frames} frames.\n\n`
+    + `${verdict.entry.rounds} rounds (${verdict.entry.losses} losses, `
+    + `${verdict.entry.doubleKills} double KOs) and ${verdict.entry.frames} frames.\n\n`
     + "It is on the board now. The score above is the replay's, not the one "
     + "the record claimed.\n"
   : "**Not verified.** Nothing went on the board.\n\n"
@@ -353,5 +359,5 @@ fs.writeFileSync("comment.md", verdict.ok
     + "and can be replayed again.\n");
 
 process.stdout.write(`${verdict.ok ? "accepted" : "rejected"}: `
-  + `${verdict.ok ? `${verdict.entry.score} on ${verdict.entry.board}` : verdict.reason}\n`);
+  + `${verdict.ok ? `${verdict.entry.wins} wins on ${verdict.entry.board}` : verdict.reason}\n`);
 process.exitCode = verdict.ok ? 0 : 1;

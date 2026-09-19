@@ -27,6 +27,7 @@ test("cheap validation bounds attacker-controlled records", () => {
   assert.throws(() => cleanSubmission({ ...record, track: "!" }), /payload/);
   assert.throws(() => cleanSubmission({ ...record, frames: 60_001 }), /dimensions/);
   assert.throws(() => cleanSubmission({ ...record, claim: 4, rounds: 3 }), /dimensions/);
+  assert.throws(() => cleanSubmission({ ...record, claim: 0 }), /dimensions/);
   assert.throws(() => cleanSubmission({ ...record, delayFrames: 1 }), /ranked settings/);
   assert.throws(() => cleanSubmission({ ...record, openingDelaySeconds: 0.6 }), /ranked settings/);
   assert.throws(() => cleanSubmission({ ...record, github: "not valid!" }), /GitHub/);
@@ -82,7 +83,7 @@ test("a valid request verifies the challenge and creates a labelled issue", asyn
     assert.equal(calls.length, 2);
     const issue = JSON.parse(calls[1].options.body);
     assert.deepEqual(issue.labels, ["leaderboard"]);
-    assert.equal(issue.title, "[score] 3 vs Laika");
+    assert.equal(issue.title, "[wins] 3 vs Laika");
     assert.match(issue.body, /```json/);
     assert.match(issue.body, /killfield-gateway:v1:[a-f0-9]{16}/);
     assert.equal(writes.length, 1);

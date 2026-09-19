@@ -10,9 +10,9 @@
  * Pausing produces no frames at all (the loop simply stops calling kf_step),
  * so it needs no representation here.
  *
- * The score is the longest run of consecutive rounds the human won anywhere in
- * the session. The verifier recomputes it from its own replay and ignores
- * whatever the submission claimed.
+ * The score is the total number of rounds the human won in the session. The
+ * verifier also recomputes losses and mutual destructions from its own replay
+ * and ignores whatever the submission claimed.
  *
  * Everything in LIMITS is a rejection boundary, not a hint. The submission
  * path is reachable by anyone who can open an issue, so each field is bounded
@@ -27,13 +27,8 @@ export const ACTION_COUNT = 18;
 /** No opponent action to replay: Killfield and Laika are driven inside kf_step. */
 export const NO_ACTION = 255;
 
-/**
- * How many rounds running a player has to take before a run is worth a place
- * on the board. The page enforces this to keep players from wasting a
- * submission, and the verifier enforces it again because the page's copy of
- * the rule is advisory — a submission is just text, and anyone can write it.
- */
-export const MIN_SUBMITTABLE_SHUTOUT = 2;
+/** One verified human win is enough to enter the wins leaderboard. */
+export const MIN_SUBMITTABLE_WINS = 1;
 
 export const LIMITS = {
   /** ~200 rounds at the ~165 frames/round this engine averages, with headroom. */
@@ -220,29 +215,23 @@ export async function unpackSession(base64) {
 // ------------------------------------------------------------------ scoring
 
 /**
- * The longest run of consecutive rounds `seat` won. A draw or double kill
- * scores for nobody and breaks nobody's run.
+ * Count every finished-round outcome for the wins leaderboard.
  *
- * @param {number[]} winners one entry per finished round, from the engine
+ * The engine reports `DRAW` for a mutual destruction; ranked sessions do not
+ * have a separate timeout outcome. Keeping this in the shared replay module
+ * makes the browser and verifier derive the exact same four figures.
  */
-export function longestShutout(winners, seat = HUMAN_SEAT) {
-  let best = 0;
-  let run = 0;
-  // A draw inside a run keeps the run alive without scoring, so the span is
-  // wider than the win count and the start has to be carried, not derived.
-  let runStart = 0;
-  let firstRound = 0;
-  let lastRound = -1;
-  winners.forEach((winner, round) => {
-    if (winner === seat) {
-      if (run === 0) runStart = round;
-      run += 1;
-      if (run > best) { best = run; firstRound = runStart; lastRound = round; }
-    } else if (winner !== DRAW) {
-      run = 0;
-    }
-  });
-  return { best, firstRound, lastRound };
+export function summariseResults(winners, seat = HUMAN_SEAT) {
+  const opponent = 1 - seat;
+  let wins = 0;
+  let losses = 0;
+  let doubleKills = 0;
+  for (const winner of winners) {
+    if (winner === seat) wins += 1;
+    else if (winner === opponent) losses += 1;
+    else if (winner === DRAW) doubleKills += 1;
+  }
+  return { wins, losses, doubleKills, rounds: winners.length };
 }
 
 // --------------------------------------------------------------------- name

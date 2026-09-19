@@ -8,7 +8,7 @@
  */
 
 import { loadLang, saveLang } from "./src/i18n.js";
-import { MIN_SUBMITTABLE_SHUTOUT } from "./src/replay.js?v=two-win-floor";
+import { LIMITS, MIN_SUBMITTABLE_WINS } from "./src/replay.js?v=win-count-board";
 import { RANKED_OPENING_DELAY_SECONDS } from "./src/ranked.js";
 
 /**
@@ -19,12 +19,11 @@ import { RANKED_OPENING_DELAY_SECONDS } from "./src/ranked.js";
  */
 const RULES = {
   en: [
-    [`${MIN_SUBMITTABLE_SHUTOUT} in a row`, `A run has to take ${MIN_SUBMITTABLE_SHUTOUT} `
-      + "rounds off the agent back to back. Draws and double kills score for nobody and "
-      + "break nobody's run."],
-    ["Any stretch of one session", "The score is the longest run of wins anywhere in a "
-      + "single continuous match — losing does not end your attempt, it just ends that "
-      + "streak. Rerolling the maze or changing the opponent starts a new session."],
+    [`${MIN_SUBMITTABLE_WINS} win to enter`, `Every human win counts. A run needs at least `
+      + `${MIN_SUBMITTABLE_WINS} win before it can be submitted.`],
+    [`Up to ${LIMITS.maxRounds} rounds`, "The ranking score is the total number of wins in one "
+      + "continuous ranked run. Losses and double KOs are recorded alongside it. Rerolling "
+      + "the maze or changing the opponent starts a new run."],
     ["No delay for the opponent", "Opponent delay must sit at 0 frames. It is the "
       + "handicap that makes the agent actuate late, and a ranked run gives it none."],
     ["Opening pause at most 0.5s", `The default ${RANKED_OPENING_DELAY_SECONDS}s or `
@@ -39,10 +38,10 @@ const RULES = {
       + "profile link, not proof that the player owns that account."],
   ],
   zh: [
-    [`${MIN_SUBMITTABLE_SHUTOUT} 连起步`, `一次成绩要连续拿下 ${MIN_SUBMITTABLE_SHUTOUT} 个回合。`
-      + "平局和双杀不给任何人加分，也不中断任何人的连胜。"],
-    ["同一场里的任意一段", "计分取的是单场连续对局中最长的一段连胜——输一局不结束这次尝试，"
-      + "只是结束那一段。换迷宫或换对手则开始新的一场。"],
+    [`赢 ${MIN_SUBMITTABLE_WINS} 局即可上榜`, `人的每一个胜场都会计入。一次记录至少赢 `
+      + `${MIN_SUBMITTABLE_WINS} 局即可提交。`],
+    [`最多 ${LIMITS.maxRounds} 局`, "排名分数是同一次连续排位记录里的累计胜场。负场和双亡会一起展示。"
+      + "换迷宫或换对手会开始一次新记录。"],
     ["对手零延迟", "对手延迟必须是 0 帧。那是让智能体延迟出手的让步，排位不给任何让步。"],
     ["开局停顿不超过 0.5 秒", `默认的 ${RANKED_OPENING_DELAY_SECONDS} 秒或更短。`
       + "更短只会更难，所以允许。"],
@@ -58,11 +57,12 @@ const COPY = {
   en: {
     htmlLang: "en",
     back: "Back to the game",
-    heading: "Longest shutout",
-    blurb: "How many rounds running you can take off the agent before it takes "
-      + "one back. Every record here was replayed frame by frame before it landed.",
-    rank: "#", player: "Player", score: "Shutout", rounds: "Rounds", when: "Verified",
-    empty: `Nobody has cleared ${MIN_SUBMITTABLE_SHUTOUT} in a row yet. The board is yours to open.`,
+    heading: "Most wins",
+    blurb: `Every win counts across a ranked run of up to ${LIMITS.maxRounds} rounds. `
+      + "Every record here was replayed frame by frame before it landed.",
+    rank: "#", player: "Player", score: "Wins", rounds: "Rounds",
+    losses: "Losses", doubleKills: "Double KOs", when: "Verified",
+    empty: `Nobody has submitted a win yet. The board is yours to open.`,
     note: "Runs are played at the default settings — no actuation delay for the "
       + "opponent — and scored by replaying the recorded inputs through the same "
       + "engine build. The score a submission claims is ignored.",
@@ -74,10 +74,11 @@ const COPY = {
   zh: {
     htmlLang: "zh-Hans",
     back: "返回游戏",
-    heading: "最大零封",
-    blurb: "在对手扳回一局之前，你能连续拿下多少回合。榜上每条记录都经过逐帧重放核验。",
-    rank: "#", player: "玩家", score: "零封", rounds: "总局数", when: "核验于",
-    empty: `还没有人打满 ${MIN_SUBMITTABLE_SHUTOUT} 连封。第一个位置空着。`,
+    heading: "最多胜场",
+    blurb: `一次排位最多记录 ${LIMITS.maxRounds} 局，每个胜场都计分。榜上每条记录都经过逐帧重放核验。`,
+    rank: "#", player: "玩家", score: "胜", rounds: "总局数",
+    losses: "负", doubleKills: "双亡", when: "核验于",
+    empty: "还没有人提交胜场。第一个位置空着。",
     note: "成绩一律在默认设置下产生——对手不吃任何动作延迟——并由同一份引擎重放录制的输入重新计分，"
       + "提交时自报的分数不作数。",
     unavailable: "榜单加载失败。",
@@ -90,7 +91,8 @@ const COPY = {
 const NODES = {
   back: "back-label", heading: "board-heading", blurb: "board-blurb",
   rank: "col-rank", player: "col-name", score: "col-score",
-  rounds: "col-rounds", when: "col-when", note: "board-note",
+  rounds: "col-rounds", losses: "col-losses", doubleKills: "col-double-kills",
+  when: "col-when", note: "board-note",
   rulesHeading: "rules-heading",
 };
 
@@ -126,7 +128,8 @@ function render() {
 
   const rows = board.entries
     .filter((entry) => entry.board === active)
-    .sort((a, b) => b.score - a.score || Date.parse(a.verifiedAt) - Date.parse(b.verifiedAt));
+    .sort((a, b) => (b.wins ?? b.score) - (a.wins ?? a.score)
+      || Date.parse(a.verifiedAt) - Date.parse(b.verifiedAt));
 
   body.replaceChildren();
   for (const [index, entry] of rows.entries()) {
@@ -135,8 +138,10 @@ function render() {
     const cells = [
       String(index + 1),
       null, // the name is built below, since it carries a link
-      String(entry.score),
+      String(entry.wins ?? entry.score),
       String(entry.rounds),
+      entry.losses == null ? "—" : String(entry.losses),
+      entry.doubleKills == null ? "—" : String(entry.doubleKills),
       formatDate(entry.verifiedAt),
     ];
     cells.forEach((value, column) => {

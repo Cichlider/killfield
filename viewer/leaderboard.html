@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#f7f7f5">
 <title>Hybrid · Leaderboard</title>
-<meta name="description" content="Verified longest shutouts against Hybrid, Laika and Killfield. Every record is replayed frame by frame before it lands.">
+<meta name="description" content="Verified wins against Hybrid, Laika and Killfield. Every record is replayed frame by frame before it lands.">
 <meta name="robots" content="index,follow">
 <link rel="canonical" href="https://cichlider.github.io/killfield/viewer/leaderboard.html">
 <link rel="icon" type="image/png" sizes="32x32" href="assets/brand/hybrid-32.png">
@@ -24,8 +24,8 @@
   </header>
 
   <div class="board-title">
-    <h1 id="board-heading">Longest shutout</h1>
-    <p id="board-blurb">How many rounds running you can take off the agent before it takes one back. Every record here was replayed frame by frame before it landed.</p>
+    <h1 id="board-heading">Most wins</h1>
+    <p id="board-blurb">Every win counts across a ranked run of up to 200 rounds. Every record here was replayed frame by frame before it landed.</p>
   </div>
 
   <nav class="mode-switch" id="board-tabs" aria-label="Board">
@@ -40,8 +40,10 @@
         <tr>
           <th class="col-rank" id="col-rank">#</th>
           <th class="col-name" id="col-name">Player</th>
-          <th class="col-score" id="col-score">Shutout</th>
+          <th class="col-score" id="col-score">Wins</th>
           <th class="col-rounds" id="col-rounds">Rounds</th>
+          <th class="col-losses" id="col-losses">Losses</th>
+          <th class="col-double-kills" id="col-double-kills">Double KOs</th>
           <th class="col-when" id="col-when">Verified</th>
         </tr>
       </thead>
@@ -58,6 +60,6 @@
   <p class="board-note" id="board-note"></p>
   <footer class="site-footer"><a href="https://github.com/Cichlider/killfield" target="_blank" rel="noreferrer">github.com/Cichlider/killfield</a><span>© 2026 Cichlider. All rights reserved.</span></footer>
 </main>
-<script type="module" src="leaderboard.js?v=three-boards"></script>
+<script type="module" src="leaderboard.js?v=win-count-board"></script>
 </body>
 </html>

@@ -32,8 +32,8 @@ import { Rng } from "./src/rng.js";
 import { interpolatePredictedPose, simulationBudget } from "./src/low-latency.js";
 import { HybridPolicy } from "./src/hybrid.js?v=4be8a6e2";
 import {
-  HUMAN_SEAT, LIMITS, MIN_SUBMITTABLE_SHUTOUT, longestShutout,
-} from "./src/replay.js?v=two-win-floor";
+  HUMAN_SEAT, LIMITS, MIN_SUBMITTABLE_WINS, summariseResults,
+} from "./src/replay.js?v=win-count-board";
 // engine/src/duel_obs.rs: the Hybrid observation is schema 24, 1028 semantic
 // floats then 10 bullet-mask floats. These live in src/ranked.js because the
 // leaderboard verifier reads the same layout out of the same wasm memory.
@@ -69,8 +69,8 @@ const QUERY = new URLSearchParams(location.search);
 const POLICY_PILOT = QUERY.get("pilot") === "policy";
 const requestedPilotTarget = Number(QUERY.get("target"));
 const POLICY_PILOT_TARGET = Number.isInteger(requestedPilotTarget)
-  ? Math.min(20, Math.max(MIN_SUBMITTABLE_SHUTOUT, requestedPilotTarget))
-  : MIN_SUBMITTABLE_SHUTOUT;
+  ? Math.min(20, Math.max(MIN_SUBMITTABLE_WINS, requestedPilotTarget))
+  : MIN_SUBMITTABLE_WINS;
 const requestedPilotSeed = Number(QUERY.get("seed"));
 const POLICY_PILOT_SEED = Number.isInteger(requestedPilotSeed)
   && requestedPilotSeed >= 0 && requestedPilotSeed <= 0xffffffff
@@ -696,9 +696,9 @@ function applyRoundEnd(winner) {
     // Every outcome, draws included, so the run is scored by exactly the
     // function the verifier will re-run against its own replay.
     ranked.winners.push(winner);
-    ranked.best = longestShutout(ranked.winners).best;
+    ranked.stats = summariseResults(ranked.winners);
     if (ranked.winners.length >= LIMITS.maxRounds
-        || (POLICY_PILOT && ranked.best >= POLICY_PILOT_TARGET)) {
+        || (POLICY_PILOT && ranked.stats.wins >= POLICY_PILOT_TARGET)) {
       closeRankedSession();
     }
   }
@@ -788,7 +788,7 @@ function beginRankedSession(seed) {
   ranked = {
     recorder: new SessionRecorder(),
     winners: [],
-    best: 0,
+    stats: summariseResults([]),
     startedAt: Date.now(),
     config: {
       seed,
@@ -841,9 +841,9 @@ function syncRankedUI() {
   // A record goes on the board under a name; there is no anonymous entry.
   rankedUploadButton.disabled = rankedSubmitting || rankedSubmitted
     || rankedNameInput.value.trim() === "";
-  const eligible = rankedResult !== null && rankedResult.best >= MIN_SUBMITTABLE_SHUTOUT;
+  const eligible = rankedResult !== null && rankedResult.stats.wins >= MIN_SUBMITTABLE_WINS;
   const shown = ranked ?? rankedResult;
-  set(rankedScore, "textContent", String(shown ? shown.best : 0));
+  set(rankedScore, "textContent", String(shown ? shown.stats.wins : 0));
   set(rankedUnit, "textContent", s.rankedUnit);
   rankedRow.classList.toggle("live", Boolean(ranked));
   rankedRow.classList.toggle("qualified", eligible);
@@ -855,11 +855,11 @@ function syncRankedUI() {
   } else if (rankedSubmitting) {
     status = s.rankedSubmitting;
   } else if (ranked) {
-    status = s.rankedRecording(ranked.best, ranked.winners.length, MIN_SUBMITTABLE_SHUTOUT);
+    status = s.rankedRecording(ranked.stats, LIMITS.maxRounds);
   } else if (rankedResult) {
     status = eligible
-      ? s.rankedFinished(rankedResult.best)
-      : s.rankedTooShort(rankedResult.best, MIN_SUBMITTABLE_SHUTOUT);
+      ? s.rankedFinished(rankedResult.stats)
+      : s.rankedTooShort(MIN_SUBMITTABLE_WINS);
   }
   set(rankedStatus, "textContent", status);
   set(rankedSubmit, "hidden", !eligible || rankedSubmitted);
