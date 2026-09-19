@@ -1,5 +1,5 @@
 {
-  "updated": "2026-09-19T02:26:04.499Z",
+  "updated": "2026-09-19T02:42:42.038Z",
   "entries": [
     {
       "name": "Lichen (Doggy Bag :P)",
@@ -112,6 +112,22 @@
       "issue": 7,
       "trackHash": "0faa70d1483401489eb3df0982814b25",
       "verifiedAt": "2026-09-19T02:26:04.499Z"
+    },
+    {
+      "name": "Rekursion",
+      "github": "Cichlider",
+      "submitter": "3d4e3bdcc9ac628f",
+      "board": "laika",
+      "score": 1,
+      "wins": 1,
+      "losses": 2,
+      "doubleKills": 0,
+      "rounds": 3,
+      "seed": 2512030690,
+      "frames": 900,
+      "issue": 8,
+      "trackHash": "35eb6ba8198a4402ba2aa04021dd311b",
+      "verifiedAt": "2026-09-19T02:42:42.037Z"
     }
   ]
 }
