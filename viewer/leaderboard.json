@@ -1,5 +1,5 @@
 {
-  "updated": "2026-09-19T05:15:48.371Z",
+  "updated": "2026-09-19T09:15:35.185Z",
   "entries": [
     {
       "name": "Kobi💯",
@@ -128,6 +128,22 @@
       "issue": 11,
       "trackHash": "75a35862de4b657be9ea70e41001e688",
       "verifiedAt": "2026-09-19T05:15:48.371Z"
+    },
+    {
+      "name": "onlywyjy",
+      "github": "onlywyjy",
+      "submitter": "90ed105a97cf0a22",
+      "board": "laika",
+      "score": 2,
+      "wins": 2,
+      "losses": 0,
+      "doubleKills": 1,
+      "rounds": 3,
+      "seed": 1571157053,
+      "frames": 934,
+      "issue": 12,
+      "trackHash": "16cd012fc687428e7393881a5ad4dad3",
+      "verifiedAt": "2026-09-19T09:15:35.185Z"
     },
     {
       "name": "Lichen",
