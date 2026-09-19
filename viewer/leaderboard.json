@@ -1,5 +1,5 @@
 {
-  "updated": "2026-09-19T22:35:22.025Z",
+  "updated": "2026-09-19T23:43:45.030Z",
   "entries": [
     {
       "name": "Kobi💯",
@@ -144,6 +144,22 @@
       "issue": 27,
       "trackHash": "6f6ca14f291dcfad40eacc10b58606a0",
       "verifiedAt": "2026-09-19T22:35:22.025Z"
+    },
+    {
+      "name": "Invader",
+      "github": null,
+      "submitter": "720c098405ab5af1",
+      "board": "hybrid",
+      "score": 5,
+      "wins": 5,
+      "losses": 18,
+      "doubleKills": 1,
+      "rounds": 24,
+      "seed": 4007802534,
+      "frames": 13367,
+      "issue": 28,
+      "trackHash": "0cfbd200d1f08bd7e235d7e263f400e2",
+      "verifiedAt": "2026-09-19T23:43:45.030Z"
     },
     {
       "name": "yourdesutrction",
