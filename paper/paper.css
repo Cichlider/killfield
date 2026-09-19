@@ -168,6 +168,9 @@ h2 { margin:0; font-size:clamp(36px,5vw,62px); font-weight:500; line-height:1.24
 .action-keys .keyrow { display:flex; gap:5px; margin-bottom:5px; }
 .action-keys .key { flex:1; padding:10px 0; border:1px solid var(--line-strong); color:var(--muted); font-size:12px; text-align:center; transition:.16s ease; }
 .action-keys .key.wide { flex:none; width:100%; }
+.action-keys .keyrow.top { justify-content:center; }
+.action-keys .keyrow.top .key { flex:0 0 calc((100% - 10px) / 3); }
+.action-keys .key[role="img"] { font-size:16px; line-height:21px; }
 .action-keys .key.active { border-color:var(--red); background:var(--red); color:#fff; font-weight:500; }
 .action-keys strong { display:block; margin-top:14px; font:500 22px var(--sans); font-variant-numeric:tabular-nums; }
 .action-keys small { display:block; margin-top:4px; color:var(--muted); font-size:10.5px; }
