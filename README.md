@@ -1,61 +1,44 @@
-# Three AIs, One Tank Trouble Arena
+# Think You Can Beat My Tank Trouble AI?
 
-I built a browser-based Tank Trouble AI project featuring three distinct opponents:
+I built two AIs for Tank Trouble that you can play against in your browser:
 
-- **Hybrid** — a powerful PPO-trained neural policy refined through an evolving self-play league.
-- **Killfield** — a real-time planning agent that simulates possible actions and specializes in ricochet shots.
-- **Laika** — a fast, rule-based classic bot and a good starting challenge.
+- **Hybrid** — a PPO neural policy trained through self-play against a league of its past versions. It beats Killfield about 93% of the time.
+- **Killfield** — a real-time planner that simulates moves ahead and loves ricochet shots. It beats Laika about 90% of the time.
 
-## How Hybrid Is Trained
+Laika is in there too if you want a warm-up.
 
-Hybrid uses PPO actor–critic reinforcement learning. It trains across 256 parallel game environments, collecting 128 steps from each environment per update. Its 1,028-dimensional observation describes the maze, tanks, bullets, ammunition, and action-specific safety signals. The network outputs one of 18 movement-and-fire actions every physics frame.
+## Play
 
-Training combines GAE and clipped PPO optimization with a league of frozen previous Hybrid checkpoints, plus Laika and Killfield. This exposes the policy to different play styles while preventing it from overfitting to a single opponent. The final policy is exported from PyTorch and runs locally in the browser.
+No download, no account:
 
-Read the interactive technical paper for the complete observation space, reward function, network architecture, training lineage, loss design, and evaluation results:
+**[Play now](https://cichlider.github.io/killfield/viewer/)**
 
-**[Hybrid Technical Paper](https://cichlider.github.io/killfield/paper/)**
+Works on mobile too: there's an on-screen joystick, and turning on **No turn-rate limit** in settings makes it much easier to play. You can also just watch the AIs fight each other.
 
-## Play Instantly
+## Leaderboard
 
-No download or account is required. Challenge any opponent or watch AI-vs-AI battles:
+**[View the leaderboard](https://cichlider.github.io/killfield/viewer/leaderboard.html)**
 
-**[Play Tank Trouble AI](https://cichlider.github.io/killfield/viewer/)**
+Pick an opponent, click **Ranked run**, win at least one round, then submit your name. Each opponent has its own board, ranked by total wins in a single run (max 200 rounds).
 
-### Mobile Controls
+Ranked runs use fixed settings: no opponent delay and no turn-rate assist. Changing the opponent, rerolling the map, or changing a setting ends the recording. Every submission is replayed frame by frame on the server with the same engine, so scores can't be faked.
 
-The game also works on mobile. Landscape mode is recommended: use the on-screen joystick on the left to move and the fire control on the right to shoot.
+## How It Works
 
-For more responsive mobile handling, enabling **Instant turn** is recommended. Ranked runs disable this assistance automatically so that every submitted record uses the same competitive settings.
+The physics is adapted from TankTrouble2 and simplified so the AI could train on hundreds of millions of steps, so it won't feel 100% identical to the real game.
 
-## Join the Leaderboard
+Hybrid is trained with PPO across 256 parallel games. Its 1,028-dimensional observation covers the maze, tanks, bullets, ammo and per-action safety signals, and it picks one of 18 move-and-fire actions every frame. The trained network runs locally in your browser.
 
-**[View the Leaderboard](https://cichlider.github.io/killfield/viewer/leaderboard.html)**
+The full story — observation space, reward, architecture, training lineage and evaluation — is in the interactive paper:
 
-To submit a record:
+**[Read the paper](https://cichlider.github.io/killfield/paper/)**
 
-1. Open the game and select **Play**.
-2. Choose Hybrid, Killfield, or Laika as your opponent.
-3. Click **Ranked run**.
-4. Play until you end the run or reach the 200-round limit.
-5. Win at least one round, enter your player name, and click **Submit**.
-
-Hybrid, Killfield, and Laika have separate leaderboards. Rankings are based on the total number of wins in a single run. The board also displays total rounds, losses, and double KOs.
-
-Ranked runs use fixed competitive settings: zero-frame opponent delay, no instant-turn assistance, and no extended opening pause. Changing the opponent, rerolling the map, or changing a ranked setting ends the current recording.
-
-Every submission includes a deterministic input replay. The server replays the entire run frame by frame using the same engine and independently calculates the result, so leaderboard scores are not accepted directly from the browser.
-
-## About the Physics
-
-This project is adapted from TankTrouble2. Because AI training requires hundreds of millions of simulation steps—and because my training budget is limited—I did not attempt to reproduce the official game's physics engine exactly. Doing so would have made large-scale training significantly slower.
+If you enjoy it, a ⭐ on this repo helps a lot!
 
 ## Contact
 
-For business inquiries, Game AI opportunities, recruitment, or collaboration:
-
-**cichlid1234@outlook.com**
+Game AI opportunities, collaboration, business: **cichlid1234@outlook.com**
 
 ## License
 
-This project is released under the [MIT License](LICENSE).
+[MIT](LICENSE)
