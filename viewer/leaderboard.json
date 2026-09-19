@@ -1,5 +1,5 @@
 {
-  "updated": "2026-09-13T12:03:54.957Z",
+  "updated": "2026-09-19T02:08:13.852Z",
   "entries": [
     {
       "name": "rekursion",
@@ -64,6 +64,22 @@
       "issue": 4,
       "trackHash": "e62cf5e9fafb4447090162c82e975712",
       "verifiedAt": "2026-09-13T12:03:54.957Z"
+    },
+    {
+      "name": "Lichen",
+      "github": null,
+      "submitter": "6c3f355980159c40",
+      "board": "hybrid",
+      "score": 1,
+      "wins": 1,
+      "losses": 0,
+      "doubleKills": 0,
+      "rounds": 1,
+      "seed": 2222789994,
+      "frames": 556,
+      "issue": 5,
+      "trackHash": "603bcf2dc68ed10c5d2a3870f1953878",
+      "verifiedAt": "2026-09-19T02:08:13.851Z"
     }
   ]
 }
