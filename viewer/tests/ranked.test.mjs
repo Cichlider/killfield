@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import {
   HUMAN_SEAT, NO_ACTION, RejectedSubmission,
-  longestShutout, packSession, unpackSession,
+  packSession, summariseResults, unpackSession,
 } from "../src/replay.js";
 import {
   FPS, NEUTRAL_ACTION, OpponentDriver, RANKED_OPENING_DELAY_SECONDS,
@@ -116,14 +116,15 @@ const replayed = await verify(hybridConfig, roundTripped);
 assert.deepEqual(replayed.winners, live.winners, "replay diverged from the recorded session");
 assert.deepEqual(replayed.suspect, [], "an honest session tripped the action audit");
 
-// The score is recomputed from the replay, never taken from the submission.
-// The scripted "human" flails at random and wins nothing, so the run that
-// actually exercises the scan here is the opponent's.
-const scored = longestShutout(replayed.winners);
-assert.equal(scored.best, longestShutout(live.winners).best);
-const opponentRun = longestShutout(replayed.winners, 0);
-assert.ok(opponentRun.best > 0, "the opponent should have strung wins together");
-assert.deepEqual(opponentRun, longestShutout(live.winners, 0));
+// Every outcome displayed on the board is recomputed from the replay, never
+// taken from the submission.
+const scored = summariseResults(replayed.winners);
+assert.deepEqual(scored, summariseResults(live.winners));
+assert.equal(scored.rounds, scored.wins + scored.losses + scored.doubleKills);
+const opponentStats = summariseResults(replayed.winners, 0);
+assert.equal(opponentStats.wins, scored.losses);
+assert.equal(opponentStats.losses, scored.wins);
+assert.equal(opponentStats.doubleKills, scored.doubleKills);
 
 // ------------------------------------------------------------- forged input
 
@@ -188,4 +189,4 @@ await assert.rejects(
 );
 
 console.log(`ranked replay: ${live.winners.length} rounds reproduced exactly, `
-  + `best shutout ${scored.best}, forgeries caught, engine-driven opponent sealed`);
+  + `${scored.wins} wins counted, forgeries caught, engine-driven opponent sealed`);

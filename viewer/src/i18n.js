@@ -40,13 +40,12 @@ export const STRINGS = {
     openingDelayCountdown: (seconds) => `Opponent starts in ${seconds.toFixed(1)}s`,
     rankedStart: "Ranked run",
     rankedStop: "End run",
-    rankedIdle: "A ranked run records every frame, so the board can replay it.",
-    rankedRecording: (best, rounds, need) =>
-      `Recording · best shutout ${best} · ${rounds} rounds played`
-      + (best >= need ? " · good to upload" : ` · ${need} in a row to qualify`),
-    rankedFinished: (best) => `Run closed on a ${best}-round shutout. Name it and submit.`,
-    rankedTooShort: (best, need) =>
-      `Run closed on a ${best}-round shutout — the board starts at ${need}.`,
+    rankedIdle: "A ranked run records up to 200 rounds for replay verification.",
+    rankedRecording: (stats, maxRounds) => `Recording · ${stats.wins} wins / ${stats.rounds}`
+      + ` rounds · ${stats.losses} losses · ${stats.doubleKills} double KOs`
+      + (stats.rounds >= maxRounds ? " · round limit reached" : ""),
+    rankedFinished: (stats) => `${stats.wins} wins in ${stats.rounds} rounds. Name the run and submit.`,
+    rankedTooShort: (need) => `Win at least ${need} round to submit a ranked run.`,
     rankedUpload: "Submit",
     rankedSubmittingButton: "Submitting…",
     rankedSubmitting: "Submitting the replay for verification…",
@@ -59,7 +58,7 @@ export const STRINGS = {
     rankedGithubCopied: "Replay copied. Paste it into Record on the GitHub page and submit the issue; a maintainer will approve verification.",
     rankedGithubCopyFailed: "The browser could not copy the replay. Allow clipboard access, then press Submit with GitHub again.",
     rankedBoard: "Leaderboard",
-    rankedUnit: "best shutout",
+    rankedUnit: "wins",
     rankedNameLabel: "Player name",
     rankedGithubLabel: "GitHub account (optional)",
     rankedNamePlaceholder: "Your name",
@@ -126,11 +125,13 @@ export const STRINGS = {
     openingDelayCountdown: (seconds) => `对手将在 ${seconds.toFixed(1)} 秒后行动`,
     rankedStart: "排位记录",
     rankedStop: "结束记录",
-    rankedIdle: "排位会逐帧录下这一局，榜单靠重放它来核验成绩。",
-    rankedRecording: (best, rounds, need) => `录制中 · 最大零封 ${best} · 已打 ${rounds} 局`
-      + (best >= need ? " · 已够上榜" : ` · 满 ${need} 连封才能提交`),
-    rankedFinished: (best) => `本次最大零封 ${best} 连胜。填个名字即可提交。`,
-    rankedTooShort: (best, need) => `本次最大零封 ${best} 连胜，不满 ${need} 连封，上不了榜。`,
+    rankedIdle: "排位会逐帧记录最多 200 局，榜单靠重放核验成绩。",
+    rankedRecording: (stats, maxRounds) => `录制中 · ${stats.wins} 胜 / ${stats.rounds} 局`
+      + ` · ${stats.losses} 负 · ${stats.doubleKills} 双亡`
+      + (stats.rounds >= maxRounds ? " · 已达局数上限" : ""),
+    rankedFinished: (stats) => `共 ${stats.rounds} 局，${stats.wins} 胜、${stats.losses} 负、`
+      + `${stats.doubleKills} 双亡。填个名字即可提交。`,
+    rankedTooShort: (need) => `至少赢 ${need} 局才能提交排位成绩。`,
     rankedUpload: "提交",
     rankedSubmittingButton: "提交中…",
     rankedSubmitting: "正在提交录像并启动验分…",
@@ -143,7 +144,7 @@ export const STRINGS = {
     rankedGithubCopied: "录像已复制。请在打开的 GitHub 页面粘贴到 Record 并提交 Issue；管理员审核后会启动验分。",
     rankedGithubCopyFailed: "浏览器未允许复制录像。请允许剪贴板访问，再点一次“改用 GitHub 提交”。",
     rankedBoard: "排行榜",
-    rankedUnit: "最大零封",
+    rankedUnit: "胜场",
     rankedNameLabel: "玩家名字",
     rankedGithubLabel: "GitHub 账号（可选）",
     rankedNamePlaceholder: "你的名字",

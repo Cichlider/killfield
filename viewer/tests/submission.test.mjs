@@ -88,7 +88,11 @@ function runVerifier(body, {
 const accepted = runVerifier(submissionBody(fixture), { write: true, shared: true });
 assert.equal(accepted.verdict.ok, true,
   `verifier rejected an honest record: ${accepted.verdict.reason}`);
-assert.equal(accepted.verdict.entry.score, fixture.claim);
+assert.equal(accepted.verdict.entry.score, accepted.verdict.entry.wins);
+assert.equal(accepted.verdict.entry.rounds,
+  accepted.verdict.entry.wins + accepted.verdict.entry.losses
+    + accepted.verdict.entry.doubleKills);
+assert.ok(accepted.verdict.entry.wins >= 1);
 assert.equal(accepted.verdict.entry.board, "hybrid");
 assert.equal(accepted.verdict.entry.name, "Test Runner");
 assert.match(accepted.comment, /\*\*Verified\.\*\*/);
@@ -138,7 +142,7 @@ assert.match(anchoredGateway.verdict.reason, /already landed 10 records/);
 
 // The score is the replay's, never the submission's.
 const inflated = runVerifier(submissionBody({ ...fixture, claim: fixture.claim + 50 }));
-assert.equal(inflated.verdict.entry.score, fixture.claim);
+assert.equal(inflated.verdict.entry.wins, accepted.verdict.entry.wins);
 
 // Resubmitting the identical track is refused even under a different name —
 // records are public, so this is the cheapest forgery there is. Recompressing
@@ -201,7 +205,7 @@ rejected(submissionBody({ ...fixture, openingDelaySeconds: 3 }), /allows at most
 
 // A different seed replays a different maze, so the run evaporates.
 rejected(submissionBody({ ...fixture, seed: (fixture.seed + 1) >>> 0 }),
-  /the board starts at|do not match the policy/);
+  /the board starts at|do not match the policy|replay has 0 wins/);
 
 // Standing the opponent still is the cheapest forgery, and the one the action
 // audit exists for. It is caught before the score is even computed.
@@ -235,6 +239,6 @@ assert.equal(backticked.comment.split("```").length, 3,
   "a submitted backtick escaped the fence in the issue comment");
 
 fs.rmSync(workdir, { recursive: true, force: true });
-console.log(`submission: a ${fixture.claim}-round shutout over ${fixture.rounds} rounds `
+console.log(`submission: ${accepted.verdict.entry.wins} wins over ${fixture.rounds} rounds `
   + `(${session.frames.length} frames) accepted; `
   + "forged, mistuned and malformed records all rejected");

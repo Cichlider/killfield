@@ -4,7 +4,7 @@ import { openSubmissionIssue, submissionTitle, submitToGateway } from "../src/su
 
 test("Laika submissions name the correct board", () => {
   assert.equal(submissionTitle({ opponent: "laika", name: "player", claim: 2 }),
-    "[score] 2 vs Laika");
+    "[wins] 2 vs Laika");
 });
 
 test("manual fallback opens the form without bypassing maintainer approval", async () => {
@@ -22,7 +22,7 @@ test("manual fallback opens the form without bypassing maintainer approval", asy
     assert.equal(copied, JSON.stringify(submission));
     assert.equal(url.searchParams.get("template"), "leaderboard.yml");
     assert.equal(url.searchParams.get("labels"), null);
-    assert.equal(url.searchParams.get("title"), "[score] 2 vs Laika");
+    assert.equal(url.searchParams.get("title"), "[wins] 2 vs Laika");
   } finally {
     if (clipboardDescriptor) Object.defineProperty(navigator, "clipboard", clipboardDescriptor);
     else delete navigator.clipboard;

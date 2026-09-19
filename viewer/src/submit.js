@@ -53,7 +53,7 @@ export async function buildSubmission({ result, name, github, stamps }) {
     openingDelaySeconds: result.config.openingDelaySeconds,
     engine: stamps.engine,
     policy: stamps.policy,
-    claim: result.best,
+    claim: result.stats.wins,
     rounds: result.winners.length,
     frames: result.frames,
     startedAt: result.startedAt,
@@ -83,7 +83,7 @@ export function submissionTitle(submission) {
     ?? submission.opponent;
   // Keep player-controlled text out of the title: a name containing @handle
   // must not generate a mention when the player submits the fallback Issue.
-  return `[score] ${submission.claim} vs ${label}`;
+  return `[wins] ${submission.claim} vs ${label}`;
 }
 
 /** Submit without exposing a repository credential to the static page. */

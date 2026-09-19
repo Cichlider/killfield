@@ -491,6 +491,7 @@ header { gap: 4px; }
 
 .board-panel {
   padding: 6px 8px;
+  overflow-x: auto;
   border: 1px solid var(--line);
   border-radius: 16px;
   background: var(--surface);
@@ -499,6 +500,7 @@ header { gap: 4px; }
 
 .board-table {
   width: 100%;
+  min-width: 640px;
   border-collapse: collapse;
   font-variant-numeric: tabular-nums;
 }
@@ -529,7 +531,9 @@ header { gap: 4px; }
 .board-table td:first-child { color: var(--muted); font-size: 12px; }
 .board-table td:nth-child(3) { font-size: 17px; font-weight: 700; }
 .board-table td:nth-child(4),
-.board-table td:nth-child(5) { color: var(--muted); font-size: 12px; }
+.board-table td:nth-child(5),
+.board-table td:nth-child(6),
+.board-table td:nth-child(7) { color: var(--muted); font-size: 12px; }
 
 /* The leader is the only row the page editorialises about. */
 .board-table tr.lead td:first-child { color: var(--accent); font-weight: 700; }

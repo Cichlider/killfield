@@ -63,8 +63,8 @@ function cleanSubmission(value) {
       || value.openingDelaySeconds < 0 || value.openingDelaySeconds > 0.5) {
     fail("The record does not use ranked settings.");
   }
-  if (!Number.isInteger(value.claim) || value.claim < 0 || value.claim > MAX_ROUNDS
-      || !Number.isInteger(value.rounds) || value.rounds < 0 || value.rounds > MAX_ROUNDS
+  if (!Number.isInteger(value.claim) || value.claim < 1 || value.claim > MAX_ROUNDS
+      || !Number.isInteger(value.rounds) || value.rounds < 1 || value.rounds > MAX_ROUNDS
       || value.claim > value.rounds
       || !Number.isInteger(value.frames) || value.frames < 1 || value.frames > MAX_FRAMES) {
     fail("The record dimensions are invalid.");
@@ -129,7 +129,7 @@ async function createIssue(record, encoded, submitter, env) {
   // Do not place the player-controlled name in the title: an @handle there can
   // generate unwanted mention notifications. The name stays inside JSON code
   // fencing and is rendered as text on the board.
-  const title = `[score] ${record.claim} vs ${board}`;
+  const title = `[wins] ${record.claim} vs ${board}`;
   const body = `### Record\n\n\`\`\`json\n${encoded}\n\`\`\`\n\n`
     + `<!-- killfield-gateway:v1:${submitter} -->\n`;
   const response = await fetch(`https://api.github.com/repos/${env.GITHUB_REPOSITORY}/issues`, {

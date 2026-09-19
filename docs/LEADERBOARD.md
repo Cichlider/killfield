@@ -1,8 +1,9 @@
 # The leaderboard
 
-Three boards, one number each: the longest run of consecutive rounds a human took
-off the agent before it took one back. Hybrid, Laika and Killfield (the 512-ray
-planner) are ranked separately. A run qualifies at two.
+Three boards, ranked by total human wins in one recorded run. Hybrid, Laika and
+Killfield (the 512-ray planner) are ranked separately. A run qualifies with one
+win and ends automatically at 200 finished rounds. The board also reports total
+rounds, losses and mutual destructions.
 
 Nothing on the board is a number somebody typed. A submission carries the seed
 and every frame of input, and CI replays it through the same engine binary the
@@ -101,11 +102,12 @@ wheel's forward region is a client-side mapping that resolves into the same
 strengths before anything crosses the FFI, touch and keyboard are equivalent,
 and pausing produces no frames at all.
 
-The score qualifies at two consecutive rounds, counted as the longest run
-anywhere in one continuous session rather than from the opening round. Losing
-does not end the attempt; it ends that streak. Anything that changes the match
-closes the recording — a reroll, a different opponent, a change to either delay
-— and whatever was recorded stays submittable.
+Every human win in the continuous session counts, whether consecutive or not.
+One win qualifies the run, and recording stops automatically after 200 finished
+rounds. Losses and mutual destructions are retained as separate statistics.
+Anything that changes the match closes the recording — a reroll, a different
+opponent, a change to either delay — and whatever was recorded stays
+submittable if it contains at least one win.
 
 ## Who a record belongs to
 
