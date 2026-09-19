@@ -1,5 +1,5 @@
 {
-  "updated": "2026-09-19T12:11:50.899Z",
+  "updated": "2026-09-19T12:17:10.297Z",
   "entries": [
     {
       "name": "Kobi💯",
@@ -80,6 +80,22 @@
       "issue": 18,
       "trackHash": "bd73605ae7313b65f3c12ba0e1c0d9ca",
       "verifiedAt": "2026-09-19T12:11:50.899Z"
+    },
+    {
+      "name": "KD419",
+      "github": null,
+      "submitter": "e64b0d667203e595",
+      "board": "laika",
+      "score": 9,
+      "wins": 9,
+      "losses": 1,
+      "doubleKills": 1,
+      "rounds": 11,
+      "seed": 131158942,
+      "frames": 3970,
+      "issue": 19,
+      "trackHash": "96a7fae73b39148d4ab4e7070bd05b46",
+      "verifiedAt": "2026-09-19T12:17:10.297Z"
     },
     {
       "name": "small-li",
