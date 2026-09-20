@@ -1,5 +1,5 @@
 {
-  "updated": "2026-09-20T12:05:13.426Z",
+  "updated": "2026-09-20T14:17:49.262Z",
   "entries": [
     {
       "name": "Alternator",
@@ -160,6 +160,22 @@
       "issue": 32,
       "trackHash": "db79d3a6aa4721a6a698fe78f24c16d0",
       "verifiedAt": "2026-09-20T02:26:31.987Z"
+    },
+    {
+      "name": "ghost",
+      "github": null,
+      "submitter": "e5ae28eb1718e8cf",
+      "board": "hybrid",
+      "score": 6,
+      "wins": 6,
+      "losses": 24,
+      "doubleKills": 2,
+      "rounds": 32,
+      "seed": 3680439648,
+      "frames": 20495,
+      "issue": 36,
+      "trackHash": "348542f6f81d81aedd509b3eecd9f2fb",
+      "verifiedAt": "2026-09-20T14:17:49.262Z"
     },
     {
       "name": "KD419",
