@@ -1,5 +1,5 @@
 {
-  "updated": "2026-09-20T14:17:49.262Z",
+  "updated": "2026-09-20T19:39:39.225Z",
   "entries": [
     {
       "name": "Alternator",
@@ -48,6 +48,22 @@
       "issue": 10,
       "trackHash": "0f6815d57954e8a7a6361039dae93387",
       "verifiedAt": "2026-09-19T02:59:55.464Z"
+    },
+    {
+      "name": "Brainrot",
+      "github": null,
+      "submitter": "88183c8a244288f8",
+      "board": "killfield",
+      "score": 13,
+      "wins": 13,
+      "losses": 29,
+      "doubleKills": 2,
+      "rounds": 44,
+      "seed": 3594009644,
+      "frames": 18309,
+      "issue": 37,
+      "trackHash": "4e0afd55d54acd2db8422613c99d4a87",
+      "verifiedAt": "2026-09-20T19:39:39.225Z"
     },
     {
       "name": "small-li",
