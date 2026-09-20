@@ -1,6 +1,22 @@
 {
-  "updated": "2026-09-20T19:39:39.225Z",
+  "updated": "2026-09-20T21:56:43.900Z",
   "entries": [
+    {
+      "name": "Trippy",
+      "github": null,
+      "submitter": "72d59cb31a5456a3",
+      "board": "killfield",
+      "score": 50,
+      "wins": 50,
+      "losses": 45,
+      "doubleKills": 8,
+      "rounds": 103,
+      "seed": 2744200043,
+      "frames": 36421,
+      "issue": 38,
+      "trackHash": "3b74dc693f603abad9cfde48828665c5",
+      "verifiedAt": "2026-09-20T21:56:43.900Z"
+    },
     {
       "name": "Alternator",
       "github": null,
