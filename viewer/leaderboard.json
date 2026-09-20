@@ -1,5 +1,5 @@
 {
-  "updated": "2026-09-20T02:26:31.987Z",
+  "updated": "2026-09-20T02:58:37.888Z",
   "entries": [
     {
       "name": "Kobi💯",
@@ -224,6 +224,22 @@
       "issue": 23,
       "trackHash": "e8e7c3d1ee6224a963fe41cd50d5904e",
       "verifiedAt": "2026-09-19T13:15:40.867Z"
+    },
+    {
+      "name": "Trippy",
+      "github": null,
+      "submitter": "72d59cb31a5456a3",
+      "board": "hybrid",
+      "score": 4,
+      "wins": 4,
+      "losses": 15,
+      "doubleKills": 0,
+      "rounds": 19,
+      "seed": 153280967,
+      "frames": 8011,
+      "issue": 33,
+      "trackHash": "3ab6ec9d88a201a3267cac65390517b6",
+      "verifiedAt": "2026-09-20T02:58:37.888Z"
     },
     {
       "name": "rekursion",
