@@ -29,6 +29,13 @@ test("manual fallback opens the form without bypassing maintainer approval", asy
   }
 });
 
+test("manual fallback refuses a replay that only the chunking gateway can carry", async () => {
+  await assert.rejects(
+    openSubmissionIssue({ opponent: "laika", name: "player", claim: 2, track: "A".repeat(60_001) }),
+    (error) => error.code === "SUBMISSION_REQUIRES_GATEWAY",
+  );
+});
+
 test("one-click submission posts the record and challenge token", async () => {
   const originalFetch = globalThis.fetch;
   let captured;

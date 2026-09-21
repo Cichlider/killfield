@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { deflateRawSync } from "node:zlib";
 import { LIMITS, encodeSession, packSession, unpackSession } from "../src/replay.js";
@@ -47,10 +48,13 @@ let isolatedBoardNumber = 0;
 function runVerifier(body, {
   author = "tester", write = false, shared = false,
   gatewayAuthor = "",
+  comments = [],
   boardContents = JSON.stringify({ updated: null, entries: [] }),
 } = {}) {
   const bodyPath = path.join(workdir, "body.md");
+  const commentsPath = path.join(workdir, "comments.json");
   fs.writeFileSync(bodyPath, body);
+  fs.writeFileSync(commentsPath, JSON.stringify(comments));
   const selectedBoard = shared
     ? boardPath
     : path.join(workdir, `isolated-board-${isolatedBoardNumber++}.json`);
@@ -63,6 +67,7 @@ function runVerifier(body, {
         ...process.env,
         ISSUE_AUTHOR: author,
         ISSUE_NUMBER: "7",
+        ISSUE_COMMENTS_FILE: commentsPath,
         LEADERBOARD_GATEWAY_AUTHOR: gatewayAuthor,
       },
       stdio: "pipe",
@@ -139,6 +144,41 @@ const anchoredGateway = runVerifier(embeddedMarker, {
 });
 assert.equal(anchoredGateway.verdict.ok, false);
 assert.match(anchoredGateway.verdict.reason, /already landed 10 records/);
+
+// Large one-click records keep metadata in the Issue and split the replay
+// across comments written by the gateway account. All parts are authenticated
+// and hashed before the ordinary replay verifier sees one track string.
+const chunkHash = createHash("sha256").update(fixture.track).digest("hex");
+const fixtureChunks = [fixture.track.slice(0, 6_000), fixture.track.slice(6_000)];
+const chunkEnvelope = {
+  ...fixture,
+  track: null,
+  trackParts: fixtureChunks.length,
+  trackChars: fixture.track.length,
+  trackSha256: chunkHash,
+};
+const chunkBody = submissionBody(chunkEnvelope)
+  + "\n<!-- killfield-gateway:v2:0123456789abcdef -->\n";
+const chunkComments = fixtureChunks.map((chunk, index) => ({
+  user: { login: "Cichlider" },
+  body: `<!-- killfield-track:v1:7:${index + 1}/${fixtureChunks.length}:${chunkHash} -->\n`
+    + `\`\`\`text\n${chunk}\n\`\`\`\n`,
+}));
+const chunked = runVerifier(chunkBody, {
+  author: "Cichlider", gatewayAuthor: "Cichlider", comments: chunkComments,
+});
+assert.equal(chunked.verdict.ok, true, chunked.verdict.reason);
+const missingChunk = runVerifier(chunkBody, {
+  author: "Cichlider", gatewayAuthor: "Cichlider", comments: chunkComments.slice(0, 1),
+});
+assert.equal(missingChunk.verdict.ok, false);
+assert.match(missingChunk.verdict.reason, /incomplete/);
+const foreignChunks = chunkComments.map((comment) => ({ ...comment, user: { login: "attacker" } }));
+const foreignChunk = runVerifier(chunkBody, {
+  author: "Cichlider", gatewayAuthor: "Cichlider", comments: foreignChunks,
+});
+assert.equal(foreignChunk.verdict.ok, false);
+assert.match(foreignChunk.verdict.reason, /incomplete/);
 
 // The score is the replay's, never the submission's.
 const inflated = runVerifier(submissionBody({ ...fixture, claim: fixture.claim + 50 }));

@@ -8,11 +8,11 @@ name: Verify a leaderboard record
 on:
   issues:
     # One automatic attempt per issue. Allowing `edited` made it possible to
-    # rerun a near-60,000-frame replay indefinitely by editing one public
+    # rerun a near-120,000-frame replay indefinitely by editing one public
     # issue; a rejected player can open a fresh issue after correcting it.
-    # Gateway Issues arrive already labelled. The manual fallback arrives
-    # unlabelled and only runs after a maintainer deliberately adds the label;
-    # ordinary users therefore cannot bypass the gateway to spend Actions.
+    # Small gateway Issues arrive already labelled. Large gateway records put
+    # authenticated chunks in comments first, then add the label. The manual
+    # fallback also arrives unlabelled and runs only after maintainer review.
     types: [opened, labeled]
 
 # One at a time: the board is a file in the repo, and two runs appending to it
@@ -23,9 +23,9 @@ concurrency:
 
 jobs:
   verify:
-    # An API-created gateway Issue can also emit a `labeled` event. Run it on
-    # `opened` only; manual records have no marker and run when a maintainer
-    # adds the label. This prevents duplicate verifier jobs for one Issue.
+    # v1 gateway Issues run on `opened`; their incidental `labeled` event is
+    # ignored. v2 adds its label only after every replay chunk is present, so
+    # it runs on `labeled`. Manual records also run when a maintainer labels.
     if: >-
       contains(github.event.issue.labels.*.name, 'leaderboard') &&
       ((github.event.action == 'opened' && contains(github.event.issue.body, '<!-- killfield-gateway:v1:')) ||
@@ -47,6 +47,13 @@ jobs:
         with:
           node-version: '22'
 
+      - name: Read replay chunks
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          REPOSITORY: ${{ github.repository }}
+        run: gh api "repos/$REPOSITORY/issues/$ISSUE_NUMBER/comments?per_page=100" > issue-comments.json
+
       - name: Replay the record
         id: replay
         continue-on-error: true
@@ -54,6 +61,7 @@ jobs:
           ISSUE_BODY: ${{ github.event.issue.body }}
           ISSUE_AUTHOR: ${{ github.event.issue.user.login }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ISSUE_COMMENTS_FILE: issue-comments.json
           # Issues created by the one-click Worker are attributed to this
           # service account. Only those Issues may carry a gateway rate key.
           LEADERBOARD_GATEWAY_AUTHOR: Cichlider

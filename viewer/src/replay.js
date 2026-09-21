@@ -32,11 +32,13 @@ export const MIN_SUBMITTABLE_WINS = 1;
 
 export const LIMITS = {
   /** ~200 rounds at the ~165 frames/round this engine averages, with headroom. */
-  maxFrames: 60_000,
+  maxFrames: 120_000,
   maxRounds: 200,
   maxEvents: 20_000,
-  /** A GitHub issue body holds 65,536 characters; leave room for the prose. */
-  maxBase64: 60_000,
+  /** Covers the worst-case encoded size allowed by the frame/event bounds. */
+  maxBase64: 3_100_000,
+  /** Manual fallback still has to fit in GitHub's 65,536-character Issue body. */
+  maxIssueBase64: 60_000,
   /** Hard ceiling on what the inflater may produce, checked as it streams. */
   maxInflatedBytes: 4 << 20,
   maxNameLength: 24,

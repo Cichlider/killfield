@@ -32,7 +32,7 @@ export async function buildStamps(engineBytes, policyWeights) {
   };
 }
 
-export async function buildSubmission({ result, name, github, stamps }) {
+export async function buildSubmission({ result, name, github, stamps, enforceUploadLimit = true }) {
   if (!stamps.engine || !stamps.policy) {
     throw new Error("This page must be served over https to sign a record.");
   }
@@ -40,8 +40,8 @@ export async function buildSubmission({ result, name, github, stamps }) {
   if (player === "") throw new Error("A record needs a name to go on the board.");
   const handle = sanitiseHandle(github);
   const track = await packSession(result.recorder.session());
-  if (track.length > LIMITS.maxBase64) {
-    throw new Error("This session is too long to submit in one issue.");
+  if (enforceUploadLimit && track.length > LIMITS.maxBase64) {
+    throw new Error("This session is too large for automatic submission. Download the replay and send the JSON file to the maintainer.");
   }
   return {
     v: SUBMISSION_VERSION,
@@ -119,6 +119,11 @@ export async function submitToGateway(endpoint, submission, turnstileToken) {
  * and would be truncated or refused as a query string.
  */
 export async function openSubmissionIssue(submission) {
+  if (submission.track?.length > LIMITS.maxIssueBase64) {
+    const error = new Error("This replay needs the one-click submission service because it is too large for one GitHub issue.");
+    error.code = "SUBMISSION_REQUIRES_GATEWAY";
+    throw error;
+  }
   const body = submissionPayload(submission);
   let copied = false;
   try {

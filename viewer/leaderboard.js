@@ -8,7 +8,7 @@
  */
 
 import { loadLang, saveLang } from "./src/i18n.js";
-import { LIMITS, MIN_SUBMITTABLE_WINS } from "./src/replay.js?v=win-count-board";
+import { LIMITS, MIN_SUBMITTABLE_WINS } from "./src/replay.js?v=long-replay-download";
 import { RANKED_OPENING_DELAY_SECONDS } from "./src/ranked.js";
 
 /**
@@ -21,9 +21,10 @@ const RULES = {
   en: [
     [`${MIN_SUBMITTABLE_WINS} win to enter`, `Every human win counts. A run needs at least `
       + `${MIN_SUBMITTABLE_WINS} win before it can be submitted.`],
-    [`Up to ${LIMITS.maxRounds} rounds`, "The ranking score is the total number of wins in one "
-      + "continuous ranked run. Losses and double KOs are recorded alongside it. Rerolling "
-      + "the maze or changing the opponent starts a new run."],
+    [`Up to ${LIMITS.maxRounds} rounds / ${LIMITS.maxFrames.toLocaleString()} frames`,
+      "The ranking score is the total number of wins in one continuous ranked run. "
+      + "Recording stops at whichever limit comes first. Losses and double KOs are recorded "
+      + "alongside it. Rerolling the maze or changing the opponent starts a new run."],
     ["No delay for the opponent", "Opponent delay must sit at 0 frames. It is the "
       + "handicap that makes the agent actuate late, and a ranked run gives it none."],
     ["Opening pause at most 0.5s", `The default ${RANKED_OPENING_DELAY_SECONDS}s or `
@@ -36,12 +37,16 @@ const RULES = {
     ["A name, and optionally an account", "Every record goes up under a name. Showing "
       + "a GitHub account is optional. In one-click submissions it is a self-reported "
       + "profile link, not proof that the player owns that account."],
+    ["Submit or keep the replay", "Large records are split automatically when submitted. "
+      + "Every finished ranked run can also be downloaded as JSON—including zero-win and "
+      + "already-submitted runs—so keep the file before refreshing if online submission fails."],
   ],
   zh: [
     [`赢 ${MIN_SUBMITTABLE_WINS} 局即可上榜`, `人的每一个胜场都会计入。一次记录至少赢 `
       + `${MIN_SUBMITTABLE_WINS} 局即可提交。`],
-    [`最多 ${LIMITS.maxRounds} 局`, "排名分数是同一次连续排位记录里的累计胜场。负场和双亡会一起展示。"
-      + "换迷宫或换对手会开始一次新记录。"],
+    [`最多 ${LIMITS.maxRounds} 局 / ${LIMITS.maxFrames.toLocaleString()} 帧`,
+      "排名分数是同一次连续排位记录里的累计胜场，达到任一上限就停止录制。"
+      + "负场和双亡会一起展示。换迷宫或换对手会开始一次新记录。"],
     ["对手零延迟", "对手延迟必须是 0 帧。那是让智能体延迟出手的让步，排位不给任何让步。"],
     ["开局停顿不超过 0.5 秒", `默认的 ${RANKED_OPENING_DELAY_SECONDS} 秒或更短。`
       + "更短只会更难，所以允许。"],
@@ -50,6 +55,8 @@ const RULES = {
     ["其余随意", "轮盘的前向区域、用触屏还是键盘、中途暂停思考——都不改变对局本身，所以都不限制。"],
     ["名字必填，账号可选", "每条记录都要有名字。是否显示 GitHub 账号由你决定，"
       + "一键提交里的账号只是自报的主页链接，不代表平台核验过账号归属。"],
+    ["提交或保存录像", "大录像提交时会自动分块。任何已结束的排位记录都可下载为 JSON——"
+      + "包括 0 胜和已提交记录。如果在线提交失败，请在刷新页面前保存文件。"],
   ],
 };
 

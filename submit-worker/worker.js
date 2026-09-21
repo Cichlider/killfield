@@ -1,7 +1,10 @@
-const MAX_BODY_BYTES = 90_000;
-const MAX_TRACK_CHARS = 60_000;
-const MAX_FRAMES = 60_000;
+const MAX_BODY_BYTES = 3_150_000;
+const MAX_TRACK_CHARS = 3_100_000;
+const MAX_FRAMES = 120_000;
 const MAX_ROUNDS = 200;
+const MAX_RECORD_CHARS = 3_120_000;
+const ISSUE_TRACK_CHARS = 60_000;
+const COMMENT_CHUNK_CHARS = 50_000;
 const DEFAULT_DAILY_LIMIT = 10;
 
 // Keep this cheap edge validation aligned with viewer/src/replay.js. The
@@ -97,7 +100,7 @@ function cleanSubmission(value) {
     track: value.track,
   };
   const encoded = JSON.stringify(record);
-  if (encoded.length > 80_000) fail("The record is too large.", 413);
+  if (encoded.length > MAX_RECORD_CHARS) fail("The record is too large.", 413);
   return { value: record, encoded, name };
 }
 
@@ -124,30 +127,72 @@ async function opaqueClientKey(ip, env) {
   return [...digest.subarray(0, 8)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
+const githubHeaders = (env) => ({
+  accept: "application/vnd.github+json",
+  authorization: `Bearer ${env.GITHUB_TOKEN}`,
+  "content-type": "application/json",
+  "user-agent": "killfield-leaderboard-gateway",
+  "x-github-api-version": "2022-11-28",
+});
+
+async function githubRequest(path, body, env) {
+  const response = await fetch(`https://api.github.com/repos/${env.GITHUB_REPOSITORY}${path}`, {
+    method: "POST",
+    headers: githubHeaders(env),
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    console.error("GitHub request failed", path, response.status, await response.text());
+    fail("The verifier could not be started. Try again shortly.", 502);
+  }
+  return response.json();
+}
+
+async function sha256(text) {
+  const digest = new Uint8Array(await crypto.subtle.digest(
+    "SHA-256", new TextEncoder().encode(text),
+  ));
+  return [...digest].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
 async function createIssue(record, encoded, submitter, env) {
   const board = { hybrid: "Hybrid", laika: "Laika", killfield: "Killfield" }[record.opponent];
   // Do not place the player-controlled name in the title: an @handle there can
   // generate unwanted mention notifications. The name stays inside JSON code
   // fencing and is rendered as text on the board.
   const title = `[wins] ${record.claim} vs ${board}`;
-  const body = `### Record\n\n\`\`\`json\n${encoded}\n\`\`\`\n\n`
-    + `<!-- killfield-gateway:v1:${submitter} -->\n`;
-  const response = await fetch(`https://api.github.com/repos/${env.GITHUB_REPOSITORY}/issues`, {
-    method: "POST",
-    headers: {
-      accept: "application/vnd.github+json",
-      authorization: `Bearer ${env.GITHUB_TOKEN}`,
-      "content-type": "application/json",
-      "user-agent": "killfield-leaderboard-gateway",
-      "x-github-api-version": "2022-11-28",
-    },
-    body: JSON.stringify({ title, body, labels: ["leaderboard"] }),
-  });
-  if (!response.ok) {
-    console.error("GitHub issue creation failed", response.status, await response.text());
-    fail("The verifier could not be started. Try again shortly.", 502);
+  if (record.track.length <= ISSUE_TRACK_CHARS) {
+    const body = `### Record\n\n\`\`\`json\n${encoded}\n\`\`\`\n\n`
+      + `<!-- killfield-gateway:v1:${submitter} -->\n`;
+    return githubRequest("/issues", { title, body, labels: ["leaderboard"] }, env);
   }
-  return response.json();
+
+  // GitHub caps an Issue body at 65,536 characters. Keep the small metadata in
+  // the Issue, put the replay in authenticated comments, and add the label
+  // only after every chunk landed so Actions can never observe a partial run.
+  const trackHash = await sha256(record.track);
+  const chunks = [];
+  for (let offset = 0; offset < record.track.length; offset += COMMENT_CHUNK_CHARS) {
+    chunks.push(record.track.slice(offset, offset + COMMENT_CHUNK_CHARS));
+  }
+  const envelope = {
+    ...record,
+    track: null,
+    trackParts: chunks.length,
+    trackChars: record.track.length,
+    trackSha256: trackHash,
+  };
+  const body = `### Record\n\n\`\`\`json\n${JSON.stringify(envelope)}\n\`\`\`\n\n`
+    + `<!-- killfield-gateway:v2:${submitter} -->\n`;
+  const issue = await githubRequest("/issues", { title, body, labels: [] }, env);
+  for (let index = 0; index < chunks.length; index += 1) {
+    const marker = `<!-- killfield-track:v1:${issue.number}:${index + 1}/${chunks.length}:${trackHash} -->`;
+    await githubRequest(`/issues/${issue.number}/comments`, {
+      body: `${marker}\n\`\`\`text\n${chunks[index]}\n\`\`\`\n`,
+    }, env);
+  }
+  await githubRequest(`/issues/${issue.number}/labels`, { labels: ["leaderboard"] }, env);
+  return issue;
 }
 
 export default {

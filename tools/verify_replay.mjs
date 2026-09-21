@@ -48,11 +48,15 @@ const SUBMISSION_VERSION = 1;
 const BOARDS = { hybrid: "hybrid", laika: "laika", killfield: "killfield" };
 /** Ceiling on entries one account can land in a day, to bound Actions spend. */
 const DAILY_SUBMISSION_LIMIT = 10;
-const MAX_JSON_CHARS = 80_000;
+const MAX_JSON_CHARS = 130_000;
+const MAX_ISSUE_BODY_CHARS = 80_000;
+/** 3.1M encoded characters split into the Worker's 50,000-char comments. */
+const MAX_TRACK_PARTS = 62;
 // The Worker appends exactly one marker after the fenced record. Anchoring it
 // to the end prevents a marker-shaped string inside attacker-controlled JSON
 // from being mistaken for the trusted rate-limit identity.
-const GATEWAY_MARKER = /\n<!-- killfield-gateway:v1:([a-f0-9]{16}) -->\s*$/;
+const GATEWAY_MARKER = /\n<!-- killfield-gateway:v([12]):([a-f0-9]{16}) -->\s*$/;
+const TRACK_MARKER = /^<!-- killfield-track:v1:(\d+):(\d+)\/(\d+):([a-f0-9]{64}) -->\n```text\n([A-Za-z0-9+/=]+)\n```\s*$/;
 
 const reject = (why) => { throw new RejectedSubmission(why); };
 
@@ -62,7 +66,7 @@ const reject = (why) => { throw new RejectedSubmission(why); };
  *  for humans and is never interpreted. */
 function extractSubmission(body) {
   if (typeof body !== "string" || body.length === 0) reject("the issue body is empty");
-  if (body.length > MAX_JSON_CHARS * 2) reject("the issue body is too large to parse");
+  if (body.length > MAX_ISSUE_BODY_CHARS) reject("the issue body is too large to parse");
   const fence = /```json\s*\n([\s\S]*?)\n```/.exec(body);
   if (fence === null) reject("no ```json record block in the issue body");
   const text = fence[1];
@@ -73,6 +77,52 @@ function extractSubmission(body) {
     reject("the record block is not valid JSON");
   }
   return null;
+}
+
+function readComments(file) {
+  if (!file) return [];
+  let comments;
+  try {
+    comments = JSON.parse(fs.readFileSync(file, "utf8"));
+  } catch {
+    reject("the Issue comments could not be read");
+  }
+  if (!Array.isArray(comments) || comments.length > 100) {
+    reject("the Issue comments have an invalid shape");
+  }
+  return comments;
+}
+
+function restoreChunkedTrack(submission, comments, gateway, issue) {
+  if (submission.track !== null) return submission;
+  if (gateway?.version !== 2) reject("a chunked track did not come through the v2 gateway");
+  if (!isInteger(submission.trackParts, 2, MAX_TRACK_PARTS)
+      || !isInteger(submission.trackChars, 1, LIMITS.maxBase64)
+      || !/^[a-f0-9]{64}$/.test(submission.trackSha256 ?? "")) {
+    reject("the chunked track metadata is invalid");
+  }
+  if (!Number.isInteger(issue)) reject("a chunked track has no Issue number");
+  const gatewayAuthor = process.env.LEADERBOARD_GATEWAY_AUTHOR ?? "";
+  const parts = new Array(submission.trackParts);
+  for (const comment of comments) {
+    if (comment?.user?.login?.toLowerCase() !== gatewayAuthor.toLowerCase()) continue;
+    const match = TRACK_MARKER.exec(comment.body ?? "");
+    if (match === null || Number(match[1]) !== issue) continue;
+    const index = Number(match[2]);
+    const total = Number(match[3]);
+    const hash = match[4];
+    if (total !== submission.trackParts || hash !== submission.trackSha256
+        || index < 1 || index > total || parts[index - 1] !== undefined) {
+      reject("the replay chunk set is inconsistent");
+    }
+    parts[index - 1] = match[5];
+  }
+  if (parts.includes(undefined)) reject("the replay chunk set is incomplete");
+  const track = parts.join("");
+  if (track.length !== submission.trackChars) reject("the replay chunks have the wrong total length");
+  const hash = createHash("sha256").update(track).digest("hex");
+  if (hash !== submission.trackSha256) reject("the replay chunks failed their SHA-256 check");
+  return { ...submission, track };
 }
 
 const isInteger = (value, low, high) =>
@@ -215,7 +265,7 @@ function gatewaySubmitter(body, author) {
       || author.toLowerCase() !== gatewayAuthor.toLowerCase()) {
     reject("the one-click gateway marker was not posted by the configured gateway account");
   }
-  return marker[1];
+  return { version: Number(marker[1]), key: marker[2] };
 }
 
 function checkRateLimit(board, key) {
@@ -232,9 +282,10 @@ function checkRateLimit(board, key) {
 // ----------------------------------------------------------------- verifying
 
 async function verify({ body, author, issue }) {
-  const submission = extractSubmission(body);
-  const config = validateShape(submission);
   const gateway = gatewaySubmitter(body, author);
+  const comments = readComments(process.env.ISSUE_COMMENTS_FILE);
+  const submission = restoreChunkedTrack(extractSubmission(body), comments, gateway, issue);
+  const config = validateShape(submission);
 
   const engine = loadEngine();
   if (submission.engine !== engine.stamp) {
@@ -246,7 +297,7 @@ async function verify({ body, author, issue }) {
   }
 
   const board = loadBoard();
-  const submitter = submitterKey(author, gateway);
+  const submitter = submitterKey(author, gateway?.key ?? null);
   checkRateLimit(board, submitter);
 
   // Bounded and shape-checked before a single frame is stepped.
@@ -294,7 +345,7 @@ async function verify({ body, author, issue }) {
     board,
     entry: {
       name: sanitiseName(submission.name),
-      github: declaredHandle(submission.github, author, gateway),
+      github: declaredHandle(submission.github, author, gateway?.key ?? null),
       submitter,
       board: BOARDS[config.opponent],
       // `score` remains as a compatibility alias for the three existing

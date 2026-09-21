@@ -25,7 +25,7 @@
  */
 
 import * as C from "./src/constants.js";
-import { STRINGS, loadLang, saveLang } from "./src/i18n.js?v=github-fallback";
+import { STRINGS, loadLang, saveLang } from "./src/i18n.js?v=chunked-replay";
 import { Keyboard, TouchControls } from "./src/input.js?v=wheel-360";
 import { SoundEffects } from "./src/audio.js";
 import { Rng } from "./src/rng.js";
@@ -33,7 +33,7 @@ import { interpolatePredictedPose, simulationBudget } from "./src/low-latency.js
 import { HybridPolicy } from "./src/hybrid.js?v=4be8a6e2";
 import {
   HUMAN_SEAT, LIMITS, MIN_SUBMITTABLE_WINS, summariseResults,
-} from "./src/replay.js?v=win-count-board";
+} from "./src/replay.js?v=chunked-replay";
 // engine/src/duel_obs.rs: the Hybrid observation is schema 24, 1028 semantic
 // floats then 10 bullet-mask floats. These live in src/ranked.js because the
 // leaderboard verifier reads the same layout out of the same wasm memory.
@@ -50,7 +50,7 @@ import {
 } from "./src/ranked.js?v=policy-pilot";
 import {
   buildStamps, buildSubmission, openSubmissionIssue, submitToGateway,
-} from "./src/submit.js?v=github-fallback";
+} from "./src/submit.js?v=chunked-replay";
 
 const STEP_MS = 1000 / C.FPS; // 40 ms
 const MAX_CATCHUP_MS = 250;
@@ -171,6 +171,7 @@ const rankedNameInput = document.getElementById("ranked-name");
 const rankedGithubLabel = document.getElementById("ranked-github-label");
 const rankedGithubInput = document.getElementById("ranked-github");
 const rankedUploadButton = document.getElementById("ranked-upload");
+const rankedDownloadButton = document.getElementById("ranked-download");
 const rankedGithubFallbackButton = document.getElementById("ranked-github-fallback");
 const rankedBoardLabel = document.getElementById("ranked-board-label");
 const rankedTurnstile = document.getElementById("ranked-turnstile");
@@ -831,6 +832,7 @@ function syncRankedUI() {
   rankedStartButton.disabled = rankedSubmitting;
   rankedStartButton.classList.toggle("active", Boolean(ranked));
   set(rankedUploadButton, "textContent", rankedSubmitting ? s.rankedSubmittingButton : s.rankedUpload);
+  set(rankedDownloadButton, "textContent", s.rankedDownload);
   set(rankedGithubFallbackButton, "textContent", s.rankedGithubFallback);
   set(rankedGithubFallbackButton, "hidden", !rankedGithubFallbackVisible || rankedSubmitted);
   set(rankedBoardLabel, "textContent", s.rankedBoard);
@@ -838,10 +840,11 @@ function syncRankedUI() {
   set(rankedGithubLabel, "textContent", s.rankedGithubLabel);
   set(rankedNameInput, "placeholder", s.rankedNamePlaceholder);
   set(rankedGithubInput, "placeholder", s.rankedGithubPlaceholder);
-  // A record goes on the board under a name; there is no anonymous entry.
-  rankedUploadButton.disabled = rankedSubmitting || rankedSubmitted
-    || rankedNameInput.value.trim() === "";
   const eligible = rankedResult !== null && rankedResult.stats.wins >= MIN_SUBMITTABLE_WINS;
+  // A record goes on the board under a name; there is no anonymous entry.
+  rankedUploadButton.disabled = rankedSubmitting || rankedSubmitted || !eligible
+    || rankedNameInput.value.trim() === "";
+  rankedDownloadButton.disabled = rankedSubmitting;
   const shown = ranked ?? rankedResult;
   set(rankedScore, "textContent", String(shown ? shown.stats.wins : 0));
   set(rankedUnit, "textContent", s.rankedUnit);
@@ -862,7 +865,10 @@ function syncRankedUI() {
       : s.rankedTooShort(MIN_SUBMITTABLE_WINS);
   }
   set(rankedStatus, "textContent", status);
-  set(rankedSubmit, "hidden", !eligible || rankedSubmitted);
+  // Every finished run can be kept locally, including a zero-win run and a
+  // run that has already been submitted. Only the online Submit button is
+  // gated by leaderboard eligibility.
+  set(rankedSubmit, "hidden", rankedResult === null);
 }
 
 /**
@@ -870,6 +876,11 @@ function syncRankedUI() {
  * after this one button press; most visitors get a token in the background,
  * while suspicious traffic may see the managed challenge in this same row.
  */
+function canUseGithubFallback() {
+  return pendingGatewaySubmission !== null
+    && pendingGatewaySubmission.track.length <= LIMITS.maxIssueBase64;
+}
+
 async function uploadRankedResult() {
   if (rankedResult === null || rankedSubmitting || rankedSubmitted) return;
   try {
@@ -887,8 +898,9 @@ async function uploadRankedResult() {
       throw new Error(t().rankedNotConfigured);
     }
     if (!globalThis.turnstile) {
-      rankedGithubFallbackVisible = true;
-      throw new Error(t().rankedChallengeUnavailable);
+      const canUseGithub = canUseGithubFallback();
+      rankedGithubFallbackVisible = canUseGithub;
+      throw new Error(canUseGithub ? t().rankedChallengeUnavailable : t().rankedLargeNetworkFailed);
     }
     rankedSubmitting = true;
     rankedSubmissionError = null;
@@ -909,25 +921,28 @@ async function uploadRankedResult() {
             globalThis.turnstile.reset(turnstileWidgetId);
           } catch (error) {
             rankedSubmitting = false;
+            const canUseGithub = canUseGithubFallback();
             rankedSubmissionError = error.code === "SUBMISSION_NETWORK_ERROR"
-              ? t().rankedNetworkFailed
+              ? (canUseGithub ? t().rankedNetworkFailed : t().rankedLargeNetworkFailed)
               : error.message ?? String(error);
-            rankedGithubFallbackVisible = error.code === "SUBMISSION_NETWORK_ERROR";
+            rankedGithubFallbackVisible = error.code === "SUBMISSION_NETWORK_ERROR" && canUseGithub;
             globalThis.turnstile.reset(turnstileWidgetId);
           }
           syncRankedUI();
         },
         "error-callback": () => {
           rankedSubmitting = false;
-          rankedSubmissionError = t().rankedChallengeFailed;
-          rankedGithubFallbackVisible = true;
+          const canUseGithub = canUseGithubFallback();
+          rankedSubmissionError = canUseGithub ? t().rankedChallengeFailed : t().rankedLargeNetworkFailed;
+          rankedGithubFallbackVisible = canUseGithub;
           globalThis.turnstile.reset(turnstileWidgetId);
           syncRankedUI();
         },
         "expired-callback": () => {
           rankedSubmitting = false;
-          rankedSubmissionError = t().rankedChallengeFailed;
-          rankedGithubFallbackVisible = true;
+          const canUseGithub = canUseGithubFallback();
+          rankedSubmissionError = canUseGithub ? t().rankedChallengeFailed : t().rankedLargeNetworkFailed;
+          rankedGithubFallbackVisible = canUseGithub;
           globalThis.turnstile.reset(turnstileWidgetId);
           syncRankedUI();
         },
@@ -936,10 +951,11 @@ async function uploadRankedResult() {
     globalThis.turnstile.execute(turnstileWidgetId);
   } catch (error) {
     rankedSubmitting = false;
+    const canUseGithub = canUseGithubFallback();
     rankedSubmissionError = error.code === "SUBMISSION_NETWORK_ERROR"
-      ? t().rankedNetworkFailed
+      ? (canUseGithub ? t().rankedNetworkFailed : t().rankedLargeNetworkFailed)
       : error.message ?? String(error);
-    if (error.code === "SUBMISSION_NETWORK_ERROR") rankedGithubFallbackVisible = true;
+    if (error.code === "SUBMISSION_NETWORK_ERROR") rankedGithubFallbackVisible = canUseGithub;
     syncRankedUI();
   }
 }
@@ -950,7 +966,18 @@ async function uploadRankedResultViaGithub() {
   // blockers while the clipboard operation completes.
   const githubTab = window.open("about:blank", "_blank");
   if (githubTab) githubTab.opener = null;
-  const fallback = await openSubmissionIssue(pendingGatewaySubmission);
+  let fallback;
+  try {
+    fallback = await openSubmissionIssue(pendingGatewaySubmission);
+  } catch (error) {
+    githubTab?.close();
+    rankedSubmissionError = error.code === "SUBMISSION_REQUIRES_GATEWAY"
+      ? t().rankedLargeNetworkFailed
+      : error.message ?? String(error);
+    rankedGithubFallbackVisible = false;
+    syncRankedUI();
+    return;
+  }
   if (!fallback.copied) {
     githubTab?.close();
     rankedSubmissionError = t().rankedGithubCopyFailed;
@@ -960,6 +987,34 @@ async function uploadRankedResultViaGithub() {
   rankedSubmissionError = t().rankedGithubCopied;
   if (githubTab) githubTab.location.replace(fallback.url);
   else window.location.assign(fallback.url);
+  syncRankedUI();
+}
+
+async function downloadRankedResult() {
+  if (rankedResult === null || rankedSubmitting) return;
+  try {
+    const submission = await buildSubmission({
+      result: rankedResult,
+      name: rankedNameInput.value.trim() || "Unnamed",
+      github: rankedGithubInput.value,
+      stamps: binaryStamps,
+      // A local rescue copy is deliberately independent of the gateway and
+      // GitHub Issue limits. The maintainer can inspect or split it later.
+      enforceUploadLimit: false,
+    });
+    const blob = new Blob([`${JSON.stringify(submission)}\n`], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `killfield-replay-${submission.opponent}-${submission.seed}.json`;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    rankedSubmissionError = t().rankedDownloaded;
+  } catch (error) {
+    rankedSubmissionError = error.message ?? String(error);
+  }
   syncRankedUI();
 }
 
@@ -1334,6 +1389,7 @@ async function boot() {
     rankedStartButton.blur();
   });
   rankedUploadButton.addEventListener("click", uploadRankedResult);
+  rankedDownloadButton.addEventListener("click", downloadRankedResult);
   rankedGithubFallbackButton.addEventListener("click", uploadRankedResultViaGithub);
   try {
     rankedNameInput.value = localStorage.getItem(RANKED_NAME_STORAGE_KEY) ?? "";

@@ -35,9 +35,13 @@ separately, anchored to the frame count at the moment they reached the engine.
 Pausing needs no representation: the loop simply stops calling `kf_step`, so a
 pause produces no frames at all.
 
-The whole thing is deflated and base64'd. It runs about 1.2 characters per
-frame, so a 30-round session is under 6,000 characters and even 80 rounds sits
-at a quarter of what a GitHub issue body holds.
+The whole thing is deflated and base64'd. Compression depends on the player's
+input and the opponent's action entropy, so round count alone does not predict
+the final size. One verified 103-round Killfield run used 36,421 frames and
+54,784 base64 characters — already close to a single Issue body. The one-click
+gateway therefore accepts up to 3,100,000 characters—enough for the worst-case
+encoding allowed by the 120,000-frame and 20,000-event bounds—and splits
+anything above 60,000 across authenticated comments.
 
 ## How a forged record is caught
 
@@ -132,12 +136,28 @@ Worker. The Worker holds the repository credential, applies an edge rate limit,
 and opens the labelled Issue that starts verification. The credential is never
 sent to the browser. GitHub login is not required.
 
+Runs that no longer fit in one GitHub Issue are split across authenticated
+Issue comments. The Worker creates the Issue without the leaderboard label,
+posts every chunk, and adds the label only when the set is complete. The
+verifier accepts chunks only from the gateway account and checks their order,
+declared length and SHA-256 before inflating or replaying anything. The upload
+bound covers the worst-case encoded size permitted by the existing 120,000-frame
+and 20,000-event replay limits, rather than introducing a second, compression-
+dependent duration limit.
+
+**Download replay** is the independent escape hatch. It saves the complete
+compressed record as JSON without applying the gateway or Issue size limit, so
+a player can keep the run before refreshing and send the file to a maintainer
+if every online submission path fails.
+
 When the gateway is unreachable, the page exposes **Submit with GitHub**. It
 copies the bare record JSON and opens the repository Issue form; the player
 pastes it into Record and submits. The form adds the ```json fence itself. It
 does not apply the `leaderboard` label: a maintainer must add that label to
 start verification, so public users cannot bypass the gateway's Turnstile and
-edge limit to spend Actions minutes.
+edge limit to spend Actions minutes. This fallback appears only while the
+record still fits in one Issue. Larger records must retry the chunking gateway
+or use **Download replay** and send the saved JSON to a maintainer.
 
 `.github/workflows/leaderboard.yml` verifies it. That workflow runs on input
 from anyone on the internet while holding a token that can write to the repo,
