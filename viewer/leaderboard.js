@@ -39,7 +39,8 @@ const RULES = {
       + "profile link, not proof that the player owns that account."],
     ["Submit or keep the replay", "Large records are split automatically when submitted. "
       + "Every finished ranked run can also be downloaded as JSON—including zero-win and "
-      + "already-submitted runs—so keep the file before refreshing if online submission fails."],
+      + "already-submitted runs—so keep the file before refreshing if online submission fails. "
+      + "Anyone can drop that file into Replay to watch and seek through the run."],
   ],
   zh: [
     [`赢 ${MIN_SUBMITTABLE_WINS} 局即可上榜`, `人的每一个胜场都会计入。一次记录至少赢 `
@@ -56,7 +57,8 @@ const RULES = {
     ["名字必填，账号可选", "每条记录都要有名字。是否显示 GitHub 账号由你决定，"
       + "一键提交里的账号只是自报的主页链接，不代表平台核验过账号归属。"],
     ["提交或保存录像", "大录像提交时会自动分块。任何已结束的排位记录都可下载为 JSON——"
-      + "包括 0 胜和已提交记录。如果在线提交失败，请在刷新页面前保存文件。"],
+      + "包括 0 胜和已提交记录。如果在线提交失败，请在刷新页面前保存文件。"
+      + "任何人都可以把该文件拖入“录像”模式观看并拖动进度。"],
   ],
 };
 

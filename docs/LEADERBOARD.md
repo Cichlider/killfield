@@ -148,7 +148,9 @@ dependent duration limit.
 **Download replay** is the independent escape hatch. It saves the complete
 compressed record as JSON without applying the gateway or Issue size limit, so
 a player can keep the run before refreshing and send the file to a maintainer
-if every online submission path fails.
+if every online submission path fails. The viewer's **Replay** mode accepts the
+same JSON by file picker or drag-and-drop, recreates the match in the engine,
+and provides pause, sound, fullscreen and deterministic frame seeking.
 
 When the gateway is unreachable, the page exposes **Submit with GitHub**. It
 copies the bare record JSON and opens the repository Issue form; the player

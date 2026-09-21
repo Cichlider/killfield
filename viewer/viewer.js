@@ -25,15 +25,16 @@
  */
 
 import * as C from "./src/constants.js";
-import { STRINGS, loadLang, saveLang } from "./src/i18n.js?v=chunked-replay";
+import { STRINGS, loadLang, saveLang } from "./src/i18n.js?v=replay-player";
 import { Keyboard, TouchControls } from "./src/input.js?v=wasd-1";
 import { SoundEffects } from "./src/audio.js";
 import { Rng } from "./src/rng.js";
 import { interpolatePredictedPose, simulationBudget } from "./src/low-latency.js";
 import { HybridPolicy } from "./src/hybrid.js?v=4be8a6e2";
 import {
-  HUMAN_SEAT, LIMITS, MIN_SUBMITTABLE_WINS, summariseResults,
-} from "./src/replay.js?v=chunked-replay";
+  HUMAN_SEAT, LIMITS, MIN_SUBMITTABLE_WINS, NO_ACTION, summariseResults,
+} from "./src/replay.js?v=replay-player";
+import { parseReplayFile, replayClock } from "./src/replay-player.js?v=1";
 // engine/src/duel_obs.rs: the Hybrid observation is schema 24, 1028 semantic
 // floats then 10 bullet-mask floats. These live in src/ranked.js because the
 // leaderboard verifier reads the same layout out of the same wasm memory.
@@ -94,12 +95,13 @@ const CONTROLLER_NAMES = { killfield: "Killfield", laika: "Laika", hybrid: "Hybr
  *  the original Killfield-is-black convention regardless of which of the
  *  three controllers is standing in for it. */
 function roleForSeat(seat) {
-  if (mode === "play") return seat === 1 ? "red" : "black";
+  if (mode === "play" || mode === "replay") return seat === 1 ? "red" : "black";
   return seat === 0 ? "red" : "black";
 }
 const MODES = {
   watch: { humanTank: null },
   play: { humanTank: 1 },
+  replay: { humanTank: null },
 };
 
 // ---------------------------------------------------------------- DOM refs
@@ -117,6 +119,15 @@ const forwardAlignmentLabel = document.getElementById("forward-alignment-label")
 const forwardAlignmentValue = document.getElementById("forward-alignment-value");
 const watchConfig = document.getElementById("watch-config");
 const playConfig = document.getElementById("play-config");
+const replayLoader = document.getElementById("replay-loader");
+const replayFileInput = document.getElementById("replay-file");
+const replayDrop = document.getElementById("replay-drop");
+const replayDropTitle = document.getElementById("replay-drop-title");
+const replayDropBody = document.getElementById("replay-drop-body");
+const replayMessage = document.getElementById("replay-message");
+const replayProgress = document.getElementById("replay-progress");
+const replaySeek = document.getElementById("replay-seek");
+const replayTime = document.getElementById("replay-time");
 const watchLeftLabel = document.getElementById("watch-left-label");
 const watchRightLabel = document.getElementById("watch-right-label");
 const controllerSelects = [0, 1].map((i) => document.getElementById(`controller-${i}`));
@@ -142,6 +153,7 @@ const controlReroll = document.getElementById("control-reroll");
 const controlPause = document.getElementById("control-pause");
 const watchButton = document.getElementById("mode-watch");
 const playButton = document.getElementById("mode-play");
+const replayButton = document.getElementById("mode-replay");
 const stage = document.getElementById("stage");
 const pauseButton = document.getElementById("pause");
 const soundButton = document.getElementById("sound");
@@ -156,6 +168,7 @@ const rankedNameInput = document.getElementById("ranked-name");
 const rankedGithubLabel = document.getElementById("ranked-github-label");
 const rankedGithubInput = document.getElementById("ranked-github");
 const rankedUploadButton = document.getElementById("ranked-upload");
+const rankedWatchButton = document.getElementById("ranked-watch");
 const rankedDownloadButton = document.getElementById("ranked-download");
 const rankedGithubFallbackButton = document.getElementById("ranked-github-fallback");
 const rankedBoardLabel = document.getElementById("ranked-board-label");
@@ -572,6 +585,11 @@ function applyLanguage() {
   langToggle.setAttribute("aria-label", s.langToggleAria);
   watchButton.textContent = s.modeWatch;
   playButton.textContent = s.modePlay;
+  replayButton.textContent = s.modeReplay;
+  replayDropTitle.textContent = s.replayDropTitle;
+  replayDropBody.textContent = s.replayDropBody;
+  replayProgress.setAttribute("aria-label", s.replayProgress);
+  replaySeek.setAttribute("aria-label", s.replayProgress);
   watchLeftLabel.textContent = s.watchLeftLabel;
   watchRightLabel.textContent = s.watchRightLabel;
   playOpponentLabel.textContent = s.opponentLabel;
@@ -621,6 +639,12 @@ let hybridSeats = [];
  *  opening pause, in the same implementation the leaderboard verifier replays
  *  with (src/ranked.js). Null in Watch mode, which has neither. */
 let opponentDriver = null;
+/** Loaded downloaded record and deterministic playback cursor. */
+let replayPlayback = null;
+let replaySeeking = false;
+let replayScrubbing = false;
+let replaySeekToken = 0;
+let watchAfterSubmission = null;
 
 /** The ranked session being recorded, and the finished one awaiting upload.
  *  Recording is only ever armed from the ranked button, and any change to the
@@ -644,6 +668,9 @@ let matchScore = [0, 0];
 let streak = loadStreak();
 
 function controllerForSeat(seat) {
+  if (mode === "replay") {
+    return seat === HUMAN_SEAT ? "human" : (replayPlayback?.record.opponent ?? "hybrid");
+  }
   return mode === "play" ? (seat === 1 ? "human" : playOpponentSelect.value) : seatController[seat];
 }
 
@@ -653,6 +680,7 @@ function activeTankColors() {
 
 function seatDisplayName(seat) {
   const c = controllerForSeat(seat);
+  if (mode === "replay" && seat === HUMAN_SEAT) return replayPlayback?.record.name || t().nameYou;
   return c === "human" ? t().nameYou : CONTROLLER_NAMES[c];
 }
 
@@ -674,7 +702,7 @@ function resetScore() {
 /** Whose run the streak line reports: your own when you are playing, and the
  *  left seat when you are watching two agents. */
 function streakSeat() {
-  return mode === "play" ? HUMAN_SEAT : 0;
+  return mode === "play" || mode === "replay" ? HUMAN_SEAT : 0;
 }
 
 function applyRoundEnd(winner) {
@@ -690,6 +718,7 @@ function applyRoundEnd(winner) {
   // -1: no winner yet; 2: double kill. Neither changes score or streak.
   if (winner !== 0 && winner !== 1) return;
   matchScore[winner] += 1;
+  if (mode === "replay") return;
   if (winner === streakSeat()) {
     streak.current += 1;
     if (streak.current > streak.longest) streak.longest = streak.current;
@@ -705,6 +734,133 @@ function syncPlayOpponentControls() {
   const hideDelays = mode === "play" && playOpponentSelect.value === "laika";
   reactionDelayField.hidden = hideDelays;
   openingDelayField.hidden = hideDelays;
+}
+
+function syncReplayProgress(message = null) {
+  const total = replayPlayback?.session.frames.length ?? 0;
+  const frameIndex = replayPlayback?.frameIndex ?? 0;
+  replaySeek.max = String(Math.max(1, total));
+  if (!replayScrubbing) replaySeek.value = String(Math.min(frameIndex, total));
+  replaySeek.disabled = total === 0 || replaySeeking;
+  replayTime.textContent = replayClock(frameIndex, total, C.FPS);
+  if (message !== null) replayMessage.textContent = message;
+}
+
+function resetReplayEngine() {
+  if (!replayPlayback || wasm === null) return;
+  if (handle !== null) wasm.kf_free(handle);
+  const { record } = replayPlayback;
+  handle = wasm.kf_new(record.seed, record.opponent === "laika" ? 1 : 0);
+  opponentDriver = new OpponentDriver({
+    opponent: record.opponent,
+    delayFrames: record.delayFrames,
+    openingDelayFrames: Math.round(record.openingDelaySeconds * C.FPS),
+    policy: hybridPolicy,
+  });
+  opponentDriver.attach(wasm, handle);
+  hybridSeats = [];
+  replayPlayback.frameIndex = 0;
+  replayPlayback.eventIndex = 0;
+  matchScore = [0, 0];
+  streak.current = 0;
+  roundFrames = 0;
+  previousRenderState = captureRenderState(renderBuffer());
+  const buf = renderBuffer();
+  currentRound = buf[9];
+  frozen = buf[14] > 0.5;
+  syncTeamColors();
+  syncReplayProgress(t().replayReady(record.name || t().nameYou, replayPlayback.session.frames.length));
+}
+
+function stepReplayFrame(withSound = true) {
+  if (!replayPlayback || replayPlayback.frameIndex >= replayPlayback.session.frames.length) {
+    paused = true;
+    syncPauseButton();
+    return false;
+  }
+  const { session } = replayPlayback;
+  const index = replayPlayback.frameIndex;
+  while (replayPlayback.eventIndex < session.events.length
+      && session.events[replayPlayback.eventIndex].frame === index) {
+    const fired = wasm.kf_set_fire_immediate(
+      handle, HUMAN_SEAT, session.events[replayPlayback.eventIndex].value,
+    );
+    if (withSound && fired) sounds.playEvent(["fire"]);
+    replayPlayback.eventIndex += 1;
+  }
+  const recorded = session.frames[index];
+  wasm.kf_set_input(handle, HUMAN_SEAT, recorded.forward, recorded.backup,
+    recorded.turnLeft, recorded.turnRight, recorded.fire, 1);
+  const decision = opponentDriver.decide(wasm, handle);
+  if (decision !== null) {
+    if (recorded.action === NO_ACTION) throw new Error("Replay is missing an opponent action");
+    opponentDriver.apply(wasm, handle, recorded.action);
+  }
+  roundFrames += 1;
+  const flags = wasm.kf_step(handle);
+  opponentDriver.afterStep(wasm, handle, flags);
+  if (withSound) playSoundsForFlags(flags);
+  const buf = renderBuffer();
+  currentRound = buf[9];
+  frozen = buf[14] > 0.5;
+  if (flags & 1) roundFrames = 0;
+  if (flags & 64) applyRoundEnd(buf[15]);
+  replayPlayback.frameIndex += 1;
+  syncReplayProgress();
+  if (replayPlayback.frameIndex >= session.frames.length) {
+    paused = true;
+    syncPauseButton();
+  }
+  return true;
+}
+
+async function seekReplay(target) {
+  if (!replayPlayback) return;
+  const bounded = Math.max(0, Math.min(replayPlayback.session.frames.length, Math.round(target)));
+  const token = ++replaySeekToken;
+  replaySeeking = true;
+  paused = true;
+  syncPauseButton();
+  if (bounded < replayPlayback.frameIndex) resetReplayEngine();
+  syncReplayProgress(t().replaySeeking);
+  try {
+    while (replayPlayback.frameIndex < bounded && token === replaySeekToken) {
+      const stop = Math.min(bounded, replayPlayback.frameIndex + 250);
+      while (replayPlayback.frameIndex < stop) stepReplayFrame(false);
+      await new Promise(requestAnimationFrame);
+    }
+  } finally {
+    if (token === replaySeekToken) {
+      replaySeeking = false;
+      syncReplayProgress(t().replayReady(
+        replayPlayback.record.name || t().nameYou, replayPlayback.session.frames.length,
+      ));
+    }
+  }
+}
+
+async function loadReplayRecord(value) {
+  try {
+    const text = typeof value === "string" ? value : JSON.stringify(value);
+    const loaded = await parseReplayFile(text, binaryStamps);
+    replayPlayback = { ...loaded, frameIndex: 0, eventIndex: 0 };
+    paused = false;
+    setMode("replay");
+  } catch (error) {
+    replayMessage.textContent = t().replayLoadFailed;
+    console.error("Replay load failed", error);
+  }
+}
+
+async function loadReplayFile(file) {
+  if (!file) return;
+  if (file.size > 4_000_000) {
+    replayMessage.textContent = t().replayLoadFailed;
+    replayFileInput.value = "";
+    return;
+  }
+  await loadReplayRecord(await file.text());
+  replayFileInput.value = "";
 }
 
 /** Any new handle is a new match, so it ends whatever ranked session was
@@ -810,11 +966,14 @@ function closeRankedSession() {
 function syncRankedUI() {
   const s = t();
   const set = (node, key, value) => { if (node[key] !== value) node[key] = value; };
+  const eligible = rankedResult !== null && rankedResult.stats.wins >= MIN_SUBMITTABLE_WINS;
   set(rankedRow, "hidden", mode !== "play");
   set(rankedStartButton, "textContent", ranked ? s.rankedStop : s.rankedStart);
   rankedStartButton.disabled = rankedSubmitting;
   rankedStartButton.classList.toggle("active", Boolean(ranked));
   set(rankedUploadButton, "textContent", rankedSubmitting ? s.rankedSubmittingButton : s.rankedUpload);
+  set(rankedWatchButton, "textContent", eligible && !rankedSubmitted
+    ? s.rankedSubmitWatch : s.rankedWatch);
   set(rankedDownloadButton, "textContent", s.rankedDownload);
   set(rankedGithubFallbackButton, "textContent", s.rankedGithubFallback);
   set(rankedGithubFallbackButton, "hidden", !rankedGithubFallbackVisible || rankedSubmitted);
@@ -823,10 +982,11 @@ function syncRankedUI() {
   set(rankedGithubLabel, "textContent", s.rankedGithubLabel);
   set(rankedNameInput, "placeholder", s.rankedNamePlaceholder);
   set(rankedGithubInput, "placeholder", s.rankedGithubPlaceholder);
-  const eligible = rankedResult !== null && rankedResult.stats.wins >= MIN_SUBMITTABLE_WINS;
   // A record goes on the board under a name; there is no anonymous entry.
   rankedUploadButton.disabled = rankedSubmitting || rankedSubmitted || !eligible
     || rankedNameInput.value.trim() === "";
+  rankedWatchButton.disabled = rankedSubmitting
+    || (eligible && !rankedSubmitted && rankedNameInput.value.trim() === "");
   rankedDownloadButton.disabled = rankedSubmitting;
   const shown = ranked ?? rankedResult;
   set(rankedScore, "textContent", String(shown ? shown.stats.wins : 0));
@@ -902,6 +1062,11 @@ async function uploadRankedResult() {
             rankedSubmitted = true;
             pendingGatewaySubmission = null;
             globalThis.turnstile.reset(turnstileWidgetId);
+            if (watchAfterSubmission) {
+              const replayToOpen = watchAfterSubmission;
+              watchAfterSubmission = null;
+              await loadReplayRecord(replayToOpen);
+            }
           } catch (error) {
             rankedSubmitting = false;
             const canUseGithub = canUseGithubFallback();
@@ -1001,6 +1166,29 @@ async function downloadRankedResult() {
   syncRankedUI();
 }
 
+async function watchRankedReplay() {
+  if (rankedResult === null || rankedSubmitting) return;
+  try {
+    const eligible = rankedResult.stats.wins >= MIN_SUBMITTABLE_WINS;
+    const submission = await buildSubmission({
+      result: rankedResult,
+      name: rankedNameInput.value.trim() || "Unnamed",
+      github: rankedGithubInput.value,
+      stamps: binaryStamps,
+      enforceUploadLimit: false,
+    });
+    if (eligible && !rankedSubmitted) {
+      watchAfterSubmission = submission;
+      await uploadRankedResult();
+    } else {
+      await loadReplayRecord(submission);
+    }
+  } catch (error) {
+    rankedSubmissionError = error.message ?? String(error);
+    syncRankedUI();
+  }
+}
+
 /** Ranked runs face the default match: no actuation delay, the default opening
  *  pause, and the turn-rate assist off. Anything that would make the opponent
  *  easier is reset here rather than merely rejected later. */
@@ -1019,22 +1207,37 @@ function startRankedSession() {
 
 function setMode(next) {
   mode = next;
+  closeRankedSession();
   closeThemedPickers();
   keyboard.clear();
   touchControls.clear();
   stage.classList.toggle("play-mode", next === "play");
   watchButton.classList.toggle("active", next === "watch");
   playButton.classList.toggle("active", next === "play");
+  replayButton.classList.toggle("active", next === "replay");
   watchConfig.hidden = next !== "watch";
   playConfig.hidden = next !== "play";
+  replayLoader.hidden = next !== "replay";
+  replayProgress.hidden = next !== "replay" || replayPlayback === null;
+  streakline.hidden = next === "replay";
   controlsHelp.hidden = next !== "play";
+  rerollButton.hidden = next === "replay";
+  resetScoreButton.hidden = next === "replay";
   touchControls.setAvailable(next === "play");
   syncInstantTurnButton();
   // A mode switch changes who tank 1 even is, so treat it as a fresh match.
   matchScore = [0, 0];
   streak.current = 0;
   saveStreak();
-  newGame();
+  if (next === "replay") {
+    paused = replayPlayback === null;
+    if (replayPlayback) resetReplayEngine();
+    syncPauseButton();
+    syncReplayProgress();
+  } else {
+    paused = false;
+    newGame();
+  }
 }
 
 function syncInstantTurnButton() {
@@ -1096,6 +1299,10 @@ function driveHybridSeats() {
 }
 
 function tick() {
+  if (mode === "replay") {
+    stepReplayFrame(true);
+    return;
+  }
   // kf_step drives any attached Laika/MPC agent internally, so unlike
   // killfield's JS loop this only needs to push human input and any Hybrid
   // seat's chosen action before stepping.
@@ -1208,6 +1415,7 @@ function frame(now) {
 }
 
 function togglePause() {
+  if (mode === "replay" && (!replayPlayback || replaySeeking)) return;
   paused = !paused;
   syncPauseButton();
   updateScoreboard();
@@ -1348,7 +1556,7 @@ async function boot() {
   document.addEventListener("webkitfullscreenchange", syncFullscreenButton);
   screen.orientation?.addEventListener?.("change", syncOrientationHint);
 
-  keyboard.onReroll = newGame;
+  keyboard.onReroll = () => { if (mode !== "replay") newGame(); };
   keyboard.onPause = togglePause;
   keyboard.onFireChange = (pressed) => {
     keyboardFirePressed = pressed;
@@ -1363,6 +1571,7 @@ async function boot() {
     rankedStartButton.blur();
   });
   rankedUploadButton.addEventListener("click", uploadRankedResult);
+  rankedWatchButton.addEventListener("click", watchRankedReplay);
   rankedDownloadButton.addEventListener("click", downloadRankedResult);
   rankedGithubFallbackButton.addEventListener("click", uploadRankedResultViaGithub);
   try {
@@ -1412,6 +1621,33 @@ async function boot() {
   });
   watchButton.addEventListener("click", () => setMode("watch"));
   playButton.addEventListener("click", () => setMode("play"));
+  replayButton.addEventListener("click", () => setMode("replay"));
+  replayDrop.addEventListener("click", () => replayFileInput.click());
+  replayFileInput.addEventListener("change", () => loadReplayFile(replayFileInput.files?.[0]));
+  for (const type of ["dragenter", "dragover"]) {
+    replayDrop.addEventListener(type, (event) => {
+      event.preventDefault();
+      replayDrop.classList.add("dragging");
+    });
+  }
+  for (const type of ["dragleave", "drop"]) {
+    replayDrop.addEventListener(type, (event) => {
+      event.preventDefault();
+      replayDrop.classList.remove("dragging");
+    });
+  }
+  replayDrop.addEventListener("drop", (event) => loadReplayFile(event.dataTransfer?.files?.[0]));
+  replaySeek.addEventListener("input", () => {
+    if (!replayPlayback) return;
+    replayScrubbing = true;
+    paused = true;
+    syncPauseButton();
+    replayTime.textContent = replayClock(Number(replaySeek.value), replayPlayback.session.frames.length, C.FPS);
+  });
+  replaySeek.addEventListener("change", () => {
+    replayScrubbing = false;
+    seekReplay(Number(replaySeek.value));
+  });
   langToggle.addEventListener("click", toggleLanguage);
   window.addEventListener("resize", () => {
     renderer.resize();

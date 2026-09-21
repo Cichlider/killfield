@@ -30,7 +30,7 @@
 <link rel="icon" type="image/svg+xml" sizes="any" href="assets/brand/hybrid.svg">
 <link rel="apple-touch-icon" sizes="180x180" href="assets/brand/hybrid-180.png">
 <link rel="manifest" href="manifest.webmanifest?v=hybrid-1">
-<link rel="stylesheet" href="style.css?v=network-submit">
+<link rel="stylesheet" href="style.css?v=replay-player">
 </head>
 <body>
 <main>
@@ -45,6 +45,7 @@
   <nav class="mode-switch" aria-label="Mode">
     <button id="mode-watch" type="button" class="mode-btn active">Watch</button>
     <button id="mode-play" type="button" class="mode-btn">Play</button>
+    <button id="mode-replay" type="button" class="mode-btn">Replay</button>
   </nav>
 
   <section class="config-row watch-config" id="watch-config" aria-label="Watch match">
@@ -69,6 +70,15 @@
       </div>
       <select id="controller-1" class="native-controller-select" tabindex="-1" aria-hidden="true"><option value="laika" selected>Laika</option><option value="hybrid">Hybrid</option><option value="killfield">Killfield</option></select>
     </div>
+  </section>
+
+  <section class="replay-loader" id="replay-loader" hidden>
+    <input id="replay-file" type="file" accept="application/json,.json" hidden>
+    <button id="replay-drop" type="button" class="replay-drop">
+      <strong id="replay-drop-title">Drop a replay JSON here</strong>
+      <span id="replay-drop-body">or choose a downloaded replay</span>
+    </button>
+    <p id="replay-message" class="replay-message" role="status"></p>
   </section>
 
   <section class="stage" id="stage">
@@ -103,6 +113,11 @@
       <strong id="orientation-title">Rotate your phone</strong>
       <span id="orientation-body">Turn off portrait lock, then rotate to landscape.</span>
     </div>
+  </section>
+
+  <section class="replay-progress" id="replay-progress" hidden aria-label="Replay progress">
+    <input id="replay-seek" type="range" min="0" max="1" step="1" value="0">
+    <output id="replay-time" for="replay-seek">0:00 / 0:00</output>
   </section>
 
   <section class="config-row play-config" id="play-config" hidden aria-label="Player match settings">
@@ -151,6 +166,7 @@
         <input id="ranked-github" type="text" maxlength="39" autocomplete="off" spellcheck="false" placeholder="GitHub (optional)" aria-labelledby="ranked-github-label">
       </label>
       <button id="ranked-upload" type="button" class="solid-btn">Submit</button>
+      <button id="ranked-watch" type="button" class="solid-btn">Submit &amp; watch</button>
       <button id="ranked-download" type="button" class="ghost-btn">Download replay</button>
       <button id="ranked-github-fallback" type="button" class="ghost-btn" hidden>Submit with GitHub</button>
       <div id="ranked-turnstile" class="ranked-turnstile"></div>
@@ -178,6 +194,6 @@
   <footer class="site-footer"><a href="https://github.com/Cichlider/killfield" target="_blank" rel="noreferrer">github.com/Cichlider/killfield</a><span>© 2026 Cichlider. All rights reserved.</span></footer>
 </main>
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" defer></script>
-<script type="module" src="viewer.js?v=chunked-replay"></script>
+<script type="module" src="viewer.js?v=replay-player"></script>
 </body>
 </html>

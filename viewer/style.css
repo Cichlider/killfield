@@ -66,8 +66,8 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
 
 .mode-switch {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  width: min(300px, 100%);
+  grid-template-columns: repeat(3, 1fr);
+  width: min(450px, 100%);
   margin: 0 auto 18px;
   padding: 3px;
   border: 1px solid var(--line);
@@ -100,6 +100,31 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
 }
 
 .watch-config { align-items: center; }
+
+.replay-loader {
+  margin: 0 auto 14px;
+}
+
+.replay-drop {
+  display: grid;
+  width: 100%;
+  gap: 3px;
+  padding: 15px 18px;
+  border: 1px dashed var(--line-strong);
+  border-radius: 13px;
+  background: rgba(255,255,255,.46);
+  text-align: center;
+}
+
+.replay-drop.dragging {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: rgba(49,95,98,.07);
+}
+
+.replay-drop strong { font-size: 12.5px; font-weight: 650; }
+.replay-drop span { color: var(--muted); font-size: 11px; }
+.replay-message { min-height: 1.4em; margin: 6px 3px 0; color: var(--muted); font-size: 11px; text-align: center; }
 
 .versus {
   color: var(--muted);
@@ -258,6 +283,21 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
 }
 
 canvas { display: block; width: 100%; height: auto; }
+
+.replay-progress {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 12px;
+  margin-top: 10px;
+  padding: 10px 13px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: rgba(255,255,255,.48);
+}
+
+.replay-progress input { width: 100%; accent-color: var(--accent); }
+.replay-progress output { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 
 .stage-toolbar {
   position: absolute;
