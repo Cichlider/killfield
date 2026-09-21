@@ -1,5 +1,5 @@
 {
-  "updated": "2026-09-20T21:56:43.900Z",
+  "updated": "2026-09-21T12:40:32.057Z",
   "entries": [
     {
       "name": "Trippy",
@@ -64,6 +64,22 @@
       "issue": 10,
       "trackHash": "0f6815d57954e8a7a6361039dae93387",
       "verifiedAt": "2026-09-19T02:59:55.464Z"
+    },
+    {
+      "name": "interstellar",
+      "github": null,
+      "submitter": "7b6a3bdcd7fb04de",
+      "board": "hybrid",
+      "score": 15,
+      "wins": 15,
+      "losses": 14,
+      "doubleKills": 1,
+      "rounds": 30,
+      "seed": 1356859375,
+      "frames": 12044,
+      "issue": 39,
+      "trackHash": "decdf1cf2fa12991c6a6ae049746712c",
+      "verifiedAt": "2026-09-21T12:40:32.056Z"
     },
     {
       "name": "Brainrot",
