@@ -1,0 +1,56 @@
+name: Deploy player and leaderboard
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - viewer/**
+      - index.html
+      - sitemap.xml
+      - .github/workflows/deploy-site.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Read this player revision
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          path: site
+
+      - name: Read the interactive paper from rl
+        uses: actions/checkout@v4
+        with:
+          ref: rl
+          path: paper-source
+
+      - name: Compose one Pages artifact
+        run: |
+          cp -R paper-source/paper site/paper
+          touch site/.nojekyll
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4
