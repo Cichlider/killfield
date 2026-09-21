@@ -1,5 +1,5 @@
 {
-  "updated": "2026-09-21T20:10:27.493Z",
+  "updated": "2026-09-21T23:36:10.554Z",
   "entries": [
     {
       "name": "Trippy",
@@ -80,6 +80,26 @@
       "hybridMovementMatch": 0.2042833607907743,
       "hybridMovementMatches": 1364,
       "hybridMovementFrames": 6677
+    },
+    {
+      "name": "Trippy",
+      "github": null,
+      "submitter": "72d59cb31a5456a3",
+      "board": "hybrid",
+      "score": 22,
+      "wins": 22,
+      "losses": 165,
+      "doubleKills": 13,
+      "rounds": 200,
+      "seed": 810984124,
+      "frames": 95549,
+      "playerClass": "human",
+      "hybridMovementMatch": 0.10779809312499346,
+      "hybridMovementMatches": 10300,
+      "hybridMovementFrames": 95549,
+      "issue": 41,
+      "trackHash": "6a4b1b8d8720eed0f303e13ce3560765",
+      "verifiedAt": "2026-09-21T23:36:10.554Z"
     },
     {
       "name": "interstellar",
