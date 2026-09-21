@@ -1,253 +1,44 @@
-# Killfield
+# Think You Can Beat My Tank Trouble AI?
 
-这是一个 Tank Trouble 风格的迷宫坦克智能体实验：**Killfield** 是实时 MPC
-规划器，**Hybrid** 是由 PPO 学得、并读取少量物理搜索特征的策略。游戏引擎、物理、
-弹道和规划器使用 Rust 编写；网页加载同一份 Rust/WASM 引擎，并在浏览器本地执行
-Hybrid 网络。
+I built two AIs for Tank Trouble that you can play against in your browser:
 
-**Killfield 基准：** 512 rays 对固定 Laika 运行 2000 局（种子 `20262814–20264813`），
-取得 **1813 胜 / 92 负 / 95 双杀 / 0 超时，胜率 90.7%**。
-**最大零封：99 连胜**；双杀/平局不中断连胜且不计入，失败时清零。
+- **Hybrid** — a PPO neural policy trained through self-play against a league of its past versions. It beats Killfield about 93% of the time.
+- **Killfield** — a real-time planner that simulates moves ahead and loves ricochet shots. It beats Laika about 90% of the time.
 
-上一版在同一批种子与射线数下为 1774 胜 / 122 负 / 103 双杀 / 1 超时（胜率 88.7%，
-最大零封 68）。差异来自 guidance 的来源准入（见下文）：负局 122 → 92，超时 1 → 0。
+Laika is in there too if you want a warm-up.
 
-**Hybrid 基准（v16，2026-09-05 部署验收）：** `outputs/ppo_duel_v16/s11/final.pt`，
-run step `29,982,720`，血统累计 `477,528,064`。1000 局确定性 argmax 评估中，对 Laika
-**94.1%**，对 512-ray Killfield **81.8%**；并接受过该游戏资深玩家的真人长局测试。
-浏览器迁移校验：PyTorch 与 JavaScript 固定输入最大 logit 误差 `9.54e-7`。完整的
-observation / action / reward 定义、训练过程和逐版 loss / actor 改动见
-**[项目报告](https://cichlider.github.io/killfield/paper/)**。
+## Play
 
-> 一句话概括：Killfield 通常每 4 帧重规划一次，在当前局面的沙盒副本中推演 18 个动作，
-> 计算每条未来轨迹的 score；终局结果立即返回，最后执行 score 最高的动作。
+No download, no account:
 
-## 在线体验
+**[Play now](https://cichlider.github.io/killfield/viewer/)**
 
-- **[对战客户端](https://cichlider.github.io/killfield/viewer/)** —— Watch（双方可独立选择
-  Laika / Hybrid / Killfield，默认 Hybrid vs Laika）与 Play（玩家可选任意一方为对手，默认
-  Hybrid）两个入口。
-- **[项目报告](https://cichlider.github.io/killfield/paper/)** —— 交互式：逐帧观测/动作
-  可视化、loss 与 actor 的逐版演化、16 版训练血统。
+Works on mobile too: there's an on-screen joystick, and turning on **No turn-rate limit** in settings makes it much easier to play. You can also just watch the AIs fight each other.
 
-Killfield 固定使用 512 射线，不开放内部调参。手机端支持横屏、全屏、左侧移动轮盘和右侧
-开火。游戏物理以 25 Hz（每帧 40 ms）运行，页面按显示器刷新率绘制并在相邻物理状态之间插值。
+## Leaderboard
 
-玩家的移动输入按**该键在当前 40 ms 帧内实际按住的时长比例**采样，而不是在帧边界上取
-按下/未按下：按住 25 ms 得到 0.625，5 ms 的轻点得到 0.125，落在两次采样之间的短按不会
-被整帧丢弃。时间窗口严格只覆盖当前帧，超出部分直接丢弃而非排队——早期版本会把超出一帧的
-按住时长存下来在后续帧重放，于是松键后坦克还会继续走两三帧才被拉回停止。开火不参与时间
-加权：它是边沿触发的，若按同样方式平均，松开扳机后在该帧剩余时间里仍会读作按住，从而多打
-出一发。
+**[View the leaderboard](https://cichlider.github.io/killfield/viewer/leaderboard.html)**
 
-子弹会反弹，并在十秒内持续致命，包括威胁开火者自己。坦克被击毁后世界仍会继续运行三秒，
-因此已经飞出的子弹仍可能把一次胜利变成平局。
+Pick an opponent, click **Ranked run**, win at least one round, then submit your name. Each opponent has its own board, ranked by total wins in a single run (max 200 rounds).
 
-## Killfield 原理
+Ranked runs use fixed settings: no opponent delay and no turn-rate assist. Changing the opponent, rerolling the map, or changing a setting ends the recording. Every submission is replayed frame by frame on the server with the same engine, so scores can't be faked.
 
-### 1. 反向弹道密度场
+## How It Works
 
-规划器从敌方所在格向外发射一组确定性的反向射线，让射线在迷宫墙壁上反弹。射线经过某个
-格子的次数越多，从该位置向敌人开火成功的机会通常越高。一次计算会得到：
+The physics is adapted from TankTrouble2 and simplified so the AI could train on hundreds of millions of steps, so it won't feel 100% identical to the real game.
 
-- 每个格子的射击密度与相对质量；
-- 通往优质射位的 guidance；
-- 每个射位较好的炮口方向；
-- 子弹到达目标的大致时间。
+Hybrid is trained with PPO across 256 parallel games. Its 1,028-dimensional observation covers the maze, tanks, bullets, ammo and per-action safety signals, and it picks one of 18 move-and-fire actions every frame. The trained network runs locally in your browser.
 
-这张地图只负责告诉 MPC“哪里值得去、朝哪里瞄”。最终是否击中仍由真实游戏弹道模拟决定。
-密度场中的每条规划射线最多计算 **2 次反弹、75 帧（3 秒）飞行**。这只是 Killfield 的
-射位搜索范围，不是游戏物理上限；真实子弹没有反弹次数上限，会持续反弹，直到命中或达到
-**250 帧（10 秒）**寿命后消失。
+The full story — observation space, reward, architecture, training lineage and evaluation — is in the interactive paper:
 
-#### guidance 的来源准入
+**[Read the paper](https://cichlider.github.io/killfield/paper/)**
 
-guidance 是若干“射位吸引子”的上包络：每个入选射位按迷宫图距离向外做指数衰减，逐格取最大值。
-距离用的是沿开口洪水填充的真实迷宫距离，因此隔墙的格子天然更远——这一层本身是墙体隔离的。
+If you enjoy it, a ⭐ on this repo helps a lot!
 
-但**包络的形状取决于让哪些格子当吸引子**。上包络的每个局部占优来源都是一个严格局部极大：
-坦克走到那里就找不到上坡方向，于是停住。早期版本只要被任意一条射线扫到（`count > 0`）就算
-来源，而射线反弹两次几乎扫遍全图，导致超过一半的可达格都是来源。在 2048 射线默认值下实测
-40 张迷宫，出现 166 个严格局部极大（占可达格 8.5%），抽样全部是**单出口、高反弹计数的死
-胡同口袋**，过半位于敌人的墙影里——直线很近、绕路很远。40 张迷宫里有 22 张的全场最高点
-本身就在死胡同中。
+## Contact
 
-因此来源需要同时满足两个条件：
-
-- 射线计数达到**合格来源中最高值的 65%**，避免被零星跳弹扫到的格子成为吸引子；
-- **拓扑度数大于 1**，即不是死胡同末端。
-
-阈值刻意相对“合格来源的最高值”而非全图最高值计算——全图计数最高的格子往往正是死胡同口袋，
-以它为基准会导致无格可选。若没有任何格子同时满足两个条件（例如可达区域整体是一条走廊），
-则放弃度数条件、改以全图最高计数为基准取同样的 65% 阈值，因此不会出现全零场。
-
-效果（同样 2048 射线、40 张迷宫）：来源数 1070 → 131，严格局部极大 166 → 14
-（8.5% → 0.72%），最高点落在死胡同的迷宫 22/40 → 0/40。来源集合变小也让包络的内层循环
-显著变快。
-
-需要说明的是，这解决的是**场的几何**。打分层里 guidance 项的权重仍然偏低，卡住时它的平均
-绝对贡献只有约 2 分，而 hunt chain 约 138 分——即使场修好了，它在 argmax 中仍不占主导。
-
-### 2. 推演 18 个动作
-
-动作空间为：
-
-$$
-\mathcal A=
-\{\text{后退},\text{停止},\text{前进}\}
-\times
-\{\text{左转},\text{不转},\text{右转}\}
-\times
-\{\text{不开火},\text{开火}\},
-\qquad |\mathcal A|=18.
-$$
-
-每次规划会克隆当前游戏状态，在隔离的沙盒中向前推演每个候选。默认前视范围为 36 帧；
-普通移动最多保持 4 帧后重规划，纯转向保持 2 帧。遇到可开火窗口、撞墙、命中或终局等事件
-会提前重新规划。开火候选会额外比较九种下一帧移动方式，寻找“现在开火以后怎样走”最安全的
-continuation。
-
-### 3. Score
-
-没有在推演窗口内出现终局时，动作 $a$ 的分数可以概括为：
-
-$$
-\begin{aligned}
-S(a)={}&
-w_{\Delta F}\Delta F
-+w_{F_{\max}}\bigl(F_{\max}-F_0\bigr)_+
-+w_G\Delta G
-+w_C\Delta C \\
-&+w_A\,Q_0K_A\Delta A
-+w_M\frac{\lVert\Delta \mathbf x\rVert}{s}
-+S_{\mathrm{fire}}
-+S_{\mathrm{ammo}} \\
-&-w_R\rho
--P_{\mathrm{wall}}
--P_{\mathrm{stuck}}.
-\end{aligned}
-$$
-
-其中：
-
-- $\Delta F$：沿轨迹的原始弹道密度变化；默认权重为 `0`，因为它表示射击机会而非可通行
-  的导航势能，绕墙时允许暂时下降；
-- $F_{\max}-F_0$：推演中到达过的最佳射位相对起点的提升；
-- $\Delta G$：沿 guidance 接近优质射位的进展；guidance 的吸引子经过来源准入筛选，
-  见上文「guidance 的来源准入」；
-- $\Delta C$：连续向更好射位移动形成的 hunt chain；
-- $Q_0K_A\Delta A$：当前射位质量、射线集中度和炮口对准改善的乘积；
-- $\lVert\Delta\mathbf x\rVert/s$：以格子尺寸 $s$ 归一化的有效净位移；
-- $\rho$：推演结束时的来袭子弹风险；
-- $P_{\mathrm{wall}}$：候选推演中顶墙或贴墙滑行所占帧数，整段顶墙最多扣 `300`；
-- $S_{\mathrm{fire}}$：预计命中、空枪或自杀枪的得分；
-- $S_{\mathrm{ammo}}$：保留弹药的价值；
-- $P_{\mathrm{stuck}}$：重复执行无效撞墙动作的惩罚。
-
-主要默认参数如下：
-
-| 项 | 默认值 | 含义 |
-|---|---:|---|
-| $w_{\Delta F}$ | `0` | 默认不让原始弹道密度直接支配移动；射位峰值、瞄准和开火仍使用它 |
-| $w_{F_{\max}}$ | `6` | 推演中触及更好射位 |
-| $w_G$ | `120` | guidance 进展 |
-| guidance 来源门槛 | `0.65` | 射线计数需达到合格来源最高值的比例，且拓扑度数 > 1 |
-| $w_C$ | `12` | hunt chain 增益 |
-| $w_A$ | `190` | 炮口朝向改善 |
-| $w_M$ | `60` | 有效净位移 |
-| 预计命中 | `+1800` | 尚未在窗口内实际击杀，但弹道检查预计命中 |
-| 空枪 / 自杀枪 | `-260 / -2500` | 浪费弹药或预计击中自己 |
-| 弹药储备 | `450` | 子弹越少，继续消耗的代价越高 |
-| $w_R$ | `320` | 来袭火力风险 |
-| $P_{\mathrm{wall}}$ | `0–300` | 按候选推演中的墙体接触帧占比扣分 |
-| $P_{\mathrm{stuck}}$ | `600` | 重复无效动作 |
-
-弹药项使用对数压力：
-
-$$
-S_{\mathrm{ammo}}
-=-450\ln\left(\frac{B+1}{b+1}\right),
-$$
-
-其中 <var>B</var> 是弹匣容量，<var>b</var> 是剩余可发射子弹数。预计命中的奖励还会根据飞行时间和
-弹药稀缺程度衰减，使快速、可靠且节省弹药的射击更有价值。
-
-### 4. 终局优先
-
-如果某条推演轨迹在 36 帧内出现终局，规划器立即停止计算普通 shaping，直接返回终局分数：
-
-$$
-S_{\mathrm{terminal}}(a)=
-\begin{cases}
-12000-8t+S_{\mathrm{ammo}}, & \text{主动击杀敌人},\\
-1500-2t+S_{\mathrm{ammo}}, & \text{敌人自行死亡},\\
--12000+t, & \text{自己死亡},
-\end{cases}
-$$
-
-其中 $t$ 是终局发生的推演帧。主动且更快的击杀会压过普通位置收益，导致自己死亡的动作
-则会被强烈排除。最终动作是：
-
-$$
-a^*=\arg\max_{a\in\mathcal A} S(a).
-$$
-
-击杀后规划器仍会继续推演在途子弹，并选择存活概率更高、与子弹保持更大间距的动作，避免
-已经赢下交火后又撞上反弹回来的子弹。
-
-## 本地运行
-
-需要 Rust 工具链以及 `wasm32-unknown-unknown` target：
-
-```sh
-rustup target add wasm32-unknown-unknown
-bash viewer/serve.sh
-```
-
-启动后打开 <http://127.0.0.1:8000>。端口被占用时可以指定其他端口：
-
-```sh
-PORT=8001 bash viewer/serve.sh
-```
-
-只构建浏览器 WASM：
-
-```sh
-bash viewer/build.sh
-```
-
-## 项目结构
-
-```text
-engine/     Rust 游戏引擎、弹道密度场、MPC sandbox 与 score
-viewer/     GitHub Page、本地网页、Hybrid 浏览器推理与手机控制
-docs/       设计、开发记录与历史实验结论
-training/   PPO 训练、评估与浏览器权重导出工具
-data/       当前无需离线数据
-outputs/    本地实验输出说明；checkpoint 默认不提交 Git
-```
-
-## 验证
-
-```sh
-cargo test --manifest-path engine/Cargo.toml
-node --test viewer/tests/*.test.mjs
-node --check viewer/viewer.js
-bash viewer/build.sh
-```
-
-复现 README 顶部的 Killfield 基准（约 5 分钟）：
-
-```sh
-cargo run --release --manifest-path engine/Cargo.toml --bin bench_mpc -- 2000 512 20262814
-```
-
-## PPO 状态
-
-当前部署模型为上面验收的 Hybrid（v16）。训练在独立的 [`rl` 分支](https://github.com/Cichlider/killfield/tree/rl)迭代——
-O/A/R 定义、训练配置与逐版结果见该分支的 `docs/DESIGN.md` / `docs/TRAINING.md` /
-`docs/HANDOFF.md`；`main` 只接收冻结、验收过的权重和与其 schema 完全对应的浏览器运行时。
+Game AI opportunities, collaboration, business: **cichlid1234@outlook.com**
 
 ## License
 
-MIT，见 [LICENSE](LICENSE)。
+[MIT](LICENSE)

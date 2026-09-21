@@ -26,7 +26,7 @@
 
 import * as C from "./src/constants.js";
 import { STRINGS, loadLang, saveLang } from "./src/i18n.js?v=chunked-replay";
-import { Keyboard, TouchControls } from "./src/input.js?v=wheel-360";
+import { Keyboard, TouchControls } from "./src/input.js?v=wasd-1";
 import { SoundEffects } from "./src/audio.js";
 import { Rng } from "./src/rng.js";
 import { interpolatePredictedPose, simulationBudget } from "./src/low-latency.js";
@@ -45,9 +45,8 @@ import {
   RANKED_DELAY_FRAMES,
   RANKED_OPENING_DELAY_SECONDS,
   SessionRecorder,
-  policyActionToInput,
   readObservation,
-} from "./src/ranked.js?v=policy-pilot";
+} from "./src/ranked.js?v=no-policy-pilot";
 import {
   buildStamps, buildSubmission, openSubmissionIssue, submitToGateway,
 } from "./src/submit.js?v=chunked-replay";
@@ -63,20 +62,6 @@ const RANKED_GITHUB_STORAGE_KEY = "killfield-ranked-github";
 const DEFAULT_OPENING_DELAY_SECONDS = 0.5;
 const SUBMIT_ENDPOINT = document.querySelector('meta[name="killfield-submit-endpoint"]')?.content ?? "";
 const TURNSTILE_SITEKEY = document.querySelector('meta[name="killfield-turnstile-sitekey"]')?.content ?? "";
-// Owner/testing aid: the public policy can drive the human input path without
-// bypassing recording or verification. It is opt-in and has no visible toggle.
-const QUERY = new URLSearchParams(location.search);
-const POLICY_PILOT = QUERY.get("pilot") === "policy";
-const requestedPilotTarget = Number(QUERY.get("target"));
-const POLICY_PILOT_TARGET = Number.isInteger(requestedPilotTarget)
-  ? Math.min(20, Math.max(MIN_SUBMITTABLE_WINS, requestedPilotTarget))
-  : MIN_SUBMITTABLE_WINS;
-const requestedPilotSeed = Number(QUERY.get("seed"));
-const POLICY_PILOT_SEED = Number.isInteger(requestedPilotSeed)
-  && requestedPilotSeed >= 0 && requestedPilotSeed <= 0xffffffff
-  ? requestedPilotSeed >>> 0 : null;
-const POLICY_PILOT_STEPS_PER_FRAME = 64;
-
 // Render buffer layout, matching engine/src/wasm.rs's build_render() doc
 // comment: 18 header slots, then 120 paint flags (unused here — killfield has
 // no paint mechanic), then wall_count*4, tank_count*6, bullet_count*2.
@@ -698,8 +683,7 @@ function applyRoundEnd(winner) {
     // function the verifier will re-run against its own replay.
     ranked.winners.push(winner);
     ranked.stats = summariseResults(ranked.winners);
-    if (ranked.winners.length >= LIMITS.maxRounds
-        || (POLICY_PILOT && ranked.stats.wins >= POLICY_PILOT_TARGET)) {
+    if (ranked.winners.length >= LIMITS.maxRounds) {
       closeRankedSession();
     }
   }
@@ -727,8 +711,7 @@ function syncPlayOpponentControls() {
  *  running — a reroll, a different opponent and a mode switch all land here. */
 function newGame({ ranked: startRanked = false } = {}) {
   closeRankedSession();
-  const seed = POLICY_PILOT && POLICY_PILOT_SEED !== null
-    ? POLICY_PILOT_SEED : (Math.random() * 0xffffffff) >>> 0;
+  const seed = (Math.random() * 0xffffffff) >>> 0;
   if (handle !== null) wasm.kf_free(handle);
 
   syncPlayOpponentControls();
@@ -1124,22 +1107,15 @@ function tick() {
     // Fire is passed straight through by sampleWindowStrengths and its edges
     // are applied authoritatively by syncImmediateHumanFire(), so a released
     // trigger is never resurrected by the window.
-    if (POLICY_PILOT && ranked && hybridPolicy) {
-      const own = readObservation(wasm, handle, human);
-      humanInput = policyActionToInput(hybridPolicy.act(own.observation, own.mask, own.dodge));
-      wasm.kf_set_input(handle, human, humanInput.forward, humanInput.backup,
-        humanInput.turnLeft, humanInput.turnRight, humanInput.fire, 1);
-    } else {
-      const strengths = keyboard.sampleWindowStrengths(STEP_MS);
-      const rotation = previousRenderState?.tanks[human]?.rotation ?? 0;
-      const applied = touchControls.applyTo(
-        wasm, handle, human, strengths, rotation, instantTurn,
-      );
-      humanInput = applied.input;
-      if (applied.snappedRotation !== null && previousRenderState?.tanks[human]) {
-        // Physics and presentation both snap in the same frame.
-        previousRenderState.tanks[human].rotation = applied.snappedRotation;
-      }
+    const strengths = keyboard.sampleWindowStrengths(STEP_MS);
+    const rotation = previousRenderState?.tanks[human]?.rotation ?? 0;
+    const applied = touchControls.applyTo(
+      wasm, handle, human, strengths, rotation, instantTurn,
+    );
+    humanInput = applied.input;
+    if (applied.snappedRotation !== null && previousRenderState?.tanks[human]) {
+      // Physics and presentation both snap in the same frame.
+      previousRenderState.tanks[human].rotation = applied.snappedRotation;
     }
   }
   const decision = driveHybridSeats();
@@ -1217,11 +1193,9 @@ function frame(now) {
     // Don't let the gap pile up while paused, or unpausing would fast-forward.
     accumulator = 0;
   } else {
-    const steps = POLICY_PILOT && ranked ? POLICY_PILOT_STEPS_PER_FRAME : budget.steps;
-    for (let i = 0; i < steps; i++) {
+    for (let i = 0; i < budget.steps; i++) {
       previousRenderState = captureRenderState(renderBuffer());
       tick();
-      if (POLICY_PILOT && !ranked) break;
     }
     accumulator = budget.remainder;
   }

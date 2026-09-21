@@ -45,13 +45,32 @@ assert.equal(keyboard.sampleWindowStrengths(40).forward, 0);
 now = 170;
 target.dispatch("keydown", "w");
 now = 175;
-target.dispatch("keydown", "e");
+target.dispatch("keydown", "arrowup");
 now = 180;
 target.dispatch("keyup", "w");
 assert.equal(keyboard.sampleStrengths().forward, 1);
 now = 185;
-target.dispatch("keyup", "e");
+target.dispatch("keyup", "arrowup");
 assert.equal(keyboard.sampleStrengths().forward, 0);
+
+// Desktop movement is conventional WASD. E/F are deliberately not aliases:
+// overlapping letter bindings were confusing players and made D mean reverse.
+for (const [key, action] of [
+  ["w", "forward"], ["s", "backup"], ["a", "turnLeft"], ["d", "turnRight"],
+]) {
+  target.dispatch("keydown", key);
+  const strengths = keyboard.sampleStrengths();
+  for (const movement of ["forward", "backup", "turnLeft", "turnRight"]) {
+    assert.equal(strengths[movement], movement === action ? 1 : 0, `${key} -> ${movement}`);
+  }
+  target.dispatch("keyup", key);
+}
+for (const key of ["e", "f"]) {
+  target.dispatch("keydown", key);
+  const strengths = keyboard.sampleStrengths();
+  assert.equal(strengths.forward + strengths.backup + strengths.turnLeft + strengths.turnRight, 0);
+  target.dispatch("keyup", key);
+}
 
 // Held longer than a frame saturates at 1 and, crucially, banks nothing: the
 // pre-2026-08-24 accumulator queued the surplus and kept driving for frames
