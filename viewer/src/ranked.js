@@ -30,6 +30,34 @@ export const HYBRID_OBS_DIM = 1028;
 export const HYBRID_BULLET_SLOTS = 10;
 export const HYBRID_DODGE_OFFSET = 1018;
 export const HYBRID_DODGE_DIM = 9;
+/** A run is listed in the Bot lane only when more than half of its recorded
+ * movement choices exactly match Hybrid's choice on the same frame. */
+export const BOT_MOVEMENT_MATCH_THRESHOLD = 0.5;
+
+/** Collapse one continuous human axis back to the three-way choice used by
+ * Discrete(18). Opposing inputs of equal strength cancel to neutral. */
+function axisChoice(negative, positive) {
+  if (negative > positive) return 0;
+  if (positive > negative) return 2;
+  return 1;
+}
+
+/** The movement half of a recorded human input, as one of the nine
+ * throttle/turn choices. Fire is deliberately excluded from classification. */
+export function inputMovement(frame) {
+  const throttle = axisChoice(frame.backup, frame.forward);
+  const turn = axisChoice(frame.turnLeft, frame.turnRight);
+  return throttle * 3 + turn;
+}
+
+/** Discrete(18) stores the fire bit next to each of its nine movements. */
+export function actionMovement(action) {
+  return Math.floor(action / 2);
+}
+
+export function playerClassForMovementRate(rate) {
+  return rate > BOT_MOVEMENT_MATCH_THRESHOLD ? "bot" : "human";
+}
 
 /** Convert Discrete(18) into the exact full-strength human input recorded by
  * the browser. This is used by the opt-in policy pilot and mirrors
@@ -208,7 +236,7 @@ function lastWinner(wasm, handle) {
  * comparison happens on the identical observation the browser saw, and a
  * cross-engine float difference can only ever show up as a near-tie.
  *
- * @returns {{winners: number[], suspect: Array}}
+ * @returns {{winners: number[], suspect: Array, hybridMovement: Object}}
  */
 export function replaySession({ wasm, policy, config, session }) {
   const reject = (why) => { throw new RejectedSubmission(why); };
@@ -227,6 +255,7 @@ export function replaySession({ wasm, policy, config, session }) {
 
   const winners = [];
   const suspect = [];
+  let hybridMovementMatches = 0;
   let eventIndex = 0;
   try {
     for (let i = 0; i < session.frames.length; i += 1) {
@@ -236,6 +265,18 @@ export function replaySession({ wasm, policy, config, session }) {
         eventIndex += 1;
       }
       const frame = session.frames[i];
+
+      // Classify the player from the same state Hybrid would have seen on
+      // this frame. Only the nine-way movement choice is compared: firing is
+      // excluded so trigger habits cannot move a run between lanes.
+      const humanView = readObservation(wasm, handle, HUMAN_SEAT);
+      const hybridAction = policy.act(
+        humanView.observation, humanView.mask, humanView.dodge,
+      );
+      if (inputMovement(frame) === actionMovement(hybridAction)) {
+        hybridMovementMatches += 1;
+      }
+
       wasm.kf_set_input(handle, HUMAN_SEAT, frame.forward, frame.backup,
         frame.turnLeft, frame.turnRight, frame.fire, 1);
 
@@ -267,5 +308,16 @@ export function replaySession({ wasm, policy, config, session }) {
   } finally {
     wasm.kf_free(handle);
   }
-  return { winners, suspect };
+  const hybridMovementFrames = session.frames.length;
+  const rate = hybridMovementFrames === 0 ? 0 : hybridMovementMatches / hybridMovementFrames;
+  return {
+    winners,
+    suspect,
+    hybridMovement: {
+      matches: hybridMovementMatches,
+      frames: hybridMovementFrames,
+      rate,
+      playerClass: playerClassForMovementRate(rate),
+    },
+  };
 }

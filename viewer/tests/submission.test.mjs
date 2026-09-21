@@ -100,6 +100,11 @@ assert.equal(accepted.verdict.entry.rounds,
 assert.ok(accepted.verdict.entry.wins >= 1);
 assert.equal(accepted.verdict.entry.board, "hybrid");
 assert.equal(accepted.verdict.entry.name, "Test Runner");
+assert.equal(accepted.verdict.entry.playerClass, "bot",
+  "the fixture is Hybrid driving the human input path and belongs in Bot");
+assert.ok(accepted.verdict.entry.hybridMovementMatch > 0.5);
+assert.equal(accepted.verdict.entry.hybridMovementFrames, session.frames.length);
+assert.match(accepted.comment, /Lane: \*\*Bot\*\*/);
 assert.match(accepted.comment, /\*\*Verified\.\*\*/);
 
 // A record goes up under a name. Showing the account behind it is optional,

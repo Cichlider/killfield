@@ -322,7 +322,7 @@ async function verify({ body, author, issue }) {
   checkNotADuplicate(board, trackHash);
 
   const { instance } = await WebAssembly.instantiate(engine.bytes, {});
-  const { winners, suspect } = replaySession({
+  const { winners, suspect, hybridMovement } = replaySession({
     wasm: instance.exports, policy, config, session,
   });
   if (suspect.length > 0) {
@@ -357,6 +357,10 @@ async function verify({ body, author, issue }) {
       rounds: stats.rounds,
       seed: config.seed,
       frames: session.frames.length,
+      playerClass: hybridMovement.playerClass,
+      hybridMovementMatch: hybridMovement.rate,
+      hybridMovementMatches: hybridMovement.matches,
+      hybridMovementFrames: hybridMovement.frames,
       issue: issue ?? null,
       trackHash,
       verifiedAt: new Date().toISOString(),
@@ -402,6 +406,9 @@ fs.writeFileSync("comment.md", verdict.ok
     + `${{ hybrid: "Hybrid", laika: "Laika", killfield: "Killfield" }[verdict.entry.board]}, replayed over `
     + `${verdict.entry.rounds} rounds (${verdict.entry.losses} losses, `
     + `${verdict.entry.doubleKills} double KOs) and ${verdict.entry.frames} frames.\n\n`
+    + `Lane: **${verdict.entry.playerClass === "bot" ? "Bot" : "Human"}** — `
+    + `${(verdict.entry.hybridMovementMatch * 100).toFixed(1)}% Hybrid movement match `
+    + `(Bot is strictly greater than 50%).\n\n`
     + "It is on the board now. The score above is the replay's, not the one "
     + "the record claimed.\n"
   : "**Not verified.** Nothing went on the board.\n\n"

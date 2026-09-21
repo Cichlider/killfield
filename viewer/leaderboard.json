@@ -15,7 +15,11 @@
       "frames": 36421,
       "issue": 38,
       "trackHash": "3b74dc693f603abad9cfde48828665c5",
-      "verifiedAt": "2026-09-20T21:56:43.900Z"
+      "verifiedAt": "2026-09-20T21:56:43.900Z",
+      "playerClass": "human",
+      "hybridMovementMatch": 0.20153208313884846,
+      "hybridMovementMatches": 7340,
+      "hybridMovementFrames": 36421
     },
     {
       "name": "Alternator",
@@ -31,7 +35,11 @@
       "frames": 7225,
       "issue": 35,
       "trackHash": "fad27a5ae3eb23dc70d86f9902ba4bf8",
-      "verifiedAt": "2026-09-20T12:05:13.426Z"
+      "verifiedAt": "2026-09-20T12:05:13.426Z",
+      "playerClass": "bot",
+      "hybridMovementMatch": 0.9026989619377163,
+      "hybridMovementMatches": 6522,
+      "hybridMovementFrames": 7225
     },
     {
       "name": "Kobi💯",
@@ -47,7 +55,11 @@
       "frames": 7240,
       "issue": 9,
       "trackHash": "d0d8142232b8f1b4b321f46f18cc7ab3",
-      "verifiedAt": "2026-09-19T02:49:25.754Z"
+      "verifiedAt": "2026-09-19T02:49:25.754Z",
+      "playerClass": "human",
+      "hybridMovementMatch": 0.24350828729281768,
+      "hybridMovementMatches": 1763,
+      "hybridMovementFrames": 7240
     },
     {
       "name": "Kobi💯",
@@ -63,7 +75,11 @@
       "frames": 6677,
       "issue": 10,
       "trackHash": "0f6815d57954e8a7a6361039dae93387",
-      "verifiedAt": "2026-09-19T02:59:55.464Z"
+      "verifiedAt": "2026-09-19T02:59:55.464Z",
+      "playerClass": "human",
+      "hybridMovementMatch": 0.2042833607907743,
+      "hybridMovementMatches": 1364,
+      "hybridMovementFrames": 6677
     },
     {
       "name": "interstellar",
@@ -79,7 +95,11 @@
       "frames": 12044,
       "issue": 39,
       "trackHash": "decdf1cf2fa12991c6a6ae049746712c",
-      "verifiedAt": "2026-09-21T12:40:32.056Z"
+      "verifiedAt": "2026-09-21T12:40:32.056Z",
+      "playerClass": "bot",
+      "hybridMovementMatch": 0.8099468615078047,
+      "hybridMovementMatches": 9755,
+      "hybridMovementFrames": 12044
     },
     {
       "name": "Brainrot",
@@ -95,7 +115,11 @@
       "frames": 18309,
       "issue": 37,
       "trackHash": "4e0afd55d54acd2db8422613c99d4a87",
-      "verifiedAt": "2026-09-20T19:39:39.225Z"
+      "verifiedAt": "2026-09-20T19:39:39.225Z",
+      "playerClass": "human",
+      "hybridMovementMatch": 0.2053634824403299,
+      "hybridMovementMatches": 3760,
+      "hybridMovementFrames": 18309
     },
     {
       "name": "small-li",
@@ -111,7 +135,11 @@
       "frames": 6473,
       "issue": 15,
       "trackHash": "bc4c300a621ebeebc3f8d04785be52c5",
-      "verifiedAt": "2026-09-19T11:41:30.939Z"
+      "verifiedAt": "2026-09-19T11:41:30.939Z",
+      "playerClass": "human",
+      "hybridMovementMatch": 0.18893866831453732,
+      "hybridMovementMatches": 1223,
+      "hybridMovementFrames": 6473
     },
     {
       "name": "Lichen (Doggy Bag :P)",
@@ -127,7 +155,11 @@
       "frames": 4086,
       "issue": 6,
       "trackHash": "94fa0c19a6405647f2f69def2de03e17",
-      "verifiedAt": "2026-09-19T02:20:14.796Z"
+      "verifiedAt": "2026-09-19T02:20:14.796Z",
+      "playerClass": "human",
+      "hybridMovementMatch": 0.21071953010279001,
+      "hybridMovementMatches": 861,
+      "hybridMovementFrames": 4086
     },
     {
       "name": "KD419",
@@ -143,7 +175,11 @@
       "frames": 3182,
       "issue": 18,
       "trackHash": "bd73605ae7313b65f3c12ba0e1c0d9ca",
-      "verifiedAt": "2026-09-19T12:11:50.899Z"
+      "verifiedAt": "2026-09-19T12:11:50.899Z",
+      "playerClass": "human",
+      "hybridMovementMatch": 0.20301697045883094,
+      "hybridMovementMatches": 646,
+      "hybridMovementFrames": 3182
     },
     {
       "name": "KD419",
@@ -159,7 +195,11 @@
       "frames": 3970,
       "issue": 19,
       "trackHash": "96a7fae73b39148d4ab4e7070bd05b46",
-      "verifiedAt": "2026-09-19T12:17:10.297Z"
+      "verifiedAt": "2026-09-19T12:17:10.297Z",
+      "playerClass": "human",
+      "hybridMovementMatch": 0.17405541561712845,
+      "hybridMovementMatches": 691,
+      "hybridMovementFrames": 3970
     },
     {
       "name": "Alternator",
@@ -175,7 +215,11 @@
       "frames": 5246,
       "issue": 34,
       "trackHash": "f381e9a1e8997c3926299f71a7b4f0f6",
-      "verifiedAt": "2026-09-20T11:55:52.759Z"
+      "verifiedAt": "2026-09-20T11:55:52.759Z",
+      "playerClass": "bot",
+      "hybridMovementMatch": 0.8675181090354556,
+      "hybridMovementMatches": 4551,
+      "hybridMovementFrames": 5246
     },
     {
       "name": "small-li",
@@ -191,7 +235,11 @@
       "frames": 2321,
       "issue": 16,
       "trackHash": "4cc5b291ad4acb63e00bbdf1fd2f0f2f",
-      "verifiedAt": "2026-09-19T11:55:56.662Z"
+      "verifiedAt": "2026-09-19T11:55:56.662Z",
+      "playerClass": "human",
+      "hybridMovementMatch": 0.21800947867298578,
+      "hybridMovementMatches": 506,
+      "hybridMovementFrames": 2321
     },
     {
       "name": "Trippy",
@@ -207,7 +255,11 @@
       "frames": 10809,
       "issue": 32,
       "trackHash": "db79d3a6aa4721a6a698fe78f24c16d0",
-      "verifiedAt": "2026-09-20T02:26:31.987Z"
+      "verifiedAt": "2026-09-20T02:26:31.987Z",
+      "playerClass": "human",
+      "hybridMovementMatch": 0.13683041909519844,
+      "hybridMovementMatches": 1479,
+      "hybridMovementFrames": 10809
     },
     {
       "name": "ghost",
@@ -223,7 +275,11 @@
       "frames": 20495,
       "issue": 36,
       "trackHash": "348542f6f81d81aedd509b3eecd9f2fb",
-      "verifiedAt": "2026-09-20T14:17:49.262Z"
+      "verifiedAt": "2026-09-20T14:17:49.262Z",
+      "playerClass": "human",
+      "hybridMovementMatch": 0.13905830690412296,
+      "hybridMovementMatches": 2850,
+      "hybridMovementFrames": 20495
     },
     {
       "name": "KD419",
@@ -239,7 +295,11 @@
       "frames": 1544,
       "issue": 17,
       "trackHash": "3c29bdaa84d7da6b8c26ecbb37c4c805",
-      "verifiedAt": "2026-09-19T12:06:41.104Z"
+      "verifiedAt": "2026-09-19T12:06:41.104Z",
+      "playerClass": "human",
+      "hybridMovementMatch": 0.22085492227979275,
+      "hybridMovementMatches": 341,
+      "hybridMovementFrames": 1544
     },
     {
       "name": "kaag's first run",
@@ -255,7 +315,11 @@
       "frames": 13264,
       "issue": 27,
       "trackHash": "6f6ca14f291dcfad40eacc10b58606a0",
-      "verifiedAt": "2026-09-19T22:35:22.025Z"
+      "verifiedAt": "2026-09-19T22:35:22.025Z",
+      "playerClass": "human",
+      "hybridMovementMatch": 0.12974969843184558,
+      "hybridMovementMatches": 1721,
+      "hybridMovementFrames": 13264
     },
     {
       "name": "Invader",
@@ -271,7 +335,11 @@
       "frames": 13367,
       "issue": 28,
       "trackHash": "0cfbd200d1f08bd7e235d7e263f400e2",
-      "verifiedAt": "2026-09-19T23:43:45.030Z"
+      "verifiedAt": "2026-09-19T23:43:45.030Z",
+      "playerClass": "human",
+      "hybridMovementMatch": 0.08528465624298646,
+      "hybridMovementMatches": 1140,
+      "hybridMovementFrames": 13367
     },
     {
       "name": "Trippy",
@@ -287,7 +355,11 @@
       "frames": 2228,
       "issue": 29,
       "trackHash": "0452a3aaa70fcaa2f693d22e4e5bc0e6",
-      "verifiedAt": "2026-09-20T00:17:16.046Z"
+      "verifiedAt": "2026-09-20T00:17:16.046Z",
+      "playerClass": "human",
+      "hybridMovementMatch": 0.2374326750448833,
+      "hybridMovementMatches": 529,
+      "hybridMovementFrames": 2228
     },
     {
       "name": "1",
@@ -303,7 +375,11 @@
       "frames": 39390,
       "issue": 31,
       "trackHash": "ea06b4f50f2c1fbd821837dfc42b854d",
-      "verifiedAt": "2026-09-20T01:33:43.265Z"
+      "verifiedAt": "2026-09-20T01:33:43.265Z",
+      "playerClass": "human",
+      "hybridMovementMatch": 0.0627062706270627,
+      "hybridMovementMatches": 2470,
+      "hybridMovementFrames": 39390
     },
     {
       "name": "yourdesutrction",
@@ -319,7 +395,11 @@
       "frames": 2692,
       "issue": 23,
       "trackHash": "e8e7c3d1ee6224a963fe41cd50d5904e",
-      "verifiedAt": "2026-09-19T13:15:40.867Z"
+      "verifiedAt": "2026-09-19T13:15:40.867Z",
+      "playerClass": "human",
+      "hybridMovementMatch": 0.14710252600297177,
+      "hybridMovementMatches": 396,
+      "hybridMovementFrames": 2692
     },
     {
       "name": "Trippy",
@@ -335,7 +415,11 @@
       "frames": 8011,
       "issue": 33,
       "trackHash": "3ab6ec9d88a201a3267cac65390517b6",
-      "verifiedAt": "2026-09-20T02:58:37.888Z"
+      "verifiedAt": "2026-09-20T02:58:37.888Z",
+      "playerClass": "human",
+      "hybridMovementMatch": 0.10934964423917114,
+      "hybridMovementMatches": 876,
+      "hybridMovementFrames": 8011
     },
     {
       "name": "rekursion",
@@ -351,7 +435,11 @@
       "frames": 1464,
       "issue": 1,
       "trackHash": "3616280ff93947d15f6d2e5c4e039e83",
-      "verifiedAt": "2026-09-12T23:47:37.112Z"
+      "verifiedAt": "2026-09-12T23:47:37.112Z",
+      "playerClass": "bot",
+      "hybridMovementMatch": 1,
+      "hybridMovementMatches": 1464,
+      "hybridMovementFrames": 1464
     },
     {
       "name": "rekursion",
@@ -367,7 +455,11 @@
       "frames": 1054,
       "issue": 2,
       "trackHash": "dc12457cef09d3f08d7e44ccbbcd1b5d",
-      "verifiedAt": "2026-09-12T23:51:56.383Z"
+      "verifiedAt": "2026-09-12T23:51:56.383Z",
+      "playerClass": "bot",
+      "hybridMovementMatch": 1,
+      "hybridMovementMatches": 1054,
+      "hybridMovementFrames": 1054
     },
     {
       "name": "Rekursion",
@@ -383,7 +475,11 @@
       "frames": 2259,
       "issue": 3,
       "trackHash": "af2d334c1322fa3f628752e40b77c427",
-      "verifiedAt": "2026-09-13T07:35:58.756Z"
+      "verifiedAt": "2026-09-13T07:35:58.756Z",
+      "playerClass": "human",
+      "hybridMovementMatch": 0.15803452855245684,
+      "hybridMovementMatches": 357,
+      "hybridMovementFrames": 2259
     },
     {
       "name": "King of Thunder",
@@ -399,7 +495,11 @@
       "frames": 840,
       "issue": 4,
       "trackHash": "e62cf5e9fafb4447090162c82e975712",
-      "verifiedAt": "2026-09-13T12:03:54.957Z"
+      "verifiedAt": "2026-09-13T12:03:54.957Z",
+      "playerClass": "human",
+      "hybridMovementMatch": 0.11547619047619048,
+      "hybridMovementMatches": 97,
+      "hybridMovementFrames": 840
     },
     {
       "name": "test",
@@ -415,7 +515,11 @@
       "frames": 9848,
       "issue": 11,
       "trackHash": "75a35862de4b657be9ea70e41001e688",
-      "verifiedAt": "2026-09-19T05:15:48.371Z"
+      "verifiedAt": "2026-09-19T05:15:48.371Z",
+      "playerClass": "human",
+      "hybridMovementMatch": 0.11799350121852152,
+      "hybridMovementMatches": 1162,
+      "hybridMovementFrames": 9848
     },
     {
       "name": "onlywyjy",
@@ -431,7 +535,11 @@
       "frames": 934,
       "issue": 12,
       "trackHash": "16cd012fc687428e7393881a5ad4dad3",
-      "verifiedAt": "2026-09-19T09:15:35.185Z"
+      "verifiedAt": "2026-09-19T09:15:35.185Z",
+      "playerClass": "human",
+      "hybridMovementMatch": 0.2012847965738758,
+      "hybridMovementMatches": 188,
+      "hybridMovementFrames": 934
     },
     {
       "name": "yourdesutrction",
@@ -447,7 +555,11 @@
       "frames": 2467,
       "issue": 14,
       "trackHash": "7ff09823af8a35d72d1c463856c4c299",
-      "verifiedAt": "2026-09-19T11:38:20.498Z"
+      "verifiedAt": "2026-09-19T11:38:20.498Z",
+      "playerClass": "human",
+      "hybridMovementMatch": 0.139440616132955,
+      "hybridMovementMatches": 344,
+      "hybridMovementFrames": 2467
     },
     {
       "name": "yourdesutrction",
@@ -463,7 +575,11 @@
       "frames": 1255,
       "issue": 22,
       "trackHash": "2e67ae851f096e0dcdb09c89bba7c4d6",
-      "verifiedAt": "2026-09-19T13:13:24.466Z"
+      "verifiedAt": "2026-09-19T13:13:24.466Z",
+      "playerClass": "human",
+      "hybridMovementMatch": 0.11713147410358565,
+      "hybridMovementMatches": 147,
+      "hybridMovementFrames": 1255
     },
     {
       "name": "Lichen",
@@ -479,7 +595,11 @@
       "frames": 556,
       "issue": 5,
       "trackHash": "603bcf2dc68ed10c5d2a3870f1953878",
-      "verifiedAt": "2026-09-19T02:08:13.851Z"
+      "verifiedAt": "2026-09-19T02:08:13.851Z",
+      "playerClass": "human",
+      "hybridMovementMatch": 0.2068345323741007,
+      "hybridMovementMatches": 115,
+      "hybridMovementFrames": 556
     },
     {
       "name": "Lichen (Killfield is OP)",
@@ -495,7 +615,11 @@
       "frames": 465,
       "issue": 7,
       "trackHash": "0faa70d1483401489eb3df0982814b25",
-      "verifiedAt": "2026-09-19T02:26:04.499Z"
+      "verifiedAt": "2026-09-19T02:26:04.499Z",
+      "playerClass": "human",
+      "hybridMovementMatch": 0.2752688172043011,
+      "hybridMovementMatches": 128,
+      "hybridMovementFrames": 465
     },
     {
       "name": "Rekursion",
@@ -511,7 +635,11 @@
       "frames": 900,
       "issue": 8,
       "trackHash": "35eb6ba8198a4402ba2aa04021dd311b",
-      "verifiedAt": "2026-09-19T02:42:42.037Z"
+      "verifiedAt": "2026-09-19T02:42:42.037Z",
+      "playerClass": "human",
+      "hybridMovementMatch": 0.13666666666666666,
+      "hybridMovementMatches": 123,
+      "hybridMovementFrames": 900
     },
     {
       "name": "small-li",
@@ -527,7 +655,11 @@
       "frames": 261,
       "issue": 13,
       "trackHash": "7939eaee3d68225a6242c0be261c8149",
-      "verifiedAt": "2026-09-19T11:34:12.301Z"
+      "verifiedAt": "2026-09-19T11:34:12.301Z",
+      "playerClass": "human",
+      "hybridMovementMatch": 0.29118773946360155,
+      "hybridMovementMatches": 76,
+      "hybridMovementFrames": 261
     },
     {
       "name": "KD419",
@@ -543,7 +675,11 @@
       "frames": 270,
       "issue": 20,
       "trackHash": "c4da74b79c23c4f2133a31284f673b45",
-      "verifiedAt": "2026-09-19T12:47:01.630Z"
+      "verifiedAt": "2026-09-19T12:47:01.630Z",
+      "playerClass": "human",
+      "hybridMovementMatch": 0.12962962962962962,
+      "hybridMovementMatches": 35,
+      "hybridMovementFrames": 270
     },
     {
       "name": "KD419",
@@ -559,7 +695,11 @@
       "frames": 334,
       "issue": 21,
       "trackHash": "75a1adee0bb5bc3907faace518495d16",
-      "verifiedAt": "2026-09-19T12:50:24.643Z"
+      "verifiedAt": "2026-09-19T12:50:24.643Z",
+      "playerClass": "human",
+      "hybridMovementMatch": 0.20958083832335328,
+      "hybridMovementMatches": 70,
+      "hybridMovementFrames": 334
     },
     {
       "name": "jagunjagun",
@@ -575,7 +715,11 @@
       "frames": 821,
       "issue": 26,
       "trackHash": "7926bb265647325ca5508cd364cfa061",
-      "verifiedAt": "2026-09-19T18:10:51.487Z"
+      "verifiedAt": "2026-09-19T18:10:51.487Z",
+      "playerClass": "human",
+      "hybridMovementMatch": 0.2618757612667479,
+      "hybridMovementMatches": 215,
+      "hybridMovementFrames": 821
     },
     {
       "name": "1",
@@ -591,7 +735,11 @@
       "frames": 1206,
       "issue": 30,
       "trackHash": "05e9184682d7f69028a832ac57c45a6a",
-      "verifiedAt": "2026-09-20T00:37:32.374Z"
+      "verifiedAt": "2026-09-20T00:37:32.374Z",
+      "playerClass": "human",
+      "hybridMovementMatch": 0.07213930348258707,
+      "hybridMovementMatches": 87,
+      "hybridMovementFrames": 1206
     }
   ]
 }

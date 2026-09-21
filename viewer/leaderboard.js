@@ -9,7 +9,10 @@
 
 import { loadLang, saveLang } from "./src/i18n.js";
 import { LIMITS, MIN_SUBMITTABLE_WINS } from "./src/replay.js?v=long-replay-download";
-import { RANKED_OPENING_DELAY_SECONDS } from "./src/ranked.js";
+import {
+  BOT_MOVEMENT_MATCH_THRESHOLD, RANKED_OPENING_DELAY_SECONDS,
+  playerClassForMovementRate,
+} from "./src/ranked.js?v=human-bot-lanes";
 
 /**
  * The submission rules, stated once, here. Every one of them is enforced twice
@@ -19,7 +22,7 @@ import { RANKED_OPENING_DELAY_SECONDS } from "./src/ranked.js";
  */
 const RULES = {
   en: [
-    [`${MIN_SUBMITTABLE_WINS} win to enter`, `Every human win counts. A run needs at least `
+    [`${MIN_SUBMITTABLE_WINS} win to enter`, `Every replay-verified player win counts. A run needs at least `
       + `${MIN_SUBMITTABLE_WINS} win before it can be submitted.`],
     [`Up to ${LIMITS.maxRounds} rounds / ${LIMITS.maxFrames.toLocaleString()} frames`,
       "The ranking score is the total number of wins in one continuous ranked run. "
@@ -31,7 +34,13 @@ const RULES = {
       + "shorter. A shorter pause only makes the run harder, so it is allowed."],
     ["No turn-rate assist", "Instant turn is switched off when a ranked run starts and "
       + "has to stay off."],
-    ["Three boards", "Hybrid, Laika and Killfield are ranked separately."],
+    ["Three opponents", "Hybrid, Laika and Killfield are ranked separately."],
+    ["Human / Bot split", `For every recorded frame, the verifier asks what movement `
+      + `Hybrid would choose from the player's state. A run with strictly more than `
+      + `${BOT_MOVEMENT_MATCH_THRESHOLD * 100}% exact movement matches goes to Bot; `
+      + "50% or less stays in Human. Fire is not compared. This is a reproducible "
+      + "input-similarity rule, not proof of who or what produced the inputs. A dedicated "
+      + "bot competition may be added later."],
     ["Anything else is yours", "The wheel's forward region, touch or keyboard, pausing "
       + "to think — none of it changes the match, so none of it is restricted."],
     ["A name, and optionally an account", "Every record goes up under a name. Showing "
@@ -43,7 +52,7 @@ const RULES = {
       + "Anyone can drop that file into Replay to watch and seek through the run."],
   ],
   zh: [
-    [`赢 ${MIN_SUBMITTABLE_WINS} 局即可上榜`, `人的每一个胜场都会计入。一次记录至少赢 `
+    [`赢 ${MIN_SUBMITTABLE_WINS} 局即可上榜`, `每个经重放核验的玩家胜场都会计入。一次记录至少赢 `
       + `${MIN_SUBMITTABLE_WINS} 局即可提交。`],
     [`最多 ${LIMITS.maxRounds} 局 / ${LIMITS.maxFrames.toLocaleString()} 帧`,
       "排名分数是同一次连续排位记录里的累计胜场，达到任一上限就停止录制。"
@@ -52,7 +61,12 @@ const RULES = {
     ["开局停顿不超过 0.5 秒", `默认的 ${RANKED_OPENING_DELAY_SECONDS} 秒或更短。`
       + "更短只会更难，所以允许。"],
     ["关闭瞬间转向", "开始排位时会自动关掉，并且必须保持关闭。"],
-    ["三个榜分开排", "Hybrid、Laika 和 Killfield 各排各的。"],
+    ["三个对手分开排", "Hybrid、Laika 和 Killfield 各排各的。"],
+    ["Human / Bot 分榜", `核验器会在每一帧根据玩家当时看到的状态，计算 Hybrid `
+      + `会选择的移动。玩家移动与它完全一致的帧严格超过 `
+      + `${BOT_MOVEMENT_MATCH_THRESHOLD * 100}% 就进入 Bot；50% 或以下留在 Human。`
+      + "开火不参与比较。这是可复现的输入相似度规则，不是对操作者身份的证明。"
+      + "以后可以再建立专门的 Bot 竞赛规则。"],
     ["其余随意", "轮盘的前向区域、用触屏还是键盘、中途暂停思考——都不改变对局本身，所以都不限制。"],
     ["名字必填，账号可选", "每条记录都要有名字。是否显示 GitHub 账号由你决定，"
       + "一键提交里的账号只是自报的主页链接，不代表平台核验过账号归属。"],
@@ -70,7 +84,8 @@ const COPY = {
     blurb: `Every win counts across a ranked run of up to ${LIMITS.maxRounds} rounds. `
       + "Every record here was replayed frame by frame before it landed.",
     rank: "#", player: "Player", score: "Wins", rounds: "Rounds",
-    losses: "Losses", doubleKills: "Double KOs", when: "Verified",
+    losses: "Losses", doubleKills: "Double KOs", match: "Hybrid match", when: "Verified",
+    humanLane: "Human", botLane: "Bot",
     empty: `Nobody has submitted a win yet. The board is yours to open.`,
     note: "Runs are played at the default settings — no actuation delay for the "
       + "opponent — and scored by replaying the recorded inputs through the same "
@@ -86,7 +101,8 @@ const COPY = {
     heading: "最多胜场",
     blurb: `一次排位最多记录 ${LIMITS.maxRounds} 局，每个胜场都计分。榜上每条记录都经过逐帧重放核验。`,
     rank: "#", player: "玩家", score: "胜", rounds: "总局数",
-    losses: "负", doubleKills: "双亡", when: "核验于",
+    losses: "负", doubleKills: "双亡", match: "Hybrid 移动一致率", when: "核验于",
+    humanLane: "Human", botLane: "Bot",
     empty: "还没有人提交胜场。第一个位置空着。",
     note: "成绩一律在默认设置下产生——对手不吃任何动作延迟——并由同一份引擎重放录制的输入重新计分，"
       + "提交时自报的分数不作数。",
@@ -101,11 +117,13 @@ const NODES = {
   back: "back-label", heading: "board-heading", blurb: "board-blurb",
   rank: "col-rank", player: "col-name", score: "col-score",
   rounds: "col-rounds", losses: "col-losses", doubleKills: "col-double-kills",
-  when: "col-when", note: "board-note",
+  match: "col-match", when: "col-when", note: "board-note",
+  humanLane: "human-tab", botLane: "bot-tab",
   rulesHeading: "rules-heading",
 };
 
 const tabs = [...document.querySelectorAll("#board-tabs .mode-btn")];
+const playerTabs = [...document.querySelectorAll("#player-tabs .mode-btn")];
 const body = document.getElementById("board-body");
 const emptyNote = document.getElementById("board-empty");
 const langToggle = document.getElementById("lang-toggle");
@@ -115,6 +133,7 @@ let lang = loadLang();
 let board = { entries: [] };
 let failed = false;
 let active = "hybrid";
+let activePlayerClass = "human";
 
 const text = () => COPY[lang] ?? COPY.en;
 
@@ -124,6 +143,18 @@ function formatDate(iso) {
   return new Date(when).toLocaleDateString(lang === "zh" ? "zh-Hans" : "en-GB", {
     year: "numeric", month: "short", day: "numeric",
   });
+}
+
+function entryPlayerClass(entry) {
+  if (entry.playerClass === "human" || entry.playerClass === "bot") {
+    return entry.playerClass;
+  }
+  if (Number.isFinite(entry.hybridMovementMatch)) {
+    return playerClassForMovementRate(entry.hybridMovementMatch);
+  }
+  // Compatibility for a cached board from before the split. The committed
+  // board is backfilled, so this is only a safe display fallback.
+  return "human";
 }
 
 function render() {
@@ -136,7 +167,8 @@ function render() {
   langToggle.setAttribute("aria-label", copy.langAria);
 
   const rows = board.entries
-    .filter((entry) => entry.board === active)
+    .filter((entry) => entry.board === active
+      && entryPlayerClass(entry) === activePlayerClass)
     .sort((a, b) => (b.wins ?? b.score) - (a.wins ?? a.score)
       || Date.parse(a.verifiedAt) - Date.parse(b.verifiedAt));
 
@@ -151,6 +183,8 @@ function render() {
       String(entry.rounds),
       entry.losses == null ? "—" : String(entry.losses),
       entry.doubleKills == null ? "—" : String(entry.doubleKills),
+      Number.isFinite(entry.hybridMovementMatch)
+        ? `${(entry.hybridMovementMatch * 100).toFixed(1)}%` : "—",
       formatDate(entry.verifiedAt),
     ];
     cells.forEach((value, column) => {
@@ -190,10 +224,18 @@ function render() {
   emptyNote.hidden = rows.length > 0;
   emptyNote.textContent = failed ? copy.unavailable : copy.empty;
   tabs.forEach((tab) => tab.classList.toggle("active", tab.dataset.board === active));
+  playerTabs.forEach((tab) => tab.classList.toggle(
+    "active", tab.dataset.playerClass === activePlayerClass,
+  ));
 }
 
 tabs.forEach((tab) => tab.addEventListener("click", () => {
   active = tab.dataset.board;
+  render();
+}));
+
+playerTabs.forEach((tab) => tab.addEventListener("click", () => {
+  activePlayerClass = tab.dataset.playerClass;
   render();
 }));
 

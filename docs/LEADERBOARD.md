@@ -69,13 +69,28 @@ A `Math.tanh` difference of an ulp moves a logit by around 1e-5. `AUDIT_EPSILON`
 is 1e-3: two orders above that noise, one order below the narrowest genuine tie,
 two orders below the cheapest forgery.
 
+## Human and Bot lanes
+
+Every opponent board is split into **Human** and **Bot** lanes. During the
+ordinary deterministic replay, the verifier also runs the published Hybrid
+policy from the player's observation on every recorded frame. It compares only
+the nine-way movement choice (back/neutral/forward × left/neutral/right), not
+the fire bit. A run whose exact Hybrid movement match rate is **strictly greater
+than 50%** is stored in the Bot lane; 50% or less stays in Human.
+
+This is intentionally a mechanical, reproducible classification rule. It says
+that the submitted inputs track this published checkpoint; it does not claim to
+identify the author, prove how the inputs were produced, or detect unrelated
+automation. The Bot lane is currently a separation mechanism, not yet a
+dedicated bot competition.
+
 ## What is not caught
 
 Say so rather than implying otherwise:
 
-- **A bot playing the game.** A scripted controller produces a record that
-  replays perfectly, because it really did play the rounds. The board measures
-  a controller, not a pair of hands.
+- **An unrelated bot.** The lane split detects controllers whose movement
+  tracks this published Hybrid checkpoint. A different policy can still look
+  unlike Hybrid and remain in Human; the board measures similarity, not hands.
 - **Playing in slow motion.** A modified client can step the engine slowly and
   give a human seconds per frame. The record carries wall-clock timing, but a
   modified client can write whatever timing it likes, so those figures are
@@ -219,7 +234,7 @@ recorded once by `tools/make_test_fixture.mjs`. Regenerate it whenever
 `kf_engine.wasm` or the policy weights change — it names both, and the test
 refuses it otherwise.
 
-Finding one takes minutes, which is itself worth knowing: the "human" in that
+Finding one takes minutes, which is itself worth knowing: the controller in that
 search is the policy driving itself through the keyboard path, and it is
 distinctly weaker there than in the discrete path it was trained on. The
 current fixture reaches three across 31 rounds. Continuous input deliberately

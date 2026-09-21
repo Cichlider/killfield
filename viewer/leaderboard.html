@@ -5,13 +5,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#f7f7f5">
 <title>Hybrid · Leaderboard</title>
-<meta name="description" content="Verified wins against Hybrid, Laika and Killfield. Every record is replayed frame by frame before it lands.">
+<meta name="description" content="Verified Human and Bot wins against Hybrid, Laika and Killfield. Every record is replayed frame by frame before it lands.">
 <meta name="robots" content="index,follow">
 <link rel="canonical" href="https://cichlider.github.io/killfield/viewer/leaderboard.html">
 <link rel="icon" type="image/png" sizes="32x32" href="assets/brand/hybrid-32.png">
 <link rel="icon" type="image/svg+xml" sizes="any" href="assets/brand/hybrid.svg">
 <link rel="apple-touch-icon" sizes="180x180" href="assets/brand/hybrid-180.png">
-<link rel="stylesheet" href="style.css?v=three-board-row">
+<link rel="stylesheet" href="style.css?v=human-bot-lanes">
 </head>
 <body>
 <main class="board-page">
@@ -34,6 +34,11 @@
     <button type="button" class="mode-btn" data-board="killfield">Killfield</button>
   </nav>
 
+  <nav class="mode-switch player-switch" id="player-tabs" aria-label="Player class">
+    <button type="button" class="mode-btn active" data-player-class="human" id="human-tab">Human</button>
+    <button type="button" class="mode-btn" data-player-class="bot" id="bot-tab">Bot</button>
+  </nav>
+
   <section class="board-panel">
     <table class="board-table">
       <thead>
@@ -44,6 +49,7 @@
           <th class="col-rounds" id="col-rounds">Rounds</th>
           <th class="col-losses" id="col-losses">Losses</th>
           <th class="col-double-kills" id="col-double-kills">Double KOs</th>
+          <th class="col-match" id="col-match">Hybrid match</th>
           <th class="col-when" id="col-when">Verified</th>
         </tr>
       </thead>
@@ -60,6 +66,6 @@
   <p class="board-note" id="board-note"></p>
   <footer class="site-footer"><a href="https://github.com/Cichlider/killfield" target="_blank" rel="noreferrer">github.com/Cichlider/killfield</a><span>© 2026 Cichlider. All rights reserved.</span></footer>
 </main>
-<script type="module" src="leaderboard.js?v=replay-share"></script>
+<script type="module" src="leaderboard.js?v=human-bot-lanes"></script>
 </body>
 </html>

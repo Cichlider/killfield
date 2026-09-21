@@ -5,8 +5,9 @@ import {
   packSession, summariseResults, unpackSession,
 } from "../src/replay.js";
 import {
-  FPS, NEUTRAL_ACTION, OpponentDriver, RANKED_OPENING_DELAY_SECONDS,
-  SessionRecorder, policyActionToInput, replaySession,
+  BOT_MOVEMENT_MATCH_THRESHOLD, FPS, NEUTRAL_ACTION, OpponentDriver,
+  RANKED_OPENING_DELAY_SECONDS, SessionRecorder, actionMovement, inputMovement,
+  playerClassForMovementRate, policyActionToInput, replaySession,
 } from "../src/ranked.js";
 import { HybridPolicy } from "../src/hybrid.js";
 
@@ -28,6 +29,15 @@ assert.deepEqual(policyActionToInput(15), {
 assert.deepEqual(policyActionToInput(17), {
   forward: 1, backup: 0, turnLeft: 0, turnRight: 1, fire: 1,
 });
+assert.equal(actionMovement(0), 0);
+assert.equal(actionMovement(17), 8);
+assert.equal(inputMovement({ backup: 1, forward: 0, turnLeft: 1, turnRight: 0 }), 0);
+assert.equal(inputMovement({ backup: 0, forward: 1, turnLeft: 0, turnRight: 1 }), 8);
+assert.equal(inputMovement({ backup: 1, forward: 1, turnLeft: 0, turnRight: 0 }), 4,
+  "equal opposing inputs cancel to neutral");
+assert.equal(playerClassForMovementRate(BOT_MOVEMENT_MATCH_THRESHOLD), "human",
+  "exactly 50% stays in the Human lane");
+assert.equal(playerClassForMovementRate(BOT_MOVEMENT_MATCH_THRESHOLD + Number.EPSILON), "bot");
 
 function mulberry32(seed) {
   let s = seed >>> 0;
@@ -115,6 +125,9 @@ const roundTripped = await unpackSession(await packSession(live.session));
 const replayed = await verify(hybridConfig, roundTripped);
 assert.deepEqual(replayed.winners, live.winners, "replay diverged from the recorded session");
 assert.deepEqual(replayed.suspect, [], "an honest session tripped the action audit");
+assert.equal(replayed.hybridMovement.frames, live.session.frames.length);
+assert.equal(replayed.hybridMovement.playerClass,
+  playerClassForMovementRate(replayed.hybridMovement.rate));
 
 // Every outcome displayed on the board is recomputed from the replay, never
 // taken from the submission.

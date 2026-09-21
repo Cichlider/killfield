@@ -529,6 +529,12 @@ header { gap: 4px; }
   margin: 0 auto 16px;
 }
 
+.board-page .player-switch {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  width: min(300px, 100%);
+  margin-top: -8px;
+}
+
 .board-panel {
   padding: 6px 8px;
   overflow-x: auto;
@@ -573,7 +579,8 @@ header { gap: 4px; }
 .board-table td:nth-child(4),
 .board-table td:nth-child(5),
 .board-table td:nth-child(6),
-.board-table td:nth-child(7) { color: var(--muted); font-size: 12px; }
+.board-table td:nth-child(7),
+.board-table td:nth-child(8) { color: var(--muted); font-size: 12px; }
 
 /* The leader is the only row the page editorialises about. */
 .board-table tr.lead td:first-child { color: var(--accent); font-weight: 700; }
@@ -649,6 +656,7 @@ header { gap: 4px; }
 
 @media (max-width: 560px) {
   .board-table th.col-rounds, .board-table td:nth-child(4) { display: none; }
+  .board-table th.col-when, .board-table td:nth-child(8) { display: none; }
   .board-table th, .board-table td { padding: 10px 7px; }
 }
 
