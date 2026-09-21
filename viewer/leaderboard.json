@@ -1,5 +1,5 @@
 {
-  "updated": "2026-09-21T23:36:10.554Z",
+  "updated": "2026-09-21T23:58:53.204Z",
   "entries": [
     {
       "name": "Trippy",
@@ -260,6 +260,26 @@
       "hybridMovementMatch": 0.8675181090354556,
       "hybridMovementMatches": 4551,
       "hybridMovementFrames": 5246
+    },
+    {
+      "name": "kaag's 2nd (bruh)",
+      "github": null,
+      "submitter": "ec9198e6aaff2b3a",
+      "board": "hybrid",
+      "score": 7,
+      "wins": 7,
+      "losses": 15,
+      "doubleKills": 2,
+      "rounds": 24,
+      "seed": 1418972488,
+      "frames": 16901,
+      "playerClass": "human",
+      "hybridMovementMatch": 0.11880953789716585,
+      "hybridMovementMatches": 2008,
+      "hybridMovementFrames": 16901,
+      "issue": 42,
+      "trackHash": "2090a2d7672582281508d8a37dd5c672",
+      "verifiedAt": "2026-09-21T23:58:53.204Z"
     },
     {
       "name": "small-li",
