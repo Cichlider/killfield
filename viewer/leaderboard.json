@@ -1,5 +1,5 @@
 {
-  "updated": "2026-09-22T18:05:16.902Z",
+  "updated": "2026-09-22T23:53:17.314Z",
   "entries": [
     {
       "name": "Trippy",
@@ -140,6 +140,26 @@
       "hybridMovementMatch": 0.8099468615078047,
       "hybridMovementMatches": 9755,
       "hybridMovementFrames": 12044
+    },
+    {
+      "name": "plexx",
+      "github": null,
+      "submitter": "5cca27e23734600f",
+      "board": "killfield",
+      "score": 14,
+      "wins": 14,
+      "losses": 16,
+      "doubleKills": 3,
+      "rounds": 33,
+      "seed": 3592881072,
+      "frames": 12576,
+      "playerClass": "human",
+      "hybridMovementMatch": 0.16841603053435114,
+      "hybridMovementMatches": 2118,
+      "hybridMovementFrames": 12576,
+      "issue": 49,
+      "trackHash": "cc5ed8cd6612685ccb8b16b2a3916435",
+      "verifiedAt": "2026-09-22T23:53:17.314Z"
     },
     {
       "name": "Brainrot",
