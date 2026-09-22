@@ -1,5 +1,5 @@
 {
-  "updated": "2026-09-21T23:58:53.204Z",
+  "updated": "2026-09-22T00:21:04.483Z",
   "entries": [
     {
       "name": "Trippy",
@@ -440,6 +440,26 @@
       "hybridMovementMatch": 0.0627062706270627,
       "hybridMovementMatches": 2470,
       "hybridMovementFrames": 39390
+    },
+    {
+      "name": "Kobi💯 first attempt",
+      "github": null,
+      "submitter": "db08bb9cace13de4",
+      "board": "hybrid",
+      "score": 5,
+      "wins": 5,
+      "losses": 26,
+      "doubleKills": 1,
+      "rounds": 32,
+      "seed": 560816792,
+      "frames": 17067,
+      "playerClass": "human",
+      "hybridMovementMatch": 0.12866936192652487,
+      "hybridMovementMatches": 2196,
+      "hybridMovementFrames": 17067,
+      "issue": 43,
+      "trackHash": "69ed41b12fcb2f3ac9c1c22bd0d53d13",
+      "verifiedAt": "2026-09-22T00:21:04.483Z"
     },
     {
       "name": "yourdesutrction",
