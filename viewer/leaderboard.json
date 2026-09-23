@@ -1,5 +1,5 @@
 {
-  "updated": "2026-09-23T18:03:35.302Z",
+  "updated": "2026-09-23T18:07:07.110Z",
   "entries": [
     {
       "name": "Trippy",
@@ -960,6 +960,26 @@
       "issue": 44,
       "trackHash": "18cd73f49a85af448502fe78fbf339d9",
       "verifiedAt": "2026-09-22T02:36:56.601Z"
+    },
+    {
+      "name": "Rapid",
+      "github": null,
+      "submitter": "3a46dfebbfc54a86",
+      "board": "killfield",
+      "score": 1,
+      "wins": 1,
+      "losses": 7,
+      "doubleKills": 0,
+      "rounds": 8,
+      "seed": 3901092633,
+      "frames": 3485,
+      "playerClass": "human",
+      "hybridMovementMatch": 0.17675753228120517,
+      "hybridMovementMatches": 616,
+      "hybridMovementFrames": 3485,
+      "issue": 51,
+      "trackHash": "743dbf85af937691d769e3ad9e5108c0",
+      "verifiedAt": "2026-09-23T18:07:07.110Z"
     }
   ]
 }
