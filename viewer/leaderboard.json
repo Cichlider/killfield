@@ -1,5 +1,5 @@
 {
-  "updated": "2026-09-23T18:11:33.363Z",
+  "updated": "2026-09-23T22:42:25.166Z",
   "entries": [
     {
       "name": "Trippy",
@@ -120,6 +120,26 @@
       "issue": 41,
       "trackHash": "6a4b1b8d8720eed0f303e13ce3560765",
       "verifiedAt": "2026-09-21T23:36:10.554Z"
+    },
+    {
+      "name": "Lichen (won a 1v1 😛)",
+      "github": null,
+      "submitter": "5c68cd8f03feaeed",
+      "board": "killfield",
+      "score": 18,
+      "wins": 18,
+      "losses": 16,
+      "doubleKills": 4,
+      "rounds": 38,
+      "seed": 4000591762,
+      "frames": 20434,
+      "playerClass": "human",
+      "hybridMovementMatch": 0.17142996965841245,
+      "hybridMovementMatches": 3503,
+      "hybridMovementFrames": 20434,
+      "issue": 53,
+      "trackHash": "850cab2b3e711a081c19960a9c385e7d",
+      "verifiedAt": "2026-09-23T22:42:25.166Z"
     },
     {
       "name": "interstellar",
