@@ -1,5 +1,5 @@
 {
-  "updated": "2026-09-23T18:07:07.110Z",
+  "updated": "2026-09-23T18:11:33.363Z",
   "entries": [
     {
       "name": "Trippy",
@@ -640,6 +640,26 @@
       "hybridMovementMatch": 1,
       "hybridMovementMatches": 1054,
       "hybridMovementFrames": 1054
+    },
+    {
+      "name": "Rapid",
+      "github": null,
+      "submitter": "3a46dfebbfc54a86",
+      "board": "killfield",
+      "score": 3,
+      "wins": 3,
+      "losses": 9,
+      "doubleKills": 0,
+      "rounds": 12,
+      "seed": 2690523845,
+      "frames": 4875,
+      "playerClass": "human",
+      "hybridMovementMatch": 0.15056410256410258,
+      "hybridMovementMatches": 734,
+      "hybridMovementFrames": 4875,
+      "issue": 52,
+      "trackHash": "0f12282238bbe7c378484302d532e14d",
+      "verifiedAt": "2026-09-23T18:11:33.362Z"
     },
     {
       "name": "Rekursion",
