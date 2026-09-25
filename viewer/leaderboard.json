@@ -1,5 +1,5 @@
 {
-  "updated": "2026-09-25T12:37:18.576Z",
+  "updated": "2026-09-25T15:28:28.801Z",
   "entries": [
     {
       "name": "Trippy",
@@ -40,6 +40,26 @@
       "issue": 45,
       "trackHash": "46b6287e6746585841d26f71fca9b7bd",
       "verifiedAt": "2026-09-22T11:18:42.678Z"
+    },
+    {
+      "name": "Laika's Owner",
+      "github": null,
+      "submitter": "6bc729d7efc05a1a",
+      "board": "laika",
+      "score": 30,
+      "wins": 30,
+      "losses": 0,
+      "doubleKills": 2,
+      "rounds": 32,
+      "seed": 260586008,
+      "frames": 8881,
+      "playerClass": "human",
+      "hybridMovementMatch": 0.2535750478549713,
+      "hybridMovementMatches": 2252,
+      "hybridMovementFrames": 8881,
+      "issue": 58,
+      "trackHash": "bb462a5deaa92479bf201367fb097b85",
+      "verifiedAt": "2026-09-25T15:28:28.800Z"
     },
     {
       "name": "Alternator",
