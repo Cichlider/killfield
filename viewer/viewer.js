@@ -1457,6 +1457,15 @@ function frame(now) {
     }
     accumulator = budget.remainder;
   }
+  if (replaySeeking) {
+    // seekReplay() is driving the engine through its own batched loop, far
+    // ahead of what one paint should show. Painting every intermediate frame
+    // here would render that resimulation as a visible replay-from-the-start
+    // flicker instead of a single clean jump; the seek bar and time readout
+    // (updated by stepReplayFrame itself) are progress feedback enough.
+    requestAnimationFrame(frame);
+    return;
+  }
   const renderAlpha = paused ? 1 : Math.min(1, accumulator / STEP_MS);
   const buf = renderBuffer();
   const localPlayer = predictHumanForRender(buf, renderAlpha);
