@@ -1,5 +1,5 @@
 {
-  "updated": "2026-09-26T15:15:09.712Z",
+  "updated": "2026-09-27T16:45:39.217Z",
   "entries": [
     {
       "name": "Trippy",
@@ -180,6 +180,26 @@
       "issue": 41,
       "trackHash": "6a4b1b8d8720eed0f303e13ce3560765",
       "verifiedAt": "2026-09-21T23:36:10.554Z"
+    },
+    {
+      "name": "Rapid",
+      "github": null,
+      "submitter": "a0744ab6a49d2acd",
+      "board": "killfield",
+      "score": 20,
+      "wins": 20,
+      "losses": 27,
+      "doubleKills": 9,
+      "rounds": 56,
+      "seed": 3659391376,
+      "frames": 19381,
+      "playerClass": "human",
+      "hybridMovementMatch": 0.15494556524431144,
+      "hybridMovementMatches": 3003,
+      "hybridMovementFrames": 19381,
+      "issue": 62,
+      "trackHash": "23877d512a16fd8fa9bbb1900ac86a7a",
+      "verifiedAt": "2026-09-27T16:45:39.217Z"
     },
     {
       "name": "Lichen (won a 1v1 😛)",
