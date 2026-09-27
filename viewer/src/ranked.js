@@ -137,16 +137,31 @@ export class OpponentDriver {
    * the action the submission recorded — keeping the replayed trajectory
    * identical to the one the player saw — while still auditing that action
    * against the decision it derived independently.
+   *
+   * Pass `computePolicy: false` when only this timing is needed and the
+   * chosen action itself is discarded — replaying a downloaded session
+   * applies `recorded.action` regardless of what decide() returns, so running
+   * the policy's conv/MLP forward pass for every replayed frame only slows
+   * down scrubbing without changing anything on screen.
    */
-  decide(wasm, handle) {
+  decide(wasm, handle, { computePolicy = true } = {}) {
     if (this.opponent !== "hybrid") return null;
     if (this.pause > 0) return { action: NEUTRAL_ACTION, logits: null };
 
-    const { observation, mask, dodge } = readObservation(wasm, handle, OPPONENT_SEAT);
-    const logits = this.policy.logits(observation, mask, dodge);
-    let best = 0;
-    for (let i = 1; i < logits.length; i += 1) if (logits[i] > logits[best]) best = i;
-    this.queue.push({ action: best, logits });
+    if (computePolicy) {
+      const { observation, mask, dodge } = readObservation(wasm, handle, OPPONENT_SEAT);
+      const logits = this.policy.logits(observation, mask, dodge);
+      let best = 0;
+      for (let i = 1; i < logits.length; i += 1) if (logits[i] > logits[best]) best = i;
+      this.queue.push({ action: best, logits });
+    } else {
+      // Whatever action shifts out of the queue later is never read by the
+      // replay player, which drives the engine from `recorded.action`
+      // instead — but it must still be a decision object, not this queue
+      // slot's absence, or the caller's `decision !== null` check misreads a
+      // due frame as one the engine still owns.
+      this.queue.push({ action: NEUTRAL_ACTION, logits: null });
+    }
 
     // Until the queue is deep enough the seat actuates nothing, which is what
     // the delay handicap means: it plans every frame but acts late.

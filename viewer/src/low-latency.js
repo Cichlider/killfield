@@ -26,15 +26,20 @@ export function interpolatePredictedPose(pose, predicted, leadFrames) {
 
 /**
  * Decide how many fixed simulation frames to run for one animation frame.
- * Never replay multiple overdue frames in one paint. A short browser stall
- * should become a moment of slow motion, not a burst of policy inference
- * followed by a visible multi-frame position jump. Normal 25 Hz operation is
- * unchanged because only overdue whole frames are discarded.
+ * With the default `maxSteps` of 1, never replay multiple overdue frames in
+ * one paint: a short browser stall should become a moment of slow motion, not
+ * a burst of policy inference followed by a visible multi-frame position
+ * jump. Normal 25 Hz operation is unchanged because only overdue whole frames
+ * are discarded.
+ *
+ * A recorded replay has no live input to jar, so faster-than-real-time
+ * playback instead scales `elapsedMs` by the chosen speed and raises
+ * `maxSteps` to let that many frames actually land per paint.
  */
-export function simulationBudget(accumulator, elapsedMs, stepMs, maxCatchupMs) {
+export function simulationBudget(accumulator, elapsedMs, stepMs, maxCatchupMs, maxSteps = 1) {
   const elapsed = Number.isFinite(elapsedMs) ? Math.max(0, elapsedMs) : 0;
   const total = Math.min(accumulator + elapsed, maxCatchupMs);
   const due = Math.floor(total / stepMs);
-  const steps = Math.min(due, 1);
+  const steps = Math.min(due, maxSteps);
   return { steps, remainder: total % stepMs, dropped: due - steps };
 }

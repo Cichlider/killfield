@@ -201,5 +201,34 @@ await assert.rejects(
   RejectedSubmission,
 );
 
+// ---------------------------------------- replay playback skips the policy
+
+// The replay player applies `recorded.action` regardless of what decide()
+// returns, so it calls decide() with computePolicy:false to skip the
+// conv/MLP forward pass. That must not shift when the delay queue actually
+// starts releasing actions, or a scrubbed replay would desync from what was
+// recorded.
+{
+  const wasm = await instantiate();
+  const handle = wasm.kf_new(0x51c1, 0);
+  const real = new OpponentDriver({
+    opponent: "hybrid", delayFrames: 2,
+    openingDelayFrames: Math.round(RANKED_OPENING_DELAY_SECONDS * FPS), policy,
+  });
+  const fast = new OpponentDriver({
+    opponent: "hybrid", delayFrames: 2,
+    openingDelayFrames: Math.round(RANKED_OPENING_DELAY_SECONDS * FPS), policy: null,
+  });
+  for (let i = 0; i < 400; i += 1) {
+    const a = real.decide(wasm, handle);
+    const b = fast.decide(wasm, handle, { computePolicy: false });
+    assert.equal(a === null, b === null, `frame ${i}: readiness must match`);
+    real.afterStep(wasm, handle, 0);
+    fast.afterStep(wasm, handle, 0);
+  }
+  wasm.kf_free(handle);
+}
+
 console.log(`ranked replay: ${live.winners.length} rounds reproduced exactly, `
-  + `${scored.wins} wins counted, forgeries caught, engine-driven opponent sealed`);
+  + `${scored.wins} wins counted, forgeries caught, engine-driven opponent sealed, `
+  + "replay pacing verified free of the policy pass");

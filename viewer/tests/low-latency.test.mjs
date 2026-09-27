@@ -58,4 +58,13 @@ assert.deepEqual(simulationBudget(30, 5, 40, 250), {
   steps: 0, remainder: 35, dropped: 0,
 });
 
+// A raised maxSteps is how replay playback covers several frames per paint at
+// higher-than-1x speed; it must still respect the same catch-up ceiling.
+assert.deepEqual(simulationBudget(0, 400, 40, 250, 8), {
+  steps: 6, remainder: 10, dropped: 0,
+});
+assert.deepEqual(simulationBudget(0, 100, 40, 250, 8), {
+  steps: 2, remainder: 20, dropped: 0,
+}, "maxSteps only raises the ceiling; it never invents frames that were not due");
+
 console.log("low-latency input prediction and frame budgeting OK");

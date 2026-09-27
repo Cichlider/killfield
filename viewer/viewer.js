@@ -25,7 +25,7 @@
  */
 
 import * as C from "./src/constants.js";
-import { STRINGS, loadLang, saveLang } from "./src/i18n.js?v=replay-player";
+import { STRINGS, loadLang, saveLang } from "./src/i18n.js?v=6579e2ea";
 import { Keyboard, TouchControls } from "./src/input.js?v=wasd-1";
 import { SoundEffects } from "./src/audio.js";
 import { Rng } from "./src/rng.js";
@@ -47,13 +47,22 @@ import {
   RANKED_OPENING_DELAY_SECONDS,
   SessionRecorder,
   readObservation,
-} from "./src/ranked.js?v=no-policy-pilot";
+} from "./src/ranked.js?v=replay-fast-seek";
 import {
   buildStamps, buildSubmission, openSubmissionIssue, submitToGateway,
 } from "./src/submit.js?v=chunked-replay";
 
 const STEP_MS = 1000 / C.FPS; // 40 ms
 const MAX_CATCHUP_MS = 250;
+const REPLAY_JUMP_SECONDS = 15;
+const REPLAY_SPEEDS = [1, 2, 4];
+// A recorded replay has no live input to jar, unlike Play/Watch, so it can
+// afford to actually land several frames in one paint at faster-than-1x
+// speed instead of dropping the overdue ones (see simulationBudget's
+// maxSteps). The ceiling only needs to clear the fastest speed's frames per
+// paint at 60 Hz (4x / (60/40) ≈ 2.7).
+const REPLAY_MAX_STEPS_PER_FRAME = 8;
+const REPLAY_SPEED_STORAGE_KEY = "killfield-replay-speed";
 const STREAK_STORAGE_KEY = "killfield-streak";
 const INSTANT_TURN_STORAGE_KEY = "killfield-human-instant-turn-v2";
 const OPENING_DELAY_STORAGE_KEY = "killfield-opening-delay-seconds";
@@ -128,6 +137,9 @@ const replayMessage = document.getElementById("replay-message");
 const replayProgress = document.getElementById("replay-progress");
 const replaySeek = document.getElementById("replay-seek");
 const replayTime = document.getElementById("replay-time");
+const replayBack15Button = document.getElementById("replay-back-15");
+const replayForward15Button = document.getElementById("replay-forward-15");
+const replaySpeedButton = document.getElementById("replay-speed");
 const watchLeftLabel = document.getElementById("watch-left-label");
 const watchRightLabel = document.getElementById("watch-right-label");
 const controllerSelects = [0, 1].map((i) => document.getElementById(`controller-${i}`));
@@ -590,6 +602,9 @@ function applyLanguage() {
   replayDropBody.textContent = s.replayDropBody;
   replayProgress.setAttribute("aria-label", s.replayProgress);
   replaySeek.setAttribute("aria-label", s.replayProgress);
+  replayBack15Button.setAttribute("aria-label", s.replayBack15);
+  replayForward15Button.setAttribute("aria-label", s.replayForward15);
+  syncReplaySpeedButton();
   watchLeftLabel.textContent = s.watchLeftLabel;
   watchRightLabel.textContent = s.watchRightLabel;
   playOpponentLabel.textContent = s.opponentLabel;
@@ -644,6 +659,11 @@ let replayPlayback = null;
 let replaySeeking = false;
 let replayScrubbing = false;
 let replaySeekToken = 0;
+let replaySpeed = 1;
+try {
+  const savedSpeed = Number(localStorage.getItem(REPLAY_SPEED_STORAGE_KEY));
+  if (REPLAY_SPEEDS.includes(savedSpeed)) replaySpeed = savedSpeed;
+} catch { /* Default stays 1x when browser storage is unavailable. */ }
 let watchAfterSubmission = null;
 
 /** The ranked session being recorded, and the finished one awaiting upload.
@@ -741,9 +761,25 @@ function syncReplayProgress(message = null) {
   const frameIndex = replayPlayback?.frameIndex ?? 0;
   replaySeek.max = String(Math.max(1, total));
   if (!replayScrubbing) replaySeek.value = String(Math.min(frameIndex, total));
-  replaySeek.disabled = total === 0 || replaySeeking;
+  const disabled = total === 0 || replaySeeking;
+  replaySeek.disabled = disabled;
+  replayBack15Button.disabled = disabled;
+  replayForward15Button.disabled = disabled;
   replayTime.textContent = replayClock(frameIndex, total, C.FPS);
   if (message !== null) replayMessage.textContent = message;
+}
+
+function syncReplaySpeedButton() {
+  replaySpeedButton.textContent = `${replaySpeed}x`;
+  replaySpeedButton.setAttribute("aria-label", t().replaySpeed(replaySpeed));
+}
+
+function cycleReplaySpeed() {
+  const next = REPLAY_SPEEDS[(REPLAY_SPEEDS.indexOf(replaySpeed) + 1) % REPLAY_SPEEDS.length];
+  replaySpeed = next;
+  try { localStorage.setItem(REPLAY_SPEED_STORAGE_KEY, String(next)); } catch { /* optional */ }
+  syncReplaySpeedButton();
+  replaySpeedButton.blur();
 }
 
 function resetReplayEngine() {
@@ -791,7 +827,10 @@ function stepReplayFrame(withSound = true) {
   const recorded = session.frames[index];
   wasm.kf_set_input(handle, HUMAN_SEAT, recorded.forward, recorded.backup,
     recorded.turnLeft, recorded.turnRight, recorded.fire, 1);
-  const decision = opponentDriver.decide(wasm, handle);
+  // The engine always ends up driven by `recorded.action`, never by whatever
+  // decide() itself picks, so skip the Hybrid policy's conv/MLP forward pass
+  // here — it's the cost that made scrubbing the seek bar stutter.
+  const decision = opponentDriver.decide(wasm, handle, { computePolicy: false });
   if (decision !== null) {
     if (recorded.action === NO_ACTION) throw new Error("Replay is missing an opponent action");
     opponentDriver.apply(wasm, handle, recorded.action);
@@ -814,10 +853,11 @@ function stepReplayFrame(withSound = true) {
   return true;
 }
 
-async function seekReplay(target) {
+async function seekReplay(target, { resumeIfPlaying = false } = {}) {
   if (!replayPlayback) return;
   const bounded = Math.max(0, Math.min(replayPlayback.session.frames.length, Math.round(target)));
   const token = ++replaySeekToken;
+  const wasPlaying = resumeIfPlaying && !paused;
   replaySeeking = true;
   paused = true;
   syncPauseButton();
@@ -832,11 +872,20 @@ async function seekReplay(target) {
   } finally {
     if (token === replaySeekToken) {
       replaySeeking = false;
+      if (wasPlaying && replayPlayback.frameIndex < replayPlayback.session.frames.length) {
+        paused = false;
+        syncPauseButton();
+      }
       syncReplayProgress(t().replayReady(
         replayPlayback.record.name || t().nameYou, replayPlayback.session.frames.length,
       ));
     }
   }
+}
+
+function jumpReplay(deltaSeconds) {
+  if (!replayPlayback) return;
+  seekReplay(replayPlayback.frameIndex + deltaSeconds * C.FPS, { resumeIfPlaying: true });
 }
 
 async function loadReplayRecord(value) {
@@ -1392,9 +1441,11 @@ function syncImmediateHumanFire() {
 }
 
 function frame(now) {
-  const budget = simulationBudget(
-    accumulator, now - last, STEP_MS, MAX_CATCHUP_MS,
-  );
+  const budget = mode === "replay"
+    ? simulationBudget(
+      accumulator, (now - last) * replaySpeed, STEP_MS, MAX_CATCHUP_MS, REPLAY_MAX_STEPS_PER_FRAME,
+    )
+    : simulationBudget(accumulator, now - last, STEP_MS, MAX_CATCHUP_MS);
   last = now;
   if (paused) {
     // Don't let the gap pile up while paused, or unpausing would fast-forward.
@@ -1648,6 +1699,9 @@ async function boot() {
     replayScrubbing = false;
     seekReplay(Number(replaySeek.value));
   });
+  replayBack15Button.addEventListener("click", () => jumpReplay(-REPLAY_JUMP_SECONDS));
+  replayForward15Button.addEventListener("click", () => jumpReplay(REPLAY_JUMP_SECONDS));
+  replaySpeedButton.addEventListener("click", cycleReplaySpeed);
   langToggle.addEventListener("click", toggleLanguage);
   window.addEventListener("resize", () => {
     renderer.resize();

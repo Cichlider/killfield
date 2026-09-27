@@ -30,7 +30,7 @@
 <link rel="icon" type="image/svg+xml" sizes="any" href="assets/brand/hybrid.svg">
 <link rel="apple-touch-icon" sizes="180x180" href="assets/brand/hybrid-180.png">
 <link rel="manifest" href="manifest.webmanifest?v=hybrid-1">
-<link rel="stylesheet" href="style.css?v=replay-player">
+<link rel="stylesheet" href="style.css?v=89b58606">
 </head>
 <body>
 <main>
@@ -118,6 +118,11 @@
   <section class="replay-progress" id="replay-progress" hidden aria-label="Replay progress">
     <input id="replay-seek" type="range" min="0" max="1" step="1" value="0">
     <output id="replay-time" for="replay-seek">0:00 / 0:00</output>
+    <div class="replay-controls">
+      <button id="replay-back-15" type="button" class="replay-btn" aria-label="Back 15 seconds">−15s</button>
+      <button id="replay-forward-15" type="button" class="replay-btn" aria-label="Forward 15 seconds">+15s</button>
+      <button id="replay-speed" type="button" class="replay-btn replay-speed" aria-label="Playback speed">1x</button>
+    </div>
   </section>
 
   <section class="config-row play-config" id="play-config" hidden aria-label="Player match settings">
@@ -194,6 +199,6 @@
   <footer class="site-footer"><a href="https://github.com/Cichlider/killfield" target="_blank" rel="noreferrer">github.com/Cichlider/killfield</a><span>© 2026 Cichlider. All rights reserved.</span></footer>
 </main>
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" defer></script>
-<script type="module" src="viewer.js?v=replay-player"></script>
+<script type="module" src="viewer.js?v=b8889f6e"></script>
 </body>
 </html>

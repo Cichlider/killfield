@@ -299,6 +299,35 @@ canvas { display: block; width: 100%; height: auto; }
 .replay-progress input { width: 100%; accent-color: var(--accent); }
 .replay-progress output { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 
+.replay-controls {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+}
+
+.replay-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 42px;
+  height: 26px;
+  padding: 0 10px;
+  color: #363935;
+  font-size: 11.5px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  border: 1px solid rgba(255,255,255,.68);
+  border-radius: 8px;
+  background: rgba(255,255,255,.74);
+  box-shadow: 0 2px 8px rgba(0,0,0,.08);
+  opacity: .82;
+}
+
+.replay-btn:hover { opacity: 1; }
+.replay-btn:disabled { opacity: .4; pointer-events: none; }
+.replay-speed { min-width: 32px; }
+
 .stage-toolbar {
   position: absolute;
   z-index: 3;
