@@ -1,5 +1,5 @@
 {
-  "updated": "2026-09-27T16:45:39.217Z",
+  "updated": "2026-09-29T08:05:28.268Z",
   "entries": [
     {
       "name": "Trippy",
@@ -420,6 +420,26 @@
       "issue": 40,
       "trackHash": "700566565bf0a5414d239c06521cedeb",
       "verifiedAt": "2026-09-21T20:10:27.493Z"
+    },
+    {
+      "name": "kaag's sub 10 ig",
+      "github": null,
+      "submitter": "ec9198e6aaff2b3a",
+      "board": "hybrid",
+      "score": 9,
+      "wins": 9,
+      "losses": 15,
+      "doubleKills": 3,
+      "rounds": 27,
+      "seed": 1521897175,
+      "frames": 9609,
+      "playerClass": "human",
+      "hybridMovementMatch": 0.15662399833489438,
+      "hybridMovementMatches": 1505,
+      "hybridMovementFrames": 9609,
+      "issue": 63,
+      "trackHash": "ec5fff84ed0fa26b7806a08b5141293f",
+      "verifiedAt": "2026-09-29T08:05:28.267Z"
     },
     {
       "name": "Corderox1",
