@@ -8,6 +8,9 @@
  */
 
 import { loadLang, saveLang } from "./src/i18n.js";
+import {
+  compareLeaderboardEntries, leaderboardWinRate, leaderboardWins,
+} from "./src/leaderboard-ranking.js";
 import { LIMITS, MIN_SUBMITTABLE_WINS } from "./src/replay.js?v=long-replay-download";
 import {
   BOT_MOVEMENT_MATCH_THRESHOLD, RANKED_OPENING_DELAY_SECONDS,
@@ -27,7 +30,8 @@ const RULES = {
     [`Up to ${LIMITS.maxRounds} rounds / ${LIMITS.maxFrames.toLocaleString()} frames`,
       "The ranking score is the total number of wins in one continuous ranked run. "
       + "Recording stops at whichever limit comes first. Losses and double KOs are recorded "
-      + "alongside it. Rerolling the maze or changing the opponent starts a new run."],
+      + "alongside it. Tied win totals are ranked by win rate. Rerolling the maze or changing "
+      + "the opponent starts a new run."],
     ["No delay for the opponent", "Opponent delay must sit at 0 frames. It is the "
       + "handicap that makes the agent actuate late, and a ranked run gives it none."],
     ["Opening pause at most 0.5s", `The default ${RANKED_OPENING_DELAY_SECONDS}s or `
@@ -56,7 +60,7 @@ const RULES = {
       + `${MIN_SUBMITTABLE_WINS} 局即可提交。`],
     [`最多 ${LIMITS.maxRounds} 局 / ${LIMITS.maxFrames.toLocaleString()} 帧`,
       "排名分数是同一次连续排位记录里的累计胜场，达到任一上限就停止录制。"
-      + "负场和双亡会一起展示。换迷宫或换对手会开始一次新记录。"],
+      + "负场和双亡会一起展示；胜场相同时，胜率更高者在前。换迷宫或换对手会开始一次新记录。"],
     ["对手零延迟", "对手延迟必须是 0 帧。那是让智能体延迟出手的让步，排位不给任何让步。"],
     ["开局停顿不超过 0.5 秒", `默认的 ${RANKED_OPENING_DELAY_SECONDS} 秒或更短。`
       + "更短只会更难，所以允许。"],
@@ -83,7 +87,7 @@ const COPY = {
     heading: "Most wins",
     blurb: `Every win counts across a ranked run of up to ${LIMITS.maxRounds} rounds. `
       + "Every record here was replayed frame by frame before it landed.",
-    rank: "#", player: "Player", score: "Wins", rounds: "Rounds",
+    rank: "#", player: "Player", score: "Wins", winRate: "Win rate", rounds: "Rounds",
     losses: "Losses", doubleKills: "Double KOs", match: "Hybrid match", when: "Verified",
     humanLane: "Human", botLane: "Bot",
     empty: `Nobody has submitted a win yet. The board is yours to open.`,
@@ -100,7 +104,7 @@ const COPY = {
     back: "返回游戏",
     heading: "最多胜场",
     blurb: `一次排位最多记录 ${LIMITS.maxRounds} 局，每个胜场都计分。榜上每条记录都经过逐帧重放核验。`,
-    rank: "#", player: "玩家", score: "胜", rounds: "总局数",
+    rank: "#", player: "玩家", score: "胜", winRate: "胜率", rounds: "总局数",
     losses: "负", doubleKills: "双亡", match: "Hybrid 移动一致率", when: "核验于",
     humanLane: "Human", botLane: "Bot",
     empty: "还没有人提交胜场。第一个位置空着。",
@@ -115,7 +119,7 @@ const COPY = {
 
 const NODES = {
   back: "back-label", heading: "board-heading", blurb: "board-blurb",
-  rank: "col-rank", player: "col-name", score: "col-score",
+  rank: "col-rank", player: "col-name", score: "col-score", winRate: "col-win-rate",
   rounds: "col-rounds", losses: "col-losses", doubleKills: "col-double-kills",
   match: "col-match", when: "col-when", note: "board-note",
   humanLane: "human-tab", botLane: "bot-tab",
@@ -169,8 +173,7 @@ function render() {
   const rows = board.entries
     .filter((entry) => entry.board === active
       && entryPlayerClass(entry) === activePlayerClass)
-    .sort((a, b) => (b.wins ?? b.score) - (a.wins ?? a.score)
-      || Date.parse(a.verifiedAt) - Date.parse(b.verifiedAt));
+    .sort(compareLeaderboardEntries);
 
   body.replaceChildren();
   for (const [index, entry] of rows.entries()) {
@@ -179,7 +182,8 @@ function render() {
     const cells = [
       String(index + 1),
       null, // the name is built below, since it carries a link
-      String(entry.wins ?? entry.score),
+      String(leaderboardWins(entry)),
+      `${(leaderboardWinRate(entry) * 100).toFixed(1)}%`,
       String(entry.rounds),
       entry.losses == null ? "—" : String(entry.losses),
       entry.doubleKills == null ? "—" : String(entry.doubleKills),

@@ -1,8 +1,9 @@
 # The leaderboard
 
-Three boards, ranked by total human wins in one recorded run. Hybrid, Laika and
-Killfield (the 512-ray planner) are ranked separately. A run qualifies with one
-win and ends automatically at 200 finished rounds. The board also reports total
+Three boards, ranked by total human wins in one recorded run. Tied win totals
+are ordered by win rate (`wins / rounds`). Hybrid, Laika and Killfield (the
+512-ray planner) are ranked separately. A run qualifies with one win and ends
+automatically at 200 finished rounds. The board also reports win rate, total
 rounds, losses and mutual destructions.
 
 Nothing on the board is a number somebody typed. A submission carries the seed
@@ -123,7 +124,9 @@ and pausing produces no frames at all.
 
 Every human win in the continuous session counts, whether consecutive or not.
 One win qualifies the run, and recording stops automatically after 200 finished
-rounds. Losses and mutual destructions are retained as separate statistics.
+rounds. Losses and mutual destructions are retained as separate statistics. If
+two runs have the same number of wins, the run with the higher win rate ranks
+first; only an exact tie falls back to the earlier verification time.
 Anything that changes the match closes the recording — a reroll, a different
 opponent, a change to either delay — and whatever was recorded stays
 submittable if it contains at least one win.
