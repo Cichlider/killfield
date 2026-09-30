@@ -1,5 +1,5 @@
 {
-  "updated": "2026-09-30T11:32:48.835Z",
+  "updated": "2026-09-30T15:16:09.361Z",
   "entries": [
     {
       "name": "Trippy",
@@ -500,6 +500,26 @@
       "issue": 63,
       "trackHash": "ec5fff84ed0fa26b7806a08b5141293f",
       "verifiedAt": "2026-09-29T08:05:28.267Z"
+    },
+    {
+      "name": "bruh",
+      "github": null,
+      "submitter": "5d81a2da88336dc0",
+      "board": "hybrid",
+      "score": 9,
+      "wins": 9,
+      "losses": 15,
+      "doubleKills": 4,
+      "rounds": 28,
+      "seed": 3505850556,
+      "frames": 9989,
+      "playerClass": "human",
+      "hybridMovementMatch": 0.17098808689558515,
+      "hybridMovementMatches": 1708,
+      "hybridMovementFrames": 9989,
+      "issue": 69,
+      "trackHash": "c6051e13a9ac60b099cee3c1e7fbb3a3",
+      "verifiedAt": "2026-09-30T15:16:09.361Z"
     },
     {
       "name": "kaag's number",
