@@ -34,6 +34,7 @@ import {
   FPS, RANKED_DELAY_FRAMES, RANKED_OPENING_DELAY_SECONDS, replaySession,
 } from "../viewer/src/ranked.js";
 import { HybridPolicy } from "../viewer/src/hybrid.js";
+import { compareLeaderboardEntries } from "../viewer/src/leaderboard-ranking.js";
 
 const VIEWER = new URL("../viewer/", import.meta.url);
 // Overridable so the test suite never reads or writes the real, committed
@@ -383,8 +384,7 @@ try {
   const { board, entry } = await verify({ body, author, issue });
   if (write) {
     board.entries.push(entry);
-    board.entries.sort((a, b) => (b.wins ?? b.score) - (a.wins ?? a.score)
-      || Date.parse(a.verifiedAt) - Date.parse(b.verifiedAt));
+    board.entries.sort(compareLeaderboardEntries);
     board.updated = new Date().toISOString();
     fs.writeFileSync(BOARD_PATH, `${JSON.stringify(board, null, 2)}\n`);
   }
