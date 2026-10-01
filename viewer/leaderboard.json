@@ -1,5 +1,5 @@
 {
-  "updated": "2026-10-01T01:11:39.084Z",
+  "updated": "2026-10-01T06:46:17.786Z",
   "entries": [
     {
       "name": "Trippy",
@@ -1340,6 +1340,26 @@
       "issue": 44,
       "trackHash": "18cd73f49a85af448502fe78fbf339d9",
       "verifiedAt": "2026-09-22T02:36:56.601Z"
+    },
+    {
+      "name": "Wu Zhiyu",
+      "github": "Cholecystoduodenostomy",
+      "submitter": "cb66651ff15d1d10",
+      "board": "hybrid",
+      "score": 1,
+      "wins": 1,
+      "losses": 45,
+      "doubleKills": 0,
+      "rounds": 46,
+      "seed": 4157399632,
+      "frames": 13388,
+      "playerClass": "human",
+      "hybridMovementMatch": 0.12025694651927099,
+      "hybridMovementMatches": 1610,
+      "hybridMovementFrames": 13388,
+      "issue": 71,
+      "trackHash": "3cdde10985c2f9b15b3fd61dd90e3d09",
+      "verifiedAt": "2026-10-01T06:46:17.786Z"
     }
   ]
 }
