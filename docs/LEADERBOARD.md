@@ -118,8 +118,8 @@ somebody can write:
 - **Instant turn off.** The assist removes the turn-rate limit outright.
 
 Settings that change nothing about the match are deliberately unrestricted: the
-touch scheme (eight-sector arrow keys or the world-heading wheel) and the wheel's
-forward region are client-side mappings that resolve into the same strengths
+touch scheme (eight-sector arrow keys, three-finger pads, or the world-heading wheel)
+and the wheel's forward region are client-side mappings that resolve into the same strengths
 before anything crosses the FFI, so touch and keyboard stay equivalent, and
 pausing produces no frames at all.
 

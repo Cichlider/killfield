@@ -503,15 +503,15 @@ assert.deepEqual(
   "fire is never part of movement",
 );
 
-// The pad resolves to one of the two schemes, and anything stored by an older
-// build falls back to the new default instead of reaching the stick maths.
+// First-time visitors and invalid stored values use the original wheel.
+// Explicit choices for the other schemes still work.
 assert.deepEqual(TOUCH_SCHEMES, ["sectors", "pads", "wheel"]);
-assert.equal(DEFAULT_TOUCH_SCHEME, "sectors");
+assert.equal(DEFAULT_TOUCH_SCHEME, "wheel");
 assert.equal(normaliseTouchScheme("wheel"), "wheel");
 assert.equal(normaliseTouchScheme("sectors"), "sectors");
-assert.equal(normaliseTouchScheme(null), "sectors");
+assert.equal(normaliseTouchScheme(null), "wheel");
 assert.equal(normaliseTouchScheme("pads"), "pads");
-assert.equal(normaliseTouchScheme("dpad"), "sectors");
+assert.equal(normaliseTouchScheme("dpad"), "wheel");
 
 
 // ---------------------------------------------------------------- pads

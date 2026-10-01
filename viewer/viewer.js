@@ -26,7 +26,7 @@
 
 import * as C from "./src/constants.js";
 import { STRINGS, loadLang, saveLang } from "./src/i18n.js?v=0f8fd59a";
-import { Keyboard, TouchControls } from "./src/input.js?v=071f7ab5";
+import { Keyboard, TouchControls } from "./src/input.js?v=88652157";
 import {
   DEFAULT_PAD_TUNE,
   padLayout,
@@ -1441,7 +1441,7 @@ function setMode(next) {
   closeThemedPickers();
   keyboard.clear();
   touchControls.clear();
-  stage.classList.toggle("play-mode", next === "play");
+  stage.classList.toggle("rail-mode", next === "play" || next === "replay");
   watchButton.classList.toggle("active", next === "watch");
   playButton.classList.toggle("active", next === "play");
   replayButton.classList.toggle("active", next === "replay");

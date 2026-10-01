@@ -28,13 +28,14 @@
  * passes a fraction and does not). The joystick math, deadzone and
  * snap-to-2.8125-degree logic are otherwise untouched.
  *
- * The pad speaks two schemes, picked by `TouchControls.scheme`:
+ * The pad speaks three schemes, picked by `TouchControls.scheme`:
  *
  *   "wheel"   the ported 128-direction world-heading wheel from killfield, and
  *   "sectors" the eight-sector arrow-key stick, whose feel, geometry and
- *             artwork all live in src/pad.js.
+ *             artwork all live in src/pad.js, and
+ *   "pads"   separate movement, turn, and fire buttons.
  *
- * Both end at the same `kf_set_input` call, so nothing downstream — physics,
+ * All three end at the same `kf_set_input` call, so nothing downstream — physics,
  * prediction, ranked recording — knows which one produced the strengths.
  */
 
@@ -201,8 +202,8 @@ export class Keyboard {
 // Version the preference with the new 360° default so browsers that visited
 // the old 270° build do not silently retain that retired default.
 const FORWARD_ALIGNMENT_KEY = "killfield-forward-alignment-degrees-v2";
-// Which scheme the pad speaks. A new key, so every existing browser gets the
-// sector default rather than inheriting a wheel choice it never made.
+// Which scheme the pad speaks. Keep the original wheel for first-time visitors;
+// an explicit choice in local storage still takes precedence.
 const TOUCH_SCHEME_KEY = "killfield-touch-scheme-v1";
 // Feel settings for the sector pad, stored as the exported JSON.
 const PAD_TUNE_KEY = "killfield-pad-tune-v1";
@@ -279,7 +280,7 @@ export function joystickButtons(
 }
 
 export const TOUCH_SCHEMES = ["sectors", "pads", "wheel"];
-export const DEFAULT_TOUCH_SCHEME = "sectors";
+export const DEFAULT_TOUCH_SCHEME = "wheel";
 
 export function normaliseTouchScheme(raw) {
   return TOUCH_SCHEMES.includes(raw) ? raw : DEFAULT_TOUCH_SCHEME;

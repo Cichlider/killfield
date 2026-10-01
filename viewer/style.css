@@ -1099,14 +1099,14 @@ header { gap: 4px; }
   .range-field output { grid-column: 2; grid-row: 1; }
 }
 
-/* Player fullscreen preserves the original mobile three-rail composition:
+/* Play and replay fullscreen share the mobile three-rail composition:
    score and movement on the left, an unobstructed arena in the middle, and
-   utility buttons plus fire on the right. Watch mode keeps the simpler
+   utility buttons plus fire on the right in Play. Watch mode keeps the simpler
    centred fullscreen layout above. */
 @media (max-width: 980px), (pointer: coarse) {
-  .stage.play-mode:fullscreen,
-  .stage.play-mode:-webkit-full-screen,
-  .stage.play-mode.pseudo-fullscreen {
+  .stage.rail-mode:fullscreen,
+  .stage.rail-mode:-webkit-full-screen,
+  .stage.rail-mode.pseudo-fullscreen {
     --record-left-rail: clamp(210px, 25vw, 340px);
     --record-right-rail: clamp(180px, 22vw, 300px);
     --record-joystick-size: min(
@@ -1120,9 +1120,9 @@ header { gap: 4px; }
     justify-content: stretch;
   }
 
-  .stage.play-mode:fullscreen .canvas-wrap,
-  .stage.play-mode:-webkit-full-screen .canvas-wrap,
-  .stage.play-mode.pseudo-fullscreen .canvas-wrap {
+  .stage.rail-mode:fullscreen .canvas-wrap,
+  .stage.rail-mode:-webkit-full-screen .canvas-wrap,
+  .stage.rail-mode.pseudo-fullscreen .canvas-wrap {
     grid-column: 2;
     grid-row: 1;
     width: 100%;
@@ -1130,9 +1130,9 @@ header { gap: 4px; }
     min-width: 0;
   }
 
-  .stage.play-mode:fullscreen .stage-overlay,
-  .stage.play-mode:-webkit-full-screen .stage-overlay,
-  .stage.play-mode.pseudo-fullscreen .stage-overlay {
+  .stage.rail-mode:fullscreen .stage-overlay,
+  .stage.rail-mode:-webkit-full-screen .stage-overlay,
+  .stage.rail-mode.pseudo-fullscreen .stage-overlay {
     position: relative;
     z-index: 5;
     top: auto;
@@ -1155,9 +1155,9 @@ header { gap: 4px; }
     backdrop-filter: blur(5px);
   }
 
-  .stage.play-mode:fullscreen .scoreboard,
-  .stage.play-mode:-webkit-full-screen .scoreboard,
-  .stage.play-mode.pseudo-fullscreen .scoreboard {
+  .stage.rail-mode:fullscreen .scoreboard,
+  .stage.rail-mode:-webkit-full-screen .scoreboard,
+  .stage.rail-mode.pseudo-fullscreen .scoreboard {
     display: flex;
     flex-direction: column;
     align-items: stretch;
@@ -1168,9 +1168,9 @@ header { gap: 4px; }
     margin: 0 0 5px;
   }
 
-  .stage.play-mode:fullscreen .scoreboard .side,
-  .stage.play-mode:-webkit-full-screen .scoreboard .side,
-  .stage.play-mode.pseudo-fullscreen .scoreboard .side {
+  .stage.rail-mode:fullscreen .scoreboard .side,
+  .stage.rail-mode:-webkit-full-screen .scoreboard .side,
+  .stage.rail-mode.pseudo-fullscreen .scoreboard .side {
     display: grid;
     grid-template-columns: 10px minmax(0, 1fr) minmax(1ch, auto);
     gap: 6px;
@@ -1180,55 +1180,55 @@ header { gap: 4px; }
     overflow: hidden;
   }
 
-  .stage.play-mode:fullscreen .side-right .swatch,
-  .stage.play-mode:-webkit-full-screen .side-right .swatch,
-  .stage.play-mode.pseudo-fullscreen .side-right .swatch { order: -1; }
+  .stage.rail-mode:fullscreen .side-right .swatch,
+  .stage.rail-mode:-webkit-full-screen .side-right .swatch,
+  .stage.rail-mode.pseudo-fullscreen .side-right .swatch { order: -1; }
 
-  .stage.play-mode:fullscreen .side-right .side-score,
-  .stage.play-mode:-webkit-full-screen .side-right .side-score,
-  .stage.play-mode.pseudo-fullscreen .side-right .side-score { order: 2; }
+  .stage.rail-mode:fullscreen .side-right .side-score,
+  .stage.rail-mode:-webkit-full-screen .side-right .side-score,
+  .stage.rail-mode.pseudo-fullscreen .side-right .side-score { order: 2; }
 
-  .stage.play-mode:fullscreen .side-score,
-  .stage.play-mode:-webkit-full-screen .side-score,
-  .stage.play-mode.pseudo-fullscreen .side-score {
+  .stage.rail-mode:fullscreen .side-score,
+  .stage.rail-mode:-webkit-full-screen .side-score,
+  .stage.rail-mode.pseudo-fullscreen .side-score {
     min-width: 0;
     justify-self: end;
   }
 
-  .stage.play-mode:fullscreen .swatch,
-  .stage.play-mode:-webkit-full-screen .swatch,
-  .stage.play-mode.pseudo-fullscreen .swatch {
+  .stage.rail-mode:fullscreen .swatch,
+  .stage.rail-mode:-webkit-full-screen .swatch,
+  .stage.rail-mode.pseudo-fullscreen .swatch {
     width: 10px;
     height: 10px;
     border-radius: 3px;
   }
 
-  .stage.play-mode:fullscreen .side-name,
-  .stage.play-mode:-webkit-full-screen .side-name,
-  .stage.play-mode.pseudo-fullscreen .side-name {
+  .stage.rail-mode:fullscreen .side-name,
+  .stage.rail-mode:-webkit-full-screen .side-name,
+  .stage.rail-mode.pseudo-fullscreen .side-name {
     overflow: hidden;
     color: #fff;
     font-size: clamp(10px, 1.55vw, 13px);
     text-overflow: ellipsis;
   }
 
-  .stage.play-mode:fullscreen .side-score,
-  .stage.play-mode:-webkit-full-screen .side-score,
-  .stage.play-mode.pseudo-fullscreen .side-score {
+  .stage.rail-mode:fullscreen .side-score,
+  .stage.rail-mode:-webkit-full-screen .side-score,
+  .stage.rail-mode.pseudo-fullscreen .side-score {
     color: #fff;
     font-size: clamp(18px, 2.6vw, 25px);
   }
 
-  .stage.play-mode:fullscreen .vs,
-  .stage.play-mode:-webkit-full-screen .vs,
-  .stage.play-mode.pseudo-fullscreen .vs { display: none; }
+  .stage.rail-mode:fullscreen .vs,
+  .stage.rail-mode:-webkit-full-screen .vs,
+  .stage.rail-mode.pseudo-fullscreen .vs { display: none; }
 
-  .stage.play-mode:fullscreen .roundline,
-  .stage.play-mode:-webkit-full-screen .roundline,
-  .stage.play-mode.pseudo-fullscreen .roundline,
-  .stage.play-mode:fullscreen .streakline,
-  .stage.play-mode:-webkit-full-screen .streakline,
-  .stage.play-mode.pseudo-fullscreen .streakline {
+  .stage.rail-mode:fullscreen .roundline,
+  .stage.rail-mode:-webkit-full-screen .roundline,
+  .stage.rail-mode.pseudo-fullscreen .roundline,
+  .stage.rail-mode:fullscreen .streakline,
+  .stage.rail-mode:-webkit-full-screen .streakline,
+  .stage.rail-mode.pseudo-fullscreen .streakline {
     display: block;
     margin: 0;
     overflow-wrap: anywhere;
@@ -1238,13 +1238,13 @@ header { gap: 4px; }
     white-space: normal;
   }
 
-  .stage.play-mode:fullscreen .roundline,
-  .stage.play-mode:-webkit-full-screen .roundline,
-  .stage.play-mode.pseudo-fullscreen .roundline { margin-bottom: 2px; }
+  .stage.rail-mode:fullscreen .roundline,
+  .stage.rail-mode:-webkit-full-screen .roundline,
+  .stage.rail-mode.pseudo-fullscreen .roundline { margin-bottom: 2px; }
 
-  .stage.play-mode:fullscreen .stage-toolbar,
-  .stage.play-mode:-webkit-full-screen .stage-toolbar,
-  .stage.play-mode.pseudo-fullscreen .stage-toolbar {
+  .stage.rail-mode:fullscreen .stage-toolbar,
+  .stage.rail-mode:-webkit-full-screen .stage-toolbar,
+  .stage.rail-mode.pseudo-fullscreen .stage-toolbar {
     position: fixed;
     z-index: 6;
     top: max(10px, env(safe-area-inset-top));
@@ -1255,9 +1255,9 @@ header { gap: 4px; }
     width: min(110px, calc(var(--record-right-rail) - 20px - env(safe-area-inset-right)));
   }
 
-  .stage.play-mode:fullscreen .stage-toolbar > button,
-  .stage.play-mode:-webkit-full-screen .stage-toolbar > button,
-  .stage.play-mode.pseudo-fullscreen .stage-toolbar > button {
+  .stage.rail-mode:fullscreen .stage-toolbar > button,
+  .stage.rail-mode:-webkit-full-screen .stage-toolbar > button,
+  .stage.rail-mode.pseudo-fullscreen .stage-toolbar > button {
     position: static;
     width: 100%;
     min-width: 0;
@@ -1273,13 +1273,13 @@ header { gap: 4px; }
     backdrop-filter: blur(5px);
   }
 
-  .stage.play-mode:fullscreen .stage-toolbar > #touch-visibility,
-  .stage.play-mode:-webkit-full-screen .stage-toolbar > #touch-visibility,
-  .stage.play-mode.pseudo-fullscreen .stage-toolbar > #touch-visibility { font-size: 10px; }
+  .stage.rail-mode:fullscreen .stage-toolbar > #touch-visibility,
+  .stage.rail-mode:-webkit-full-screen .stage-toolbar > #touch-visibility,
+  .stage.rail-mode.pseudo-fullscreen .stage-toolbar > #touch-visibility { font-size: 10px; }
 
-  .stage.play-mode:fullscreen .touch-left-control,
-  .stage.play-mode:-webkit-full-screen .touch-left-control,
-  .stage.play-mode.pseudo-fullscreen .touch-left-control {
+  .stage.rail-mode:fullscreen .touch-left-control,
+  .stage.rail-mode:-webkit-full-screen .touch-left-control,
+  .stage.rail-mode.pseudo-fullscreen .touch-left-control {
     left: max(10px, env(safe-area-inset-left));
     bottom: max(10px, env(safe-area-inset-bottom));
     display: flex;
@@ -1287,13 +1287,13 @@ header { gap: 4px; }
     width: calc(var(--record-left-rail) - 20px - env(safe-area-inset-left));
   }
 
-  .stage.play-mode:fullscreen .touch-joystick,
-  .stage.play-mode:-webkit-full-screen .touch-joystick,
-  .stage.play-mode.pseudo-fullscreen .touch-joystick { width: min(var(--pad-size, var(--record-joystick-size)), var(--record-joystick-size)); }
+  .stage.rail-mode:fullscreen .touch-joystick,
+  .stage.rail-mode:-webkit-full-screen .touch-joystick,
+  .stage.rail-mode.pseudo-fullscreen .touch-joystick { width: min(var(--pad-size, var(--record-joystick-size)), var(--record-joystick-size)); }
 
-  .stage.play-mode:fullscreen .touch-fire,
-  .stage.play-mode:-webkit-full-screen .touch-fire,
-  .stage.play-mode.pseudo-fullscreen .touch-fire {
+  .stage.rail-mode:fullscreen .touch-fire,
+  .stage.rail-mode:-webkit-full-screen .touch-fire,
+  .stage.rail-mode.pseudo-fullscreen .touch-fire {
     right: max(12px, env(safe-area-inset-right));
     bottom: max(14px, env(safe-area-inset-bottom));
     width: min(calc(var(--record-right-rail) - 24px - env(safe-area-inset-right)), clamp(160px, 18vw, 240px));
