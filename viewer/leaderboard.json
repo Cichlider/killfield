@@ -1,5 +1,5 @@
 {
-  "updated": "2026-10-01T06:46:17.786Z",
+  "updated": "2026-10-01T07:13:30.493Z",
   "entries": [
     {
       "name": "Trippy",
@@ -40,6 +40,26 @@
       "issue": 45,
       "trackHash": "46b6287e6746585841d26f71fca9b7bd",
       "verifiedAt": "2026-09-22T11:18:42.678Z"
+    },
+    {
+      "name": "Wu Zhiyu",
+      "github": "Cholecystoduodenostomy",
+      "submitter": "cb66651ff15d1d10",
+      "board": "laika",
+      "score": 41,
+      "wins": 41,
+      "losses": 29,
+      "doubleKills": 11,
+      "rounds": 81,
+      "seed": 2451193058,
+      "frames": 25691,
+      "playerClass": "human",
+      "hybridMovementMatch": 0.19843524969833795,
+      "hybridMovementMatches": 5098,
+      "hybridMovementFrames": 25691,
+      "issue": 74,
+      "trackHash": "3e263b738d37ff4641ec8f786be09642",
+      "verifiedAt": "2026-10-01T07:13:30.493Z"
     },
     {
       "name": "Laika's Owner",
