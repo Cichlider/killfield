@@ -1,5 +1,5 @@
 {
-  "updated": "2026-10-01T20:55:05.725Z",
+  "updated": "2026-10-01T21:17:55.434Z",
   "entries": [
     {
       "name": "Trippy",
@@ -560,6 +560,26 @@
       "issue": 64,
       "trackHash": "4d2ba7106f223c9cc6773891ff330942",
       "verifiedAt": "2026-09-29T12:57:00.475Z"
+    },
+    {
+      "name": "pyroghost htf dy kl hybr",
+      "github": null,
+      "submitter": "59065cdda6540af8",
+      "board": "killfield",
+      "score": 8,
+      "wins": 8,
+      "losses": 16,
+      "doubleKills": 4,
+      "rounds": 28,
+      "seed": 3688488733,
+      "frames": 10120,
+      "playerClass": "human",
+      "hybridMovementMatch": 0.18142292490118578,
+      "hybridMovementMatches": 1836,
+      "hybridMovementFrames": 10120,
+      "issue": 76,
+      "trackHash": "b46ffbd6c4ce6a3e816061e423955c98",
+      "verifiedAt": "2026-10-01T21:17:55.434Z"
     },
     {
       "name": "Corderox1",
