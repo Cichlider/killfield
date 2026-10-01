@@ -13,7 +13,7 @@ No download, no account:
 
 **[Play now](https://cichlider.github.io/killfield/viewer/)**
 
-Works on mobile too: there's an on-screen joystick, and turning on **No turn-rate limit** in settings makes it much easier to play. You can also just watch the AIs fight each other.
+Works on mobile too. The on-screen stick defaults to **Arrow keys (8-way)**: eight sectors on a wheel, where each sector is a direction-key combination — up is forward, left turns left, up-left drives them together — and the distance from the centre sets the speed, so a full push is exactly the keyboard. Every number behind that stick is adjustable under **Stick feel** — centre and transition zones, stick size, and one handle per boundary line, draggable directly on the pad while the panel is open. Switch the stick between a **circle** (stop / ramp / full-speed zones) and a **square** (a 3x3 grid with no ramp), or pick **Three-finger pads** — forward/reverse under the left thumb, turn under the right, fire on its own in the top-right — whose buttons can be dragged anywhere. The settings are saved in the browser and importable/exportable as JSON. Switch to **Wheel (128-direction)** in settings for the older world-heading stick; turning on **No turn-rate limit** there makes it much easier to play. You can also just watch the AIs fight each other.
 
 ## Leaderboard
 

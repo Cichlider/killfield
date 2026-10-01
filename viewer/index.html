@@ -30,7 +30,7 @@
 <link rel="icon" type="image/svg+xml" sizes="any" href="assets/brand/hybrid.svg">
 <link rel="apple-touch-icon" sizes="180x180" href="assets/brand/hybrid-180.png">
 <link rel="manifest" href="manifest.webmanifest?v=hybrid-1">
-<link rel="stylesheet" href="style.css?v=89b58606">
+<link rel="stylesheet" href="style.css?v=db1e2797">
 </head>
 <body>
 <main>
@@ -102,11 +102,27 @@
     </div>
     <div id="touch-controls" class="touch-controls" hidden>
       <div class="touch-left-control">
-        <div id="touch-joystick" class="touch-joystick" role="application" aria-label="128-direction movement joystick">
+        <div id="touch-joystick" class="touch-joystick" role="application" aria-label="Movement stick">
+          <!-- Sector pad artwork. The picture is rebuilt from the current
+               feel settings by src/pad.js: the drawn hub is the real dead
+               centre and the drawn wedges are the cells the input path reads,
+               so retuning the stick redraws it instead of leaving the picture
+               behind. -->
+          <svg class="joy-sectors" viewBox="0 0 200 200" aria-hidden="true" focusable="false"></svg>
           <span id="touch-knob" class="touch-knob"></span>
         </div>
       </div>
-      <button id="touch-fire" type="button" class="touch-fire">FIRE</button>
+      <div id="touch-move-pad" class="touch-pad touch-pad-move">
+        <button type="button" class="touch-key" data-action="forward" aria-label="Forward">▲</button>
+        <button type="button" class="touch-key" data-action="backup" aria-label="Reverse">▼</button>
+        <span class="touch-grip" data-grip="move" aria-hidden="true"></span>
+      </div>
+      <div id="touch-turn-pad" class="touch-pad touch-pad-turn">
+        <button type="button" class="touch-key" data-action="turnLeft" aria-label="Turn left">◀</button>
+        <button type="button" class="touch-key" data-action="turnRight" aria-label="Turn right">▶</button>
+        <span class="touch-grip" data-grip="turn" aria-hidden="true"></span>
+      </div>
+      <button id="touch-fire" type="button" class="touch-fire"><span id="touch-fire-label">FIRE</span><span class="touch-grip" data-grip="fire" aria-hidden="true"></span></button>
     </div>
     <div id="orientation-hint" class="orientation-hint" role="status" hidden>
       <span class="orientation-phone" aria-hidden="true"></span>
@@ -126,6 +142,16 @@
   </section>
 
   <section class="config-row play-config" id="play-config" hidden aria-label="Player match settings">
+    <div class="controller-picker" data-theme-picker data-select-id="touch-scheme" data-label-id="touch-scheme-label">
+      <span id="touch-scheme-label">Touch controls</span>
+      <button type="button" class="controller-trigger" aria-haspopup="listbox" aria-expanded="false"><span>Arrow keys (8-way)</span><i aria-hidden="true"></i></button>
+      <div class="controller-menu" role="listbox" aria-hidden="true">
+        <button type="button" role="option" data-value="sectors" aria-selected="true">Arrow keys (8-way)</button>
+        <button type="button" role="option" data-value="pads" aria-selected="false">Three-finger pads</button>
+        <button type="button" role="option" data-value="wheel" aria-selected="false">Wheel (128-direction)</button>
+      </div>
+      <select id="touch-scheme" class="native-controller-select" tabindex="-1" aria-hidden="true"><option value="sectors" selected>Arrow keys (8-way)</option><option value="pads">Three-finger pads</option><option value="wheel">Wheel (128-direction)</option></select>
+    </div>
     <div class="controller-picker role-black" data-theme-picker data-select-id="play-opponent" data-label-id="play-opponent-label">
       <span id="play-opponent-label">Opponent</span>
       <button type="button" class="controller-trigger" aria-haspopup="listbox" aria-expanded="false"><span>Hybrid</span><i aria-hidden="true"></i></button>
@@ -136,8 +162,8 @@
       </div>
       <select id="play-opponent" class="native-controller-select" tabindex="-1" aria-hidden="true"><option value="laika">Laika</option><option value="hybrid" selected>Hybrid</option><option value="killfield">Killfield</option></select>
     </div>
-    <button id="instant-turn" type="button" aria-pressed="false" class="toggle">No turn-rate limit: off</button>
-    <label class="range-field"><span id="forward-alignment-label">Wheel forward region</span><input id="forward-alignment" type="range" min="0" max="360" step="2.8125" value="360"><output id="forward-alignment-value" for="forward-alignment">360° / 360°</output></label>
+    <button id="instant-turn" type="button" aria-pressed="false" class="toggle wheel-only">No turn-rate limit: off</button>
+    <label class="range-field wheel-only"><span id="forward-alignment-label">Wheel forward region</span><input id="forward-alignment" type="range" min="0" max="360" step="2.8125" value="360"><output id="forward-alignment-value" for="forward-alignment">360° / 360°</output></label>
     <div class="controller-picker" id="reaction-delay-field" data-theme-picker data-select-id="reaction-delay" data-label-id="reaction-delay-label">
       <span id="reaction-delay-label">Opponent delay</span>
       <button type="button" class="controller-trigger" aria-haspopup="listbox" aria-expanded="false"><span>0 frames</span><i aria-hidden="true"></i></button>
@@ -150,6 +176,34 @@
       <select id="reaction-delay" class="native-controller-select" tabindex="-1" aria-hidden="true"><option value="0">0 frames</option><option value="1">1 frame</option><option value="2">2 frames</option><option value="3">3 frames</option></select>
     </div>
     <label class="range-field" id="opening-delay-field"><span id="opening-delay-label">Opening pause</span><input id="opening-delay" type="range" min="0" max="3" step="0.1" value="0.5"><output id="opening-delay-value" for="opening-delay">0.5 s</output></label>
+  </section>
+
+  <!-- Stick feel: every number in viewer/src/pad.js that decides how the
+       eight-sector pad plays. The sliders are built from PAD_TUNE_FIELDS so the
+       panel cannot drift from the model, and the JSON below is both the export
+       and the import box. -->
+  <section class="pad-tune" id="pad-tune" hidden aria-label="Stick feel">
+    <details id="pad-tune-details">
+      <summary id="pad-tune-summary">Stick feel</summary>
+      <label class="pad-tune-shape">
+        <span id="pad-tune-shape-label">Shape</span>
+        <select id="pad-tune-shape">
+          <option value="circle" selected>Circle</option>
+          <option value="square">Square</option>
+        </select>
+      </label>
+      <p class="pad-tune-hint" id="pad-tune-hint">Drag the round handles on the pad to move its boundaries directly.</p>
+      <div class="pad-tune-fields" id="pad-tune-fields"></div>
+      <p class="pad-tune-readout" id="pad-tune-readout" role="status"></p>
+      <div class="pad-tune-actions">
+        <button id="pad-tune-export" type="button" class="ghost-btn">Export</button>
+        <button id="pad-tune-import" type="button" class="ghost-btn">Import</button>
+        <button id="pad-tune-reset" type="button" class="ghost-btn">Reset</button>
+        <button id="pad-tune-visibility" type="button" class="ghost-btn" aria-pressed="true">Hide stick</button>
+      </div>
+      <textarea id="pad-tune-json" class="pad-tune-json" rows="3" spellcheck="false" autocomplete="off" aria-label="Stick feel JSON"></textarea>
+      <p class="pad-tune-status" id="pad-tune-status" role="status"></p>
+    </details>
   </section>
 
   <section class="ranked" id="ranked-row" hidden aria-label="Ranked run">
@@ -199,6 +253,6 @@
   <footer class="site-footer"><a href="https://github.com/Cichlider/killfield" target="_blank" rel="noreferrer">github.com/Cichlider/killfield</a><span>© 2026 Cichlider. All rights reserved.</span></footer>
 </main>
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" defer></script>
-<script type="module" src="viewer.js?v=6ff13c3c"></script>
+<script type="module" src="viewer.js?v=12103320"></script>
 </body>
 </html>

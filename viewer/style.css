@@ -370,6 +370,53 @@ canvas { display: block; width: 100%; height: auto; }
 
 .play-config .range-field { grid-column: span 2; }
 
+/* The wheel's own settings — its forward region and the instant-turn assist —
+   mean nothing to the sector stick. The viewer disables them, and this dims
+   them so the row still reads as one coherent set of controls. */
+.play-config.wheel-off .wheel-only { opacity: .42; }
+
+/* Stick feel panel. The sliders are built from PAD_TUNE_FIELDS, so this only
+   has to describe the shape of one row. */
+.pad-tune {
+  margin-top: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255,255,255,.48);
+}
+
+.pad-tune > details { padding: 9px 13px 11px; }
+.pad-tune summary {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.pad-tune summary:focus-visible { outline: 2px solid rgba(49,95,98,.42); outline-offset: 2px; }
+.pad-tune-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 16px; margin-top: 10px; }
+.pad-tune-hint { margin: 8px 0 0; color: var(--muted); font-size: 11px; }
+.pad-tune-shape { display: grid; grid-template-columns: minmax(88px, auto) minmax(60px, 1fr); align-items: center; gap: 8px; margin-top: 10px; color: var(--muted); }
+.pad-tune-shape select { width: 100%; padding: 5px 8px; border: 1px solid var(--line); border-radius: 8px; background: rgba(255,255,255,.72); font-size: 12px; }
+.pad-tune-fields .range-field { background: transparent; grid-template-columns: minmax(88px, auto) minmax(60px, 1fr) auto; }
+.pad-tune-readout { margin: 9px 0 0; color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.pad-tune-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 8px; }
+.pad-tune-actions button { padding: 6px 12px; border-radius: 9px; font-size: 12px; }
+.pad-tune-json {
+  width: 100%;
+  padding: 8px 10px;
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: rgba(255,255,255,.72);
+  font: 11px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace;
+  resize: vertical;
+}
+
+.pad-tune-status { min-height: 15px; margin: 6px 0 0; color: var(--muted); font-size: 11px; }
+.pad-tune-status.error { color: var(--red); }
+
 .range-field {
   grid-template-columns: minmax(95px, auto) minmax(80px, 1fr) auto;
   align-items: center;
@@ -897,7 +944,7 @@ header { gap: 4px; }
 
   .touch-joystick {
     position: relative;
-    width: clamp(126px, 30vw, 178px);
+    width: min(var(--pad-size, 148px), 62vmin);
     aspect-ratio: 1;
     overflow: hidden;
     border: 1px solid rgba(36,38,36,.28);
@@ -907,6 +954,134 @@ header { gap: 4px; }
   }
 
   .touch-knob { position: absolute; z-index: 2; left: 50%; top: 50%; width: 21%; aspect-ratio: 1; border: 0; border-radius: 50%; background: rgba(28,30,28,.72); box-shadow: 0 2px 6px rgba(0,0,0,.16); transform: translate(-50%,-50%); pointer-events: none; }
+
+  /* Eight-sector stick. The wheel is a plain circle and shows none of this:
+     the picture is generated from the current feel by src/pad.js and appears
+     with the .sectors class TouchControls.syncScheme puts on the pad, so one
+     element serves both schemes. */
+  .joy-sectors { position: absolute; inset: 0; z-index: 1; display: none; pointer-events: none; }
+  .touch-joystick.sectors .joy-sectors { display: block; }
+  .touch-joystick.square { border-radius: 16px; }
+
+  /* Tuning handles: real touch targets, in screen pixels, above the artwork and
+     the knob. They only exist while tuning, and they sit inside the pad so a
+     drag is always measured against the same centre the input uses. */
+  .pad-pins { position: absolute; inset: 0; z-index: 3; pointer-events: none; }
+  .pad-pin {
+    position: absolute;
+    width: var(--pad-pin-size, 26px);
+    height: var(--pad-pin-size, 26px);
+    margin: calc(var(--pad-pin-size, 26px) / -2) 0 0 calc(var(--pad-pin-size, 26px) / -2);
+    border: 2px solid #fff;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 2px 6px rgba(0,0,0,.32);
+    pointer-events: auto;
+    touch-action: none;
+    cursor: grab;
+  }
+  .pad-pin::after { content: ""; position: absolute; inset: 30%; border-radius: 50%; background: rgba(255,255,255,.85); }
+  .pad-pin.dragging { background: var(--red); cursor: grabbing; }
+
+  /* The shape the player drags across. Both shapes are drawn from the same
+     layout: cells, the lines between them, and one glow per direction. */
+  .pad-cell { fill: transparent; }
+  .pad-ring { fill: none; stroke: rgba(36,38,36,.20); stroke-width: 1.4; }
+  .pad-rim { fill: none; stroke: rgba(36,38,36,.40); stroke-width: 3; }
+  .pad-divider { stroke: rgba(36,38,36,.22); stroke-width: 1; }
+  .pad-grid line { stroke: rgba(36,38,36,.22); stroke-width: 1; }
+  .pad-edge { fill: none; stroke: transparent; stroke-width: 3; stroke-linecap: round; }
+  .touch-joystick.square .pad-edge { stroke-linejoin: round; }
+
+  /* Only the region under the thumb lights up: that cell takes the fill and
+     its own edges glow. */
+  .pad-cell.on { fill: rgba(49,95,98,.22); }
+  .pad-edge.on { stroke: var(--accent); filter: drop-shadow(0 0 3px rgba(49,95,98,.75)); }
+
+  .pad-glyph { color: rgba(23,24,22,.46); }
+  .pad-glyph .pad-stroke { fill: none; stroke: currentColor; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+  .pad-glyph .pad-head { fill: currentColor; stroke: none; }
+
+  /* While the feel panel is open the whole touch layer is pinned to the
+     viewport, so whatever is being tuned — the pad, its pins, the three-finger
+     buttons — stays on screen while the sliders are scrolled into view. The
+     stick is lifted to the top; the button pads keep their own percentages. The
+     CTRL button (and the panel's own button) still hides everything. */
+  body.tuning .touch-controls:not([hidden]) {
+    position: fixed;
+    inset: 0;
+    z-index: 30;
+  }
+
+  /* Over the page rather than over the canvas the pad needs its own contrast,
+     or it reads as a washed-out copy of the one in the game. */
+  body.tuning .touch-joystick {
+    background: rgba(255,255,255,.92);
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,.6), 0 6px 20px rgba(0,0,0,.20);
+  }
+
+  body.tuning .touch-left-control {
+    top: max(10px, env(safe-area-inset-top));
+    bottom: auto;
+    left: 50%;
+    transform: translateX(-50%);
+  }
+
+  /* Three-finger scheme: forward/reverse as one vertical pad, turn left/right
+     as one horizontal pad, and the trigger on its own. Each pad is placed by
+     the feel settings (percentages of the touch layer) and only exists in that
+     scheme. */
+  .touch-pad {
+    position: absolute;
+    display: none;
+    flex-direction: column;
+    gap: var(--pad-key-gap, 8px);
+    transform: translate(-50%, -50%);
+  }
+
+  .touch-pad-turn { flex-direction: row; }
+  .touch-controls.pads .touch-pad { display: flex; }
+  /* The eight-way pad belongs to the other schemes. The fullscreen play layout
+     sets `display: flex` on this wrapper for its rail, so the hide has to be
+     able to beat it. */
+  .touch-controls.pads .touch-left-control { display: none !important; }
+
+  .touch-key {
+    width: var(--pad-key-size, 64px);
+    height: var(--pad-key-size, 64px);
+    padding: 0;
+    color: var(--accent);
+    border: 2px solid rgba(49,95,98,.55);
+    border-radius: 16px;
+    background: rgba(255,255,255,.82);
+    box-shadow: 0 2px 8px rgba(0,0,0,.16);
+    font-size: calc(var(--pad-key-size, 64px) * .38);
+    line-height: 1;
+  }
+
+  .touch-key.active { color: #fff; background: var(--accent); }
+
+  /* Grips: the drag handles, one per pad, only while the feel panel is open. */
+  .touch-grip {
+    position: absolute;
+    display: none;
+    width: 26px;
+    height: 26px;
+    border: 2px solid #fff;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 2px 6px rgba(0,0,0,.32);
+    pointer-events: auto;
+    touch-action: none;
+    cursor: grab;
+  }
+
+  .touch-grip::after { content: ""; position: absolute; inset: 8px; border-radius: 50%; background: rgba(255,255,255,.85); }
+  body.tuning .touch-grip { display: block; }
+  .touch-grip.dragging { background: var(--red); cursor: grabbing; }
+  .touch-pad .touch-grip { left: -13px; top: -13px; }
+  .touch-fire .touch-grip { left: 50%; top: -13px; transform: translateX(-50%); }
+
   .touch-fire { position: absolute; right: max(18px,env(safe-area-inset-right)); bottom: max(64px,calc(env(safe-area-inset-bottom) + 58px)); width: clamp(78px,19vw,112px); aspect-ratio: 1; padding: 0; color: var(--red); border: 3px solid rgba(184,46,54,.82); border-radius: 50%; background: rgba(255,255,255,.84); font-weight: 800; box-shadow: 0 3px 12px rgba(0,0,0,.24); }
   .touch-fire.active { color: #fff; background: var(--red); }
   .stage:fullscreen .icon-btn, .stage:-webkit-full-screen .icon-btn, .stage.pseudo-fullscreen .icon-btn { width: 42px; height: 42px; }
@@ -918,6 +1093,7 @@ header { gap: 4px; }
   .watch-config .controller-trigger { min-width: 92px; }
   .play-config { grid-template-columns: 1fr; }
   .play-config .range-field { grid-column: 1; grid-template-columns: 1fr auto; }
+  .pad-tune-fields { grid-template-columns: 1fr; }
   .range-field > span { grid-column: 1; }
   .range-field input { grid-column: 1 / -1; grid-row: 2; }
   .range-field output { grid-column: 2; grid-row: 1; }
@@ -1113,7 +1289,7 @@ header { gap: 4px; }
 
   .stage.play-mode:fullscreen .touch-joystick,
   .stage.play-mode:-webkit-full-screen .touch-joystick,
-  .stage.play-mode.pseudo-fullscreen .touch-joystick { width: var(--record-joystick-size); }
+  .stage.play-mode.pseudo-fullscreen .touch-joystick { width: min(var(--pad-size, var(--record-joystick-size)), var(--record-joystick-size)); }
 
   .stage.play-mode:fullscreen .touch-fire,
   .stage.play-mode:-webkit-full-screen .touch-fire,

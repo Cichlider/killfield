@@ -45,8 +45,9 @@ const RULES = {
       + "50% or less stays in Human. Fire is not compared. This is a reproducible "
       + "input-similarity rule, not proof of who or what produced the inputs. A dedicated "
       + "bot competition may be added later."],
-    ["Anything else is yours", "The wheel's forward region, touch or keyboard, pausing "
-      + "to think — none of it changes the match, so none of it is restricted."],
+    ["Anything else is yours", "The touch scheme (an eight-way circle or square stick, three-finger pads, or the "
+      + "wheel), the stick's feel settings, the wheel's forward region, touch or keyboard, "
+      + "pausing to think — none of it changes the match, so none of it is restricted."],
     ["A name, and optionally an account", "Every record goes up under a name. Showing "
       + "a GitHub account is optional. In one-click submissions it is a self-reported "
       + "profile link, not proof that the player owns that account."],
@@ -71,7 +72,8 @@ const RULES = {
       + `${BOT_MOVEMENT_MATCH_THRESHOLD * 100}% 就进入 Bot；50% 或以下留在 Human。`
       + "开火不参与比较。这是可复现的输入相似度规则，不是对操作者身份的证明。"
       + "以后可以再建立专门的 Bot 竞赛规则。"],
-    ["其余随意", "轮盘的前向区域、用触屏还是键盘、中途暂停思考——都不改变对局本身，所以都不限制。"],
+    ["其余随意", "操控方案（圆形 / 方形八向摇杆、三指按键或轮盘）、摇杆手感、轮盘的前向区域、"
+      + "用触屏还是键盘、中途暂停思考——都不改变对局本身，所以都不限制。"],
     ["名字必填，账号可选", "每条记录都要有名字。是否显示 GitHub 账号由你决定，"
       + "一键提交里的账号只是自报的主页链接，不代表平台核验过账号归属。"],
     ["提交或保存录像", "大录像提交时会自动分块。任何已结束的排位记录都可下载为 JSON——"

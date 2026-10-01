@@ -118,9 +118,10 @@ somebody can write:
 - **Instant turn off.** The assist removes the turn-rate limit outright.
 
 Settings that change nothing about the match are deliberately unrestricted: the
-wheel's forward region is a client-side mapping that resolves into the same
-strengths before anything crosses the FFI, touch and keyboard are equivalent,
-and pausing produces no frames at all.
+touch scheme (eight-sector arrow keys or the world-heading wheel) and the wheel's
+forward region are client-side mappings that resolve into the same strengths
+before anything crosses the FFI, so touch and keyboard stay equivalent, and
+pausing produces no frames at all.
 
 Every human win in the continuous session counts, whether consecutive or not.
 One win qualifies the run, and recording stops automatically after 200 finished

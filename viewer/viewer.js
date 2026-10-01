@@ -25,8 +25,13 @@
  */
 
 import * as C from "./src/constants.js";
-import { STRINGS, loadLang, saveLang } from "./src/i18n.js?v=6579e2ea";
-import { Keyboard, TouchControls } from "./src/input.js?v=wasd-1";
+import { STRINGS, loadLang, saveLang } from "./src/i18n.js?v=0f8fd59a";
+import { Keyboard, TouchControls } from "./src/input.js?v=071f7ab5";
+import {
+  DEFAULT_PAD_TUNE,
+  padLayout,
+  padTuneFields,
+} from "./src/pad.js?v=00bfc1be";
 import { SoundEffects } from "./src/audio.js";
 import { Rng } from "./src/rng.js";
 import { interpolatePredictedPose, simulationBudget } from "./src/low-latency.js";
@@ -123,6 +128,8 @@ const swatches = [0, 1].map((i) => document.getElementById(`swatch-${i}`));
 const rerollButton = document.getElementById("reroll");
 const resetScoreButton = document.getElementById("reset-score");
 const instantTurnButton = document.getElementById("instant-turn");
+const touchSchemeSelect = document.getElementById("touch-scheme");
+const touchSchemeLabel = document.getElementById("touch-scheme-label");
 const forwardAlignmentInput = document.getElementById("forward-alignment");
 const forwardAlignmentLabel = document.getElementById("forward-alignment-label");
 const forwardAlignmentValue = document.getElementById("forward-alignment-value");
@@ -187,11 +194,151 @@ const rankedBoardLabel = document.getElementById("ranked-board-label");
 const rankedTurnstile = document.getElementById("ranked-turnstile");
 const rankedScore = document.getElementById("ranked-score");
 const rankedUnit = document.getElementById("ranked-unit");
+const padTuneSection = document.getElementById("pad-tune");
+const padTuneDetails = document.getElementById("pad-tune-details");
+const padTuneSummary = document.getElementById("pad-tune-summary");
+const padTuneShapeSelect = document.getElementById("pad-tune-shape");
+const padTuneShapeLabel = document.getElementById("pad-tune-shape-label");
+const padTuneHint = document.getElementById("pad-tune-hint");
+const padTuneVisibilityButton = document.getElementById("pad-tune-visibility");
+const padTuneFieldList = document.getElementById("pad-tune-fields");
+const padTuneReadout = document.getElementById("pad-tune-readout");
+const padTuneExportButton = document.getElementById("pad-tune-export");
+const padTuneImportButton = document.getElementById("pad-tune-import");
+const padTuneResetButton = document.getElementById("pad-tune-reset");
+const padTuneJson = document.getElementById("pad-tune-json");
+const padTuneStatus = document.getElementById("pad-tune-status");
 const touchControlsRoot = document.getElementById("touch-controls");
 const touchVisibilityButton = document.getElementById("touch-visibility");
 const orientationHint = document.getElementById("orientation-hint");
 const orientationTitle = document.getElementById("orientation-title");
 const orientationBody = document.getElementById("orientation-body");
+
+/** One slider row per feel field, rebuilt whenever the shape changes. */
+const padTuneInputs = new Map();
+const padTuneLabels = new Map();
+const padTuneOutputs = new Map();
+
+function buildPadTuneControls() {
+  padTuneInputs.clear();
+  padTuneLabels.clear();
+  padTuneOutputs.clear();
+  padTuneFieldList.replaceChildren();
+  for (const field of padTuneFields(touchControls.tune, touchControls.scheme)) {
+    const id = `pad-tune-${field.key}`;
+    const row = document.createElement("label");
+    row.className = "range-field";
+    const label = document.createElement("span");
+    const input = document.createElement("input");
+    input.type = "range";
+    input.id = id;
+    input.min = String(field.min);
+    input.max = String(field.max);
+    input.step = String(field.step);
+    const output = document.createElement("output");
+    output.setAttribute("for", id);
+    input.addEventListener("input", () => {
+      // One field at a time, clamped against its neighbours only: a slider
+      // never drags another setting back to where it started.
+      touchControls.setTuneField(field.key, input.value);
+      setPadTuneStatus("");
+    });
+    row.append(label, input, output);
+    padTuneFieldList.append(row);
+    padTuneInputs.set(field.key, input);
+    padTuneLabels.set(field.key, label);
+    padTuneOutputs.set(field.key, output);
+  }
+}
+
+function setPadTuneStatus(message, failed = false) {
+  padTuneStatus.textContent = message;
+  padTuneStatus.classList.toggle("error", failed);
+}
+
+/** One decimal at most: a squeezed cell width is not always a whole number. */
+function degrees(value) {
+  return String(Math.round(value * 10) / 10);
+}
+
+function syncPadTuneControls() {
+  const s = t();
+  const tune = touchControls.tune;
+  const layout = padLayout(tune);
+  const visible = padTuneFields(tune, touchControls.scheme);
+  // The shape switch swaps the whole field list, so rebuild when it moved.
+  if (visible.some((field) => !padTuneInputs.has(field.key))
+      || padTuneInputs.size !== visible.length) {
+    buildPadTuneControls();
+  }
+  padTuneSection.setAttribute("aria-label", s.touchFeel.summary);
+  padTuneSummary.textContent = s.touchFeel.summary;
+  padTuneShapeLabel.textContent = s.touchFeel.shape;
+  for (const option of padTuneShapeSelect.options) {
+    option.textContent = s.touchFeel.shapes[option.value] ?? option.value;
+  }
+  padTuneShapeSelect.value = tune.shape;
+  padTuneShapeSelect.setAttribute("aria-label", s.touchFeel.shape);
+  // Only the eight-way pad has a shape; the other two schemes have their own
+  // settings, and the wheel's live in the row above.
+  const shapeRow = touchControls.scheme === "sectors";
+  padTuneShapeSelect.closest(".pad-tune-shape").hidden = !shapeRow;
+  padTuneHint.textContent = s.touchFeel.hint[touchControls.scheme] ?? s.touchFeel.hint.sectors;
+  padTuneJson.setAttribute("aria-label", s.touchFeel.jsonLabel);
+  padTuneExportButton.textContent = s.touchFeel.export;
+  padTuneImportButton.textContent = s.touchFeel.import;
+  padTuneResetButton.textContent = s.touchFeel.reset;
+  padTuneVisibilityButton.textContent = touchControls.userVisible
+    ? s.touchFeel.hide : s.touchFeel.show;
+  padTuneVisibilityButton.setAttribute("aria-pressed", String(touchControls.userVisible));
+  for (const field of visible) {
+    const label = s.touchFeel.fields[field.key];
+    const text = `${tune[field.key]}${field.unit}`;
+    padTuneLabels.get(field.key).textContent = label;
+    padTuneInputs.get(field.key).value = String(tune[field.key]);
+    padTuneInputs.get(field.key).setAttribute("aria-label", `${label}: ${text}`);
+    padTuneOutputs.get(field.key).textContent = text;
+  }
+  padTuneReadout.textContent = readoutText(s, tune, layout);
+}
+
+/** The derived summary: what the tuned numbers came out as. */
+function readoutText(s, tune, layout) {
+  if (touchControls.scheme === "pads") {
+    return s.touchFeel.readout.pads({
+      moveX: tune.moveX,
+      moveY: tune.moveY,
+      turnX: tune.turnX,
+      turnY: tune.turnY,
+      fireX: tune.fireX,
+      fireY: tune.fireY,
+      moveSize: tune.moveSize,
+      moveGap: tune.moveGap,
+      turnSize: tune.turnSize,
+      turnGap: tune.turnGap,
+      fireSize: tune.fireSize,
+    });
+  }
+  if (layout.shape === "square") {
+    return s.touchFeel.readout.square({
+      forward: tune.rowTopEdge,
+      backward: 100 - tune.rowBottomEdge,
+      middleRow: tune.rowBottomEdge - tune.rowTopEdge,
+      turn: tune.columnEdge,
+      middle: 100 - 2 * tune.columnEdge,
+      zones: 2,
+    });
+  }
+  return s.touchFeel.readout.circle({
+    forward: degrees(2 * tune.forwardEdge),
+    backward: degrees(360 - 2 * tune.backEdge),
+    turn: degrees(tune.turnEdge - tune.frontDiagonalEdge),
+    frontDiagonal: degrees(tune.frontDiagonalEdge - tune.forwardEdge),
+    backDiagonal: degrees(tune.backEdge - tune.turnEdge),
+    fullPercent: Math.round(layout.full * 100),
+    zones: layout.ramp > 0 ? 3 : 2,
+  });
+}
 
 const keyboard = new Keyboard();
 const touchControls = new TouchControls(touchControlsRoot, touchVisibilityButton);
@@ -511,6 +658,38 @@ function syncForwardAlignmentControl() {
   );
 }
 
+/**
+ * Reflect the pad scheme the player picked, and retire the two settings that
+ * only ever described the wheel. The option labels live in the native select
+ * like every other picker, so `syncThemedPicker` copies them to the trigger.
+ */
+/** The feel panel belongs to the two button schemes; the wheel has its own settings. */
+function syncFeelPanelVisibility() {
+  padTuneSection.hidden = mode !== "play" || touchControls.scheme === "wheel";
+  if (padTuneSection.hidden && padTuneDetails.open) padTuneDetails.open = false;
+}
+
+function syncTouchSchemeControl() {
+  const s = t();
+  const scheme = touchControls.scheme;
+  const wheel = scheme === "wheel";
+  touchSchemeLabel.textContent = s.touchSchemeLabel;
+  const schemeNames = {
+    sectors: s.touchControls.dpad,
+    pads: s.touchControls.pads,
+    wheel: s.touchControls.joystick,
+  };
+  for (const option of touchSchemeSelect.options) {
+    option.textContent = schemeNames[option.value] ?? option.value;
+  }
+  touchSchemeSelect.value = scheme;
+  touchSchemeSelect.setAttribute("aria-label", s.touchSchemeLabel);
+  playConfig.classList.toggle("wheel-off", !wheel);
+  instantTurnButton.disabled = !wheel;
+  forwardAlignmentInput.disabled = !wheel;
+  syncFeelPanelVisibility();
+}
+
 function syncReactionDelayControl() {
   const s = t();
   reactionDelayLabel.textContent = s.reactionDelayLabel;
@@ -624,6 +803,8 @@ function applyLanguage() {
   controlFire.textContent = s.controlsHelp.fire;
   controlReroll.textContent = s.controlsHelp.reroll;
   controlPause.textContent = s.controlsHelp.pause;
+  syncTouchSchemeControl();
+  syncPadTuneControls();
   themedPickers.forEach(syncThemedPicker);
   touchControls.setLabels(s.touchControls);
   orientationTitle.textContent = s.orientationTitle;
@@ -1266,6 +1447,10 @@ function setMode(next) {
   replayButton.classList.toggle("active", next === "replay");
   watchConfig.hidden = next !== "watch";
   playConfig.hidden = next !== "play";
+  syncFeelPanelVisibility();
+  // Leaving play mode closes the feel panel, which is also what puts the touch
+  // controls back where they belong.
+  if (next !== "play" && padTuneDetails.open) padTuneDetails.open = false;
   replayLoader.hidden = next !== "replay";
   replayProgress.hidden = next !== "replay" || replayPlayback === null;
   streakline.hidden = next === "replay";
@@ -1610,6 +1795,7 @@ async function boot() {
     throw new Error("Hybrid observation layout mismatch between engine and viewer");
   }
   initialiseThemedPickers();
+  buildPadTuneControls();
 
   fullscreenButton.addEventListener("click", toggleFullscreen);
   document.addEventListener("fullscreenchange", syncFullscreenButton);
@@ -1655,6 +1841,72 @@ async function boot() {
   forwardAlignmentInput.addEventListener("input", () => {
     touchControls.setForwardAlignmentDegrees(forwardAlignmentInput.value);
     syncForwardAlignmentControl();
+  });
+  padTuneExportButton.addEventListener("click", async () => {
+    const json = JSON.stringify(touchControls.tune);
+    padTuneJson.value = json;
+    let copied = false;
+    try {
+      await navigator.clipboard.writeText(json);
+      copied = true;
+    } catch {
+      // No clipboard permission (or an insecure origin): the box is the export.
+    }
+    if (!copied) padTuneJson.select();
+    setPadTuneStatus(t().touchFeel.exported);
+    padTuneExportButton.blur();
+  });
+  padTuneImportButton.addEventListener("click", () => {
+    let parsed = null;
+    try {
+      parsed = JSON.parse(padTuneJson.value);
+    } catch {
+      parsed = null;
+    }
+    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+      setPadTuneStatus(t().touchFeel.importFailed, true);
+      return;
+    }
+    // setTune clamps and completes whatever was pasted, so a hand-edited or
+    // older export is applied as far as it makes sense rather than rejected.
+    touchControls.setTune(parsed);
+    syncPadTuneControls();
+    setPadTuneStatus(t().touchFeel.imported);
+    padTuneImportButton.blur();
+  });
+  padTuneResetButton.addEventListener("click", () => {
+    touchControls.setTune(DEFAULT_PAD_TUNE);
+    syncPadTuneControls();
+    setPadTuneStatus(t().touchFeel.imported);
+    padTuneResetButton.blur();
+  });
+  padTuneShapeSelect.addEventListener("change", () => {
+    // Same feel object, different shape: each shape keeps its own fields, so
+    // switching back and forth does not lose the other one's numbers.
+    touchControls.setTune({ ...touchControls.tune, shape: padTuneShapeSelect.value });
+    syncPadTuneControls();
+  });
+  padTuneVisibilityButton.addEventListener("click", () => {
+    touchControls.toggleVisible();
+    syncPadTuneControls();
+    padTuneVisibilityButton.blur();
+  });
+  // The panel *is* the tuning mode: while it is open the pad is pinned to the
+  // top of the viewport and its boundary handles are showing, so the thing
+  // being tuned is always in sight of the sliders.
+  padTuneDetails.addEventListener("toggle", () => {
+    document.body.classList.toggle("tuning", padTuneDetails.open);
+    touchControls.setTuning(padTuneDetails.open);
+  });
+  touchControls.onTuneChange = () => {
+    // Fires for a pin drag as well as a slider, so both stay in step.
+    if (!padTuneSection.hidden) syncPadTuneControls();
+  };
+  touchSchemeSelect.addEventListener("change", () => {
+    touchControls.setScheme(touchSchemeSelect.value);
+    syncTouchSchemeControl();
+    // The field list and the hint belong to the scheme, not to the tune.
+    syncPadTuneControls();
   });
   reactionDelaySelect.addEventListener("change", () => {
     reactionDelayFrames = normaliseReactionDelay(reactionDelaySelect.value);
