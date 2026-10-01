@@ -1,5 +1,5 @@
 {
-  "updated": "2026-10-01T07:13:30.493Z",
+  "updated": "2026-10-01T20:55:05.725Z",
   "entries": [
     {
       "name": "Trippy",
@@ -1360,6 +1360,26 @@
       "issue": 44,
       "trackHash": "18cd73f49a85af448502fe78fbf339d9",
       "verifiedAt": "2026-09-22T02:36:56.601Z"
+    },
+    {
+      "name": "pyroghost",
+      "github": null,
+      "submitter": "59065cdda6540af8",
+      "board": "hybrid",
+      "score": 1,
+      "wins": 1,
+      "losses": 32,
+      "doubleKills": 0,
+      "rounds": 33,
+      "seed": 2684920501,
+      "frames": 11653,
+      "playerClass": "human",
+      "hybridMovementMatch": 0.11842444005835408,
+      "hybridMovementMatches": 1380,
+      "hybridMovementFrames": 11653,
+      "issue": 75,
+      "trackHash": "7f1c018247c4e7065663e52ce5dfa821",
+      "verifiedAt": "2026-10-01T20:55:05.724Z"
     },
     {
       "name": "Wu Zhiyu",
