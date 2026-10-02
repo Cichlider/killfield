@@ -25,7 +25,7 @@
  */
 
 import * as C from "./src/constants.js";
-import { STRINGS, loadLang, saveLang } from "./src/i18n.js?v=0f8fd59a";
+import { STRINGS, loadLang, saveLang } from "./src/i18n.js?v=7ac4282b";
 import { Keyboard, TouchControls } from "./src/input.js?v=88652157";
 import {
   DEFAULT_PAD_TUNE,
