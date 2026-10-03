@@ -1,5 +1,5 @@
 {
-  "updated": "2026-10-03T13:05:22.322Z",
+  "updated": "2026-10-03T13:38:14.918Z",
   "entries": [
     {
       "name": "Human",
@@ -1340,6 +1340,26 @@
       "issue": 81,
       "trackHash": "1501594ef2ef1323d750f3114983d871",
       "verifiedAt": "2026-10-03T13:05:22.322Z"
+    },
+    {
+      "name": "POPOQ",
+      "github": null,
+      "submitter": "e2318eac4b326070",
+      "board": "hybrid",
+      "score": 1,
+      "wins": 1,
+      "losses": 0,
+      "doubleKills": 0,
+      "rounds": 1,
+      "seed": 808697808,
+      "frames": 112,
+      "playerClass": "bot",
+      "hybridMovementMatch": 0.5357142857142857,
+      "hybridMovementMatches": 60,
+      "hybridMovementFrames": 112,
+      "issue": 82,
+      "trackHash": "f6aeba5a89a7b3b7535df553c37f9ea5",
+      "verifiedAt": "2026-10-03T13:38:14.918Z"
     },
     {
       "name": "Rekursion",
