@@ -25,7 +25,7 @@
  */
 
 import * as C from "./src/constants.js";
-import { STRINGS, loadLang, saveLang } from "./src/i18n.js?v=fe555286";
+import { STRINGS, loadLang, saveLang } from "./src/i18n.js?v=9f71091b";
 import { Keyboard, TouchControls } from "./src/input.js?v=d3008c00";
 import {
   DEFAULT_PAD_TUNE,
@@ -35,7 +35,7 @@ import {
 import { SoundEffects } from "./src/audio.js";
 import { Rng } from "./src/rng.js";
 import { interpolatePredictedPose, simulationBudget } from "./src/low-latency.js";
-import { HybridPolicy } from "./src/hybrid.js?v=4be8a6e2";
+import { HybridPolicy } from "./src/hybrid.js?v=9d9f54b9";
 import {
   HUMAN_SEAT, LIMITS, MIN_SUBMITTABLE_WINS, NO_ACTION, summariseResults,
 } from "./src/replay.js?v=replay-player";
@@ -154,6 +154,7 @@ const replayExportStart = document.getElementById("replay-export-start");
 const replayExportCancel = document.getElementById("replay-export-cancel");
 const replayExportProgress = document.getElementById("replay-export-progress");
 const replayExportStatus = document.getElementById("replay-export-status");
+const replayExportPicker = replayExportPreset.closest("[data-theme-picker]");
 const watchLeftLabel = document.getElementById("watch-left-label");
 const watchRightLabel = document.getElementById("watch-right-label");
 const controllerSelects = [0, 1].map((i) => document.getElementById(`controller-${i}`));
@@ -833,6 +834,7 @@ function applyLanguage() {
   for (const option of replayExportPreset.options) {
     option.textContent = s.replayExportPresets[option.value];
   }
+  syncThemedPicker(replayExportPicker);
   replayExportStart.textContent = s.replayExportStart;
   replayExportCancel.textContent = s.replayExportCancel;
   if (!replayExportJob) syncReplayExportEstimate();
@@ -1036,6 +1038,7 @@ function syncReplayExportEstimate() {
 
 function setReplayExportBusy(busy) {
   replayExportPreset.disabled = busy;
+  replayExportPicker.querySelector(".controller-trigger").disabled = busy;
   replayExportStart.disabled = busy;
   replayExportCancel.hidden = !busy;
   replayExportProgress.hidden = !busy;
@@ -1981,7 +1984,7 @@ function toggleLanguage() {
 async function boot() {
   const [wasmBytes, hybrid] = await Promise.all([
     fetch("kf_engine.wasm?v=7aea2a29").then((res) => res.arrayBuffer()),
-    HybridPolicy.load("assets/hybrid.json?v=942cb5c9", "assets/hybrid.bin?v=a6919c8f"),
+    HybridPolicy.load("assets/hybrid.json?v=05e69111", "assets/hybrid.bin?v=96d48cdf"),
   ]);
   // Hashed before instantiation so a record names the exact binaries it is
   // reproducible against, rather than a version string someone could bump.

@@ -30,7 +30,7 @@
 <link rel="icon" type="image/svg+xml" sizes="any" href="assets/brand/hybrid.svg">
 <link rel="apple-touch-icon" sizes="180x180" href="assets/brand/hybrid-180.png">
 <link rel="manifest" href="manifest.webmanifest?v=hybrid-1">
-<link rel="stylesheet" href="style.css?v=67292403">
+<link rel="stylesheet" href="style.css?v=10615d05">
 </head>
 <body>
 <main>
@@ -142,20 +142,28 @@
   </section>
 
   <section class="replay-export" id="replay-export" hidden aria-label="Export replay video">
-    <label class="replay-export-quality">
+    <div class="controller-picker replay-export-picker" data-theme-picker data-select-id="replay-export-preset" data-label-id="replay-export-quality-label">
       <span id="replay-export-quality-label">Video quality</span>
-      <select id="replay-export-preset">
+      <button type="button" class="controller-trigger" aria-haspopup="listbox" aria-expanded="false"><span>720p · 60 FPS · 4 Mbps</span><i aria-hidden="true"></i></button>
+      <div class="controller-menu" role="listbox" aria-hidden="true">
+        <button type="button" role="option" data-value="recommended" aria-selected="true">720p · 60 FPS · 4 Mbps</button>
+        <button type="button" role="option" data-value="hd" aria-selected="false">1080p · 60 FPS · 8 Mbps</button>
+        <button type="button" role="option" data-value="ultra" aria-selected="false">1080p · 120 FPS · 12 Mbps</button>
+      </div>
+      <select id="replay-export-preset" class="native-controller-select" tabindex="-1" aria-hidden="true">
         <option value="recommended">720p · 60 FPS · 4 Mbps</option>
         <option value="hd">1080p · 60 FPS · 8 Mbps</option>
         <option value="ultra">1080p · 120 FPS · 12 Mbps</option>
       </select>
-    </label>
-    <div class="replay-export-actions">
-      <button id="replay-export-start" type="button">Export MP4</button>
-      <button id="replay-export-cancel" type="button" class="ghost-btn" hidden>Cancel</button>
+    </div>
+    <div class="replay-export-side">
+      <p id="replay-export-status" class="replay-export-status" role="status"></p>
+      <div class="replay-export-actions">
+        <button id="replay-export-start" type="button" class="solid-btn">Export MP4</button>
+        <button id="replay-export-cancel" type="button" class="ghost-btn" hidden>Cancel</button>
+      </div>
     </div>
     <progress id="replay-export-progress" max="1" value="0" hidden></progress>
-    <p id="replay-export-status" class="replay-export-status" role="status"></p>
   </section>
 
   <section class="config-row play-config" id="play-config" hidden aria-label="Player match settings">
@@ -270,6 +278,6 @@
   <footer class="site-footer"><a href="https://github.com/Cichlider/killfield" target="_blank" rel="noreferrer">github.com/Cichlider/killfield</a><span>© 2026 Cichlider. All rights reserved.</span></footer>
 </main>
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" defer></script>
-<script type="module" src="viewer.js?v=96acaa0a"></script>
+<script type="module" src="viewer.js?v=e4b6cc72"></script>
 </body>
 </html>

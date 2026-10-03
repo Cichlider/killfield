@@ -330,27 +330,28 @@ canvas { display: block; width: 100%; height: auto; }
 
 .replay-export {
   display: grid;
-  grid-template-columns: minmax(230px, 1fr) auto;
-  align-items: end;
-  gap: 9px 12px;
+  grid-template-columns: minmax(250px, 1fr) minmax(220px, auto);
+  align-items: stretch;
+  gap: 10px;
   margin-top: 10px;
-  padding: 11px 13px;
+  padding: 10px;
   border: 1px solid var(--line);
-  border-radius: 11px;
+  border-radius: 13px;
   background: rgba(255,255,255,.48);
 }
 
 .replay-export[hidden] { display: none; }
-.replay-export-quality { display: grid; gap: 5px; }
-.replay-export-quality > span { color: var(--muted); font-size: 10px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase; }
-.replay-export-quality select { width: 100%; min-height: 34px; padding: 5px 9px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); }
-.replay-export-actions { display: flex; gap: 7px; }
+.replay-export-picker { min-width: 0; background: rgba(255,255,255,.7); }
+.replay-export-side { display: flex; align-items: center; justify-content: flex-end; gap: 12px; min-width: 0; padding: 0 3px; }
+.replay-export-actions { display: flex; flex: none; gap: 7px; }
 .replay-export-actions button { min-height: 34px; white-space: nowrap; }
 .replay-export progress { width: 100%; height: 7px; grid-column: 1 / -1; accent-color: var(--accent); }
-.replay-export-status { min-height: 1.4em; grid-column: 1 / -1; margin: 0; color: var(--muted); font-size: 11px; }
+.replay-export-status { min-width: 0; margin: 0; color: var(--muted); font-size: 11px; text-align: right; white-space: nowrap; }
 
-@media (max-width: 560px) {
+@media (max-width: 680px) {
   .replay-export { grid-template-columns: 1fr; }
+  .replay-export-side { justify-content: space-between; padding: 2px 1px 0; }
+  .replay-export-status { text-align: left; }
   .replay-export-actions button { flex: 1; }
 }
 
