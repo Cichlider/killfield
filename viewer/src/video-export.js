@@ -13,6 +13,8 @@ export const VIDEO_PRESETS = Object.freeze({
   ultra: Object.freeze({ width: 1920, height: 1080, fps: 120, bitrate: 12_000_000 }),
 });
 
+export const DIRECT_DOWNLOAD_MAX_BYTES = 512 * 1024 * 1024;
+
 export function estimatedBytes(seconds, bitrate) {
   return Math.ceil(Math.max(0, seconds) * Math.max(0, bitrate) / 8);
 }
@@ -44,8 +46,9 @@ export async function supportsVideoPreset(preset) {
  * Open the destination while the click still carries a user gesture. Chromium
  * writes directly to disk; other browsers fall back to an in-memory Blob.
  */
-export async function chooseVideoDestination(filename) {
-  if (typeof globalThis.showSaveFilePicker !== "function") {
+export async function chooseVideoDestination(filename, expectedBytes = 0) {
+  if (expectedBytes <= DIRECT_DOWNLOAD_MAX_BYTES
+      || typeof globalThis.showSaveFilePicker !== "function") {
     return { target: new BufferTarget(), stream: null, filename };
   }
   const handle = await globalThis.showSaveFilePicker({
@@ -84,15 +87,13 @@ export async function createVideoWriter(canvas, preset, destination) {
       if (finished) return;
       finished = true;
       await output.finalize();
-      if (destination.stream) return;
+      if (destination.stream) {
+        return { bytes: null, url: null, filename: destination.filename };
+      }
       const buffer = destination.target.buffer;
       if (!buffer) throw new Error("The MP4 encoder produced no output.");
       const url = URL.createObjectURL(new Blob([buffer], { type: "video/mp4" }));
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = destination.filename;
-      link.click();
-      setTimeout(() => URL.revokeObjectURL(url), 30_000);
+      return { bytes: buffer.byteLength, url, filename: destination.filename };
     },
     async cancel() {
       if (finished) return;

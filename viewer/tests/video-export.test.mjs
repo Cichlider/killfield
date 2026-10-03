@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  DIRECT_DOWNLOAD_MAX_BYTES,
   VIDEO_PRESETS,
   estimatedBytes,
   safeVideoFilename,
@@ -17,6 +18,7 @@ test("video presets match the three published export tiers", () => {
 });
 
 test("bitrate estimate and filenames are safe", () => {
+  assert.equal(DIRECT_DOWNLOAD_MAX_BYTES, 512 * 1024 * 1024);
   assert.equal(estimatedBytes(60, 4_000_000), 30_000_000);
   assert.equal(safeVideoFilename("top/player: 27 wins"),
     "killfield-top-player-27-wins.mp4");

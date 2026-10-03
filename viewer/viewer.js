@@ -25,7 +25,7 @@
  */
 
 import * as C from "./src/constants.js";
-import { STRINGS, loadLang, saveLang } from "./src/i18n.js?v=9f71091b";
+import { STRINGS, loadLang, saveLang } from "./src/i18n.js?v=a3be52a6";
 import { Keyboard, TouchControls } from "./src/input.js?v=d3008c00";
 import {
   DEFAULT_PAD_TUNE,
@@ -151,6 +151,7 @@ const replayExport = document.getElementById("replay-export");
 const replayExportQualityLabel = document.getElementById("replay-export-quality-label");
 const replayExportPreset = document.getElementById("replay-export-preset");
 const replayExportStart = document.getElementById("replay-export-start");
+const replayExportDownload = document.getElementById("replay-export-download");
 const replayExportCancel = document.getElementById("replay-export-cancel");
 const replayExportProgress = document.getElementById("replay-export-progress");
 const replayExportStatus = document.getElementById("replay-export-status");
@@ -836,6 +837,7 @@ function applyLanguage() {
   }
   syncThemedPicker(replayExportPicker);
   replayExportStart.textContent = s.replayExportStart;
+  replayExportDownload.textContent = s.replayExportDownload;
   replayExportCancel.textContent = s.replayExportCancel;
   if (!replayExportJob) syncReplayExportEstimate();
   watchLeftLabel.textContent = s.watchLeftLabel;
@@ -901,6 +903,7 @@ try {
   if (REPLAY_SPEEDS.includes(savedSpeed)) replaySpeed = savedSpeed;
 } catch { /* Default stays 1x when browser storage is unavailable. */ }
 let replayExportJob = null;
+let replayExportDownloadUrl = null;
 let watchAfterSubmission = null;
 
 /** The ranked session being recorded, and the finished one awaiting upload.
@@ -1045,6 +1048,13 @@ function setReplayExportBusy(busy) {
   if (!busy) replayExportProgress.value = 0;
 }
 
+function clearReplayExportDownload() {
+  if (replayExportDownloadUrl) URL.revokeObjectURL(replayExportDownloadUrl);
+  replayExportDownloadUrl = null;
+  replayExportDownload.hidden = true;
+  replayExportDownload.removeAttribute("href");
+}
+
 function createReplayExportSimulation() {
   const { record } = replayPlayback;
   const exportHandle = wasm.kf_new(record.seed, record.opponent === "laika" ? 1 : 0);
@@ -1087,15 +1097,17 @@ async function exportReplayVideo() {
   const preset = EXPORT_PRESETS[presetKey] || EXPORT_PRESETS.recommended;
   const job = { canceled: false };
   replayExportJob = job;
+  clearReplayExportDownload();
   setReplayExportBusy(true);
 
   let writer = null;
   let simulation = null;
   let destination = null;
   try {
-    const video = await import("./src/video-export.js?v=1");
+    const video = await import("./src/video-export.js?v=a032d51c");
     const filename = video.safeVideoFilename(replayPlayback.record.name);
-    destination = await video.chooseVideoDestination(filename);
+    const expectedBytes = durationForReplay() * preset.bitrate / 8;
+    destination = await video.chooseVideoDestination(filename, expectedBytes);
     if (!(await video.supportsVideoPreset(preset))) {
       if (destination.stream) await destination.stream.close();
       replayExportStatus.textContent = t().replayExportUnsupported;
@@ -1127,7 +1139,7 @@ async function exportReplayVideo() {
         draw(current, colors, previous, alpha, null, target);
         await writer.addFrame(outputIndex);
         outputIndex += 1;
-        if (outputIndex % Math.max(30, preset.fps) === 0 || outputIndex === outputFrames) {
+        if (outputIndex % Math.min(60, preset.fps) === 0 || outputIndex === outputFrames) {
           const progress = outputIndex / outputFrames;
           replayExportProgress.value = progress;
           replayExportStatus.textContent = t().replayExportEncoding(Math.round(progress * 100));
@@ -1141,8 +1153,16 @@ async function exportReplayVideo() {
       replayExportStatus.textContent = t().replayExportCanceled;
     } else {
       replayExportStatus.textContent = t().replayExportFinishing;
-      await writer.finish();
-      replayExportStatus.textContent = t().replayExportDone;
+      const result = await writer.finish();
+      if (result.url) {
+        replayExportDownloadUrl = result.url;
+        replayExportDownload.href = result.url;
+        replayExportDownload.download = result.filename;
+        replayExportDownload.hidden = false;
+      }
+      replayExportStatus.textContent = result.url
+        ? t().replayExportDone(formatBytes(result.bytes))
+        : t().replayExportSaved(result.filename);
     }
   } catch (error) {
     if (error?.name === "AbortError") {
@@ -1161,6 +1181,10 @@ async function exportReplayVideo() {
     if (replayExportJob === job) replayExportJob = null;
     setReplayExportBusy(false);
   }
+}
+
+function durationForReplay() {
+  return (replayPlayback?.session.frames.length ?? 0) / C.FPS;
 }
 
 function resetReplayEngine() {
@@ -1274,6 +1298,7 @@ async function loadReplayRecord(value) {
     const text = typeof value === "string" ? value : JSON.stringify(value);
     const loaded = await parseReplayFile(text, binaryStamps);
     replayPlayback = { ...loaded, frameIndex: 0, eventIndex: 0 };
+    clearReplayExportDownload();
     paused = false;
     setMode("replay");
     syncReplayExportEstimate();

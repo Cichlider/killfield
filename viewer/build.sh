@@ -7,11 +7,15 @@ cp ../engine/target/wasm32-unknown-unknown/release/kf_engine.wasm .
 wasm_stamp="$(shasum -a 256 kf_engine.wasm | cut -c1-8)"
 style_stamp="$(shasum -a 256 style.css | cut -c1-8)"
 i18n_stamp="$(shasum -a 256 src/i18n.js | cut -c1-8)"
+video_export_stamp="$(shasum -a 256 src/video-export.js | cut -c1-8)"
 hybrid_js_stamp="$(shasum -a 256 src/hybrid.js | cut -c1-8)"
 hybrid_manifest_stamp="$(shasum -a 256 assets/hybrid.json | cut -c1-8)"
 hybrid_weights_stamp="$(shasum -a 256 assets/hybrid.bin | cut -c1-8)"
 sed -i '' -E \
   "s/fetch\(\"kf_engine\.wasm(\?v=[0-9A-Za-z._-]+)?\"\)/fetch(\"kf_engine.wasm?v=$wasm_stamp\")/" \
+  viewer.js
+sed -i '' -E \
+  "s#src/video-export\.js\?v=[0-9A-Za-z._-]+#src/video-export.js?v=$video_export_stamp#" \
   viewer.js
 sed -i '' -E \
   "s#src/i18n\.js\?v=[0-9A-Za-z._-]+#src/i18n.js?v=$i18n_stamp#; \
