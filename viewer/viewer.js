@@ -25,7 +25,7 @@
  */
 
 import * as C from "./src/constants.js";
-import { STRINGS, loadLang, saveLang } from "./src/i18n.js?v=a3be52a6";
+import { STRINGS, loadLang, saveLang } from "./src/i18n.js?v=4c338afa";
 import { Keyboard, TouchControls } from "./src/input.js?v=d3008c00";
 import {
   DEFAULT_PAD_TUNE,
@@ -1053,6 +1053,37 @@ function clearReplayExportDownload() {
   replayExportDownloadUrl = null;
   replayExportDownload.hidden = true;
   replayExportDownload.removeAttribute("href");
+}
+
+async function savePreparedReplayVideo(event) {
+  if (!replayExportDownloadUrl) {
+    event.preventDefault();
+    return;
+  }
+  if (typeof globalThis.showSaveFilePicker !== "function") {
+    replayExportStatus.textContent = t().replayExportDefaultDownload;
+    return;
+  }
+
+  event.preventDefault();
+  try {
+    // Called before the first await so the browser sees this as a direct user
+    // gesture and is allowed to display its native Save As dialog.
+    const handle = await globalThis.showSaveFilePicker({
+      suggestedName: replayExportDownload.download,
+      types: [{ description: "MP4 video", accept: { "video/mp4": [".mp4"] } }],
+    });
+    replayExportStatus.textContent = t().replayExportSaving;
+    const blob = await fetch(replayExportDownloadUrl).then((response) => response.blob());
+    const writable = await handle.createWritable();
+    await writable.write(blob);
+    await writable.close();
+    replayExportStatus.textContent = t().replayExportSavedTo(handle.name);
+  } catch (error) {
+    if (error?.name === "AbortError") return;
+    console.error("Saving replay video failed", error);
+    replayExportStatus.textContent = t().replayExportFailed;
+  }
 }
 
 function createReplayExportSimulation() {
@@ -2193,6 +2224,7 @@ async function boot() {
   replaySpeedButton.addEventListener("click", cycleReplaySpeed);
   replayExportPreset.addEventListener("change", syncReplayExportEstimate);
   replayExportStart.addEventListener("click", exportReplayVideo);
+  replayExportDownload.addEventListener("click", savePreparedReplayVideo);
   replayExportCancel.addEventListener("click", () => {
     if (replayExportJob) replayExportJob.canceled = true;
   });
