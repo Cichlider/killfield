@@ -8,9 +8,9 @@ import {
 class FakeTarget {
   constructor() { this.listeners = new Map(); }
   addEventListener(type, listener) { this.listeners.set(type, listener); }
-  dispatch(type, key) {
+  dispatch(type, key, repeat = false) {
     this.listeners.get(type)({
-      key, target: null, metaKey: false, ctrlKey: false, altKey: false,
+      key, target: null, metaKey: false, ctrlKey: false, altKey: false, repeat,
       preventDefault() {},
     });
   }
@@ -19,6 +19,13 @@ class FakeTarget {
 let now = 0;
 const target = new FakeTarget();
 const keyboard = new Keyboard(target, () => now);
+
+let resets = 0;
+keyboard.onResetScore = () => { resets += 1; };
+target.dispatch("keydown", "c");
+target.dispatch("keydown", "c", true);
+assert.equal(resets, 1, "C resets the score through the keyboard shortcut");
+assert.equal(keyboard.sampleStrengths().forward, 0, "C is not a movement command");
 
 // A short press wholly between two 25Hz ticks belongs to exactly one tick.
 now = 10;

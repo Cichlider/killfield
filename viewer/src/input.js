@@ -73,6 +73,7 @@ export class Keyboard {
     this.clock = clock;
     this.onReroll = null;
     this.onPause = null;
+    this.onResetScore = null;
     this.onFireChange = null;
     // Enough edge history to reconstruct the current physics frame and no
     // more. A sliding window, never a command queue.
@@ -93,6 +94,10 @@ export class Keyboard {
       }
       if (k === "p") {
         if (this.onPause) this.onPause();
+        return;
+      }
+      if (k === "c") {
+        if (!e.repeat && this.onResetScore) this.onResetScore();
         return;
       }
       const hadFire = this.has("fire");

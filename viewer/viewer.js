@@ -25,8 +25,8 @@
  */
 
 import * as C from "./src/constants.js";
-import { STRINGS, loadLang, saveLang } from "./src/i18n.js?v=7ac4282b";
-import { Keyboard, TouchControls } from "./src/input.js?v=88652157";
+import { STRINGS, loadLang, saveLang } from "./src/i18n.js?v=fe555286";
+import { Keyboard, TouchControls } from "./src/input.js?v=d3008c00";
 import {
   DEFAULT_PAD_TUNE,
   padLayout,
@@ -170,6 +170,7 @@ const controlRight = document.getElementById("control-right");
 const controlFire = document.getElementById("control-fire");
 const controlReroll = document.getElementById("control-reroll");
 const controlPause = document.getElementById("control-pause");
+const controlResetScore = document.getElementById("control-reset-score");
 const watchButton = document.getElementById("mode-watch");
 const playButton = document.getElementById("mode-play");
 const replayButton = document.getElementById("mode-replay");
@@ -803,6 +804,7 @@ function applyLanguage() {
   controlFire.textContent = s.controlsHelp.fire;
   controlReroll.textContent = s.controlsHelp.reroll;
   controlPause.textContent = s.controlsHelp.pause;
+  controlResetScore.textContent = s.controlsHelp.resetScore;
   syncTouchSchemeControl();
   syncPadTuneControls();
   themedPickers.forEach(syncThemedPicker);
@@ -1804,6 +1806,7 @@ async function boot() {
 
   keyboard.onReroll = () => { if (mode !== "replay") newGame(); };
   keyboard.onPause = togglePause;
+  keyboard.onResetScore = () => { if (mode !== "replay") resetScore(); };
   keyboard.onFireChange = (pressed) => {
     keyboardFirePressed = pressed;
     syncImmediateHumanFire();
