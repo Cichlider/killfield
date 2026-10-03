@@ -1,5 +1,5 @@
 {
-  "updated": "2026-10-03T04:53:40.705Z",
+  "updated": "2026-10-03T12:55:53.903Z",
   "entries": [
     {
       "name": "Human",
@@ -1140,6 +1140,26 @@
       "hybridMovementMatch": 0.15803452855245684,
       "hybridMovementMatches": 357,
       "hybridMovementFrames": 2259
+    },
+    {
+      "name": "neko_msw",
+      "github": null,
+      "submitter": "9c40bad1b370f466",
+      "board": "hybrid",
+      "score": 2,
+      "wins": 2,
+      "losses": 6,
+      "doubleKills": 1,
+      "rounds": 9,
+      "seed": 1336305376,
+      "frames": 3355,
+      "playerClass": "human",
+      "hybridMovementMatch": 0.2083457526080477,
+      "hybridMovementMatches": 699,
+      "hybridMovementFrames": 3355,
+      "issue": 79,
+      "trackHash": "1624aceabb8996968b4b6392516c2889",
+      "verifiedAt": "2026-10-03T12:55:53.902Z"
     },
     {
       "name": "test",
