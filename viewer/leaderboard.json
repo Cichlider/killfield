@@ -1,5 +1,5 @@
 {
-  "updated": "2026-10-03T12:55:53.903Z",
+  "updated": "2026-10-03T12:59:02.717Z",
   "entries": [
     {
       "name": "Human",
@@ -1340,6 +1340,26 @@
       "hybridMovementMatch": 0.13666666666666666,
       "hybridMovementMatches": 123,
       "hybridMovementFrames": 900
+    },
+    {
+      "name": "neko_msw",
+      "github": "MSW11-BiliUP",
+      "submitter": "9c40bad1b370f466",
+      "board": "hybrid",
+      "score": 1,
+      "wins": 1,
+      "losses": 2,
+      "doubleKills": 0,
+      "rounds": 3,
+      "seed": 3858325643,
+      "frames": 2379,
+      "playerClass": "human",
+      "hybridMovementMatch": 0.15510718789407313,
+      "hybridMovementMatches": 369,
+      "hybridMovementFrames": 2379,
+      "issue": 80,
+      "trackHash": "aba8f0960d95fed1a1e44c8768af0834",
+      "verifiedAt": "2026-10-03T12:59:02.717Z"
     },
     {
       "name": "1",
