@@ -1,5 +1,5 @@
 {
-  "updated": "2026-10-03T12:59:02.717Z",
+  "updated": "2026-10-03T13:05:22.322Z",
   "entries": [
     {
       "name": "Human",
@@ -1320,6 +1320,26 @@
       "hybridMovementMatch": 0.2618757612667479,
       "hybridMovementMatches": 215,
       "hybridMovementFrames": 821
+    },
+    {
+      "name": "neko_msw",
+      "github": "MSW11-BiliUP",
+      "submitter": "9c40bad1b370f466",
+      "board": "hybrid",
+      "score": 1,
+      "wins": 1,
+      "losses": 0,
+      "doubleKills": 0,
+      "rounds": 1,
+      "seed": 2046331598,
+      "frames": 1095,
+      "playerClass": "human",
+      "hybridMovementMatch": 0.16073059360730593,
+      "hybridMovementMatches": 176,
+      "hybridMovementFrames": 1095,
+      "issue": 81,
+      "trackHash": "1501594ef2ef1323d750f3114983d871",
+      "verifiedAt": "2026-10-03T13:05:22.322Z"
     },
     {
       "name": "Rekursion",
