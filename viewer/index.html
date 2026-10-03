@@ -141,6 +141,23 @@
     </div>
   </section>
 
+  <section class="replay-export" id="replay-export" hidden aria-label="Export replay video">
+    <label class="replay-export-quality">
+      <span id="replay-export-quality-label">Video quality</span>
+      <select id="replay-export-preset">
+        <option value="recommended">720p · 60 FPS · 4 Mbps</option>
+        <option value="hd">1080p · 60 FPS · 8 Mbps</option>
+        <option value="ultra">1080p · 120 FPS · 12 Mbps</option>
+      </select>
+    </label>
+    <div class="replay-export-actions">
+      <button id="replay-export-start" type="button">Export MP4</button>
+      <button id="replay-export-cancel" type="button" class="ghost-btn" hidden>Cancel</button>
+    </div>
+    <progress id="replay-export-progress" max="1" value="0" hidden></progress>
+    <p id="replay-export-status" class="replay-export-status" role="status"></p>
+  </section>
+
   <section class="config-row play-config" id="play-config" hidden aria-label="Player match settings">
     <div class="controller-picker" data-theme-picker data-select-id="touch-scheme" data-label-id="touch-scheme-label">
       <span id="touch-scheme-label">Touch controls</span>

@@ -147,6 +147,13 @@ const replayTime = document.getElementById("replay-time");
 const replayBack15Button = document.getElementById("replay-back-15");
 const replayForward15Button = document.getElementById("replay-forward-15");
 const replaySpeedButton = document.getElementById("replay-speed");
+const replayExport = document.getElementById("replay-export");
+const replayExportQualityLabel = document.getElementById("replay-export-quality-label");
+const replayExportPreset = document.getElementById("replay-export-preset");
+const replayExportStart = document.getElementById("replay-export-start");
+const replayExportCancel = document.getElementById("replay-export-cancel");
+const replayExportProgress = document.getElementById("replay-export-progress");
+const replayExportStatus = document.getElementById("replay-export-status");
 const watchLeftLabel = document.getElementById("watch-left-label");
 const watchRightLabel = document.getElementById("watch-right-label");
 const controllerSelects = [0, 1].map((i) => document.getElementById(`controller-${i}`));
@@ -343,6 +350,12 @@ function readoutText(s, tune, layout) {
 
 const keyboard = new Keyboard();
 const touchControls = new TouchControls(touchControlsRoot, touchVisibilityButton);
+
+const EXPORT_PRESETS = Object.freeze({
+  recommended: { width: 1280, height: 720, fps: 60, bitrate: 4_000_000 },
+  hd: { width: 1920, height: 1080, fps: 60, bitrate: 8_000_000 },
+  ultra: { width: 1920, height: 1080, fps: 120, bitrate: 12_000_000 },
+});
 const sounds = new SoundEffects();
 let keyboardFirePressed = false;
 let touchFirePressed = false;
@@ -425,6 +438,31 @@ class Renderer {
 }
 
 const renderer = new Renderer(canvas);
+
+/** Fixed-resolution renderer used only by the offline video exporter. */
+class ExportRenderer {
+  constructor(width, height) {
+    this.canvas = document.createElement("canvas");
+    this.canvas.width = width;
+    this.canvas.height = height;
+    this.ctx = this.canvas.getContext("2d", { alpha: false });
+    this.width = C.MOVIEWIDTH + 20;
+    this.height = C.MOVIEHEIGHT + 20;
+    this.pixelWidth = width;
+    this.pixelHeight = height;
+    this.scale = Math.min(width / this.width, height / this.height);
+    this.offsetX = (width - this.width * this.scale) / 2;
+    this.offsetY = (height - this.height * this.scale) / 2;
+    this.shakeRng = new Rng(1);
+  }
+
+  syncSize() {
+    this.ctx.setTransform(1, 0, 0, 1, 0, 0);
+    this.ctx.fillStyle = THEME.page;
+    this.ctx.fillRect(0, 0, this.pixelWidth, this.pixelHeight);
+    this.ctx.setTransform(this.scale, 0, 0, this.scale, this.offsetX, this.offsetY);
+  }
+}
 // Dedicated, fixed-seed RNG for the kill-shake jitter — decoupled from the
 // engine's own RNG so drawing a frame never perturbs game determinism.
 const shakeRng = new Rng(1);
@@ -433,8 +471,12 @@ const shakeRng = new Rng(1);
 
 /** The buffer view must be rebuilt each frame: wasm memory can grow. */
 function renderBuffer() {
-  const ptr = wasm.kf_render_ptr(handle);
-  const len = wasm.kf_render_len(handle);
+  return renderBufferFor(handle);
+}
+
+function renderBufferFor(targetHandle) {
+  const ptr = wasm.kf_render_ptr(targetHandle);
+  const len = wasm.kf_render_len(targetHandle);
   return new Float32Array(wasm.memory.buffer, ptr, len);
 }
 
@@ -520,9 +562,9 @@ function drawTank(ctx, x, y, rotation, s, colors) {
   ctx.stroke();
 }
 
-function draw(buf, colors, previous, alpha, localPlayer = null) {
-  renderer.syncSize();
-  const ctx = renderer.ctx;
+function draw(buf, colors, previous, alpha, localPlayer = null, target = renderer) {
+  target.syncSize();
+  const ctx = target.ctx;
   const w = buf[0];
   const h = buf[1];
   const scale = buf[2];
@@ -533,8 +575,8 @@ function draw(buf, colors, previous, alpha, localPlayer = null) {
   const nBullets = buf[7] | 0;
   const worldW = w * scale;
   const worldH = h * scale;
-  const width = renderer.width;
-  const height = renderer.height;
+  const width = target.width;
+  const height = target.height;
 
   ctx.clearRect(0, 0, width, height);
   ctx.fillStyle = THEME.page;
@@ -544,8 +586,9 @@ function draw(buf, colors, previous, alpha, localPlayer = null) {
   let oy = 10;
   if (shake > 1) {
     const s = Math.max(1, Math.floor(shake));
-    ox += shakeRng.randrange(s) - shake / 2;
-    oy += shakeRng.randrange(s) - shake / 2;
+    const jitter = target.shakeRng || shakeRng;
+    ox += jitter.randrange(s) - shake / 2;
+    oy += jitter.randrange(s) - shake / 2;
   }
   ox += Math.max(0, (width - 20 - worldW) / 2);
 
@@ -785,6 +828,14 @@ function applyLanguage() {
   replayBack15Button.setAttribute("aria-label", s.replayBack15);
   replayForward15Button.setAttribute("aria-label", s.replayForward15);
   syncReplaySpeedButton();
+  replayExport.setAttribute("aria-label", s.replayExportAria);
+  replayExportQualityLabel.textContent = s.replayExportQuality;
+  for (const option of replayExportPreset.options) {
+    option.textContent = s.replayExportPresets[option.value];
+  }
+  replayExportStart.textContent = s.replayExportStart;
+  replayExportCancel.textContent = s.replayExportCancel;
+  if (!replayExportJob) syncReplayExportEstimate();
   watchLeftLabel.textContent = s.watchLeftLabel;
   watchRightLabel.textContent = s.watchRightLabel;
   playOpponentLabel.textContent = s.opponentLabel;
@@ -847,6 +898,7 @@ try {
   const savedSpeed = Number(localStorage.getItem(REPLAY_SPEED_STORAGE_KEY));
   if (REPLAY_SPEEDS.includes(savedSpeed)) replaySpeed = savedSpeed;
 } catch { /* Default stays 1x when browser storage is unavailable. */ }
+let replayExportJob = null;
 let watchAfterSubmission = null;
 
 /** The ranked session being recorded, and the finished one awaiting upload.
@@ -965,6 +1017,149 @@ function cycleReplaySpeed() {
   replaySpeedButton.blur();
 }
 
+function formatBytes(bytes) {
+  if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
+  return `${Math.max(1, Math.round(bytes / 1024 ** 2))} MB`;
+}
+
+function syncReplayExportEstimate() {
+  if (!replayPlayback) {
+    replayExportStatus.textContent = "";
+    return;
+  }
+  const preset = EXPORT_PRESETS[replayExportPreset.value] || EXPORT_PRESETS.recommended;
+  const seconds = replayPlayback.session.frames.length / C.FPS;
+  replayExportStatus.textContent = t().replayExportEstimate(
+    formatBytes(seconds * preset.bitrate / 8),
+  );
+}
+
+function setReplayExportBusy(busy) {
+  replayExportPreset.disabled = busy;
+  replayExportStart.disabled = busy;
+  replayExportCancel.hidden = !busy;
+  replayExportProgress.hidden = !busy;
+  if (!busy) replayExportProgress.value = 0;
+}
+
+function createReplayExportSimulation() {
+  const { record } = replayPlayback;
+  const exportHandle = wasm.kf_new(record.seed, record.opponent === "laika" ? 1 : 0);
+  const driver = new OpponentDriver({
+    opponent: record.opponent,
+    delayFrames: record.delayFrames,
+    openingDelayFrames: Math.round(record.openingDelaySeconds * C.FPS),
+    policy: hybridPolicy,
+  });
+  driver.attach(wasm, exportHandle);
+  return { handle: exportHandle, driver, frameIndex: 0, eventIndex: 0 };
+}
+
+function stepReplayExportSimulation(simulation) {
+  const { session } = replayPlayback;
+  const index = simulation.frameIndex;
+  while (simulation.eventIndex < session.events.length
+      && session.events[simulation.eventIndex].frame === index) {
+    wasm.kf_set_fire_immediate(
+      simulation.handle, HUMAN_SEAT, session.events[simulation.eventIndex].value,
+    );
+    simulation.eventIndex += 1;
+  }
+  const recorded = session.frames[index];
+  wasm.kf_set_input(simulation.handle, HUMAN_SEAT, recorded.forward, recorded.backup,
+    recorded.turnLeft, recorded.turnRight, recorded.fire, 1);
+  const decision = simulation.driver.decide(wasm, simulation.handle);
+  if (decision !== null) {
+    if (recorded.action === NO_ACTION) throw new Error("Replay is missing an opponent action");
+    simulation.driver.apply(wasm, simulation.handle, recorded.action);
+  }
+  const flags = wasm.kf_step(simulation.handle);
+  simulation.driver.afterStep(wasm, simulation.handle, flags);
+  simulation.frameIndex += 1;
+}
+
+async function exportReplayVideo() {
+  if (!replayPlayback || replayExportJob) return;
+  const presetKey = replayExportPreset.value;
+  const preset = EXPORT_PRESETS[presetKey] || EXPORT_PRESETS.recommended;
+  const job = { canceled: false };
+  replayExportJob = job;
+  setReplayExportBusy(true);
+
+  let writer = null;
+  let simulation = null;
+  let destination = null;
+  try {
+    const video = await import("./src/video-export.js?v=1");
+    const filename = video.safeVideoFilename(replayPlayback.record.name);
+    destination = await video.chooseVideoDestination(filename);
+    if (!(await video.supportsVideoPreset(preset))) {
+      if (destination.stream) await destination.stream.close();
+      replayExportStatus.textContent = t().replayExportUnsupported;
+      return;
+    }
+
+    const target = new ExportRenderer(preset.width, preset.height);
+    writer = await video.createVideoWriter(target.canvas, preset, destination);
+    simulation = createReplayExportSimulation();
+    const colors = activeTankColors();
+    const totalFrames = replayPlayback.session.frames.length;
+    const duration = totalFrames / C.FPS;
+    const outputFrames = Math.ceil(duration * preset.fps);
+    let outputIndex = 0;
+
+    for (let simulationIndex = 0; simulationIndex < totalFrames; simulationIndex += 1) {
+      if (job.canceled) break;
+      const previous = captureRenderState(renderBufferFor(simulation.handle));
+      stepReplayExportSimulation(simulation);
+      const current = renderBufferFor(simulation.handle);
+      const intervalStart = simulationIndex / C.FPS;
+      const intervalEnd = (simulationIndex + 1) / C.FPS;
+
+      while (outputIndex < outputFrames
+          && outputIndex / preset.fps < intervalEnd - Number.EPSILON) {
+        if (job.canceled) break;
+        const timestamp = outputIndex / preset.fps;
+        const alpha = Math.max(0, Math.min(1, (timestamp - intervalStart) * C.FPS));
+        draw(current, colors, previous, alpha, null, target);
+        await writer.addFrame(outputIndex);
+        outputIndex += 1;
+        if (outputIndex % Math.max(30, preset.fps) === 0 || outputIndex === outputFrames) {
+          const progress = outputIndex / outputFrames;
+          replayExportProgress.value = progress;
+          replayExportStatus.textContent = t().replayExportEncoding(Math.round(progress * 100));
+          await new Promise(requestAnimationFrame);
+        }
+      }
+    }
+
+    if (job.canceled) {
+      await writer.cancel();
+      replayExportStatus.textContent = t().replayExportCanceled;
+    } else {
+      replayExportStatus.textContent = t().replayExportFinishing;
+      await writer.finish();
+      replayExportStatus.textContent = t().replayExportDone;
+    }
+  } catch (error) {
+    if (error?.name === "AbortError") {
+      replayExportStatus.textContent = t().replayExportCanceled;
+    } else {
+      console.error("Replay video export failed", error);
+      replayExportStatus.textContent = t().replayExportFailed;
+      if (writer) {
+        try { await writer.cancel(); } catch { /* best effort */ }
+      } else if (destination?.stream) {
+        try { await destination.stream.close(); } catch { /* best effort */ }
+      }
+    }
+  } finally {
+    if (simulation) wasm.kf_free(simulation.handle);
+    if (replayExportJob === job) replayExportJob = null;
+    setReplayExportBusy(false);
+  }
+}
+
 function resetReplayEngine() {
   if (!replayPlayback || wasm === null) return;
   if (handle !== null) wasm.kf_free(handle);
@@ -1078,6 +1273,7 @@ async function loadReplayRecord(value) {
     replayPlayback = { ...loaded, frameIndex: 0, eventIndex: 0 };
     paused = false;
     setMode("replay");
+    syncReplayExportEstimate();
   } catch (error) {
     replayMessage.textContent = t().replayLoadFailed;
     console.error("Replay load failed", error);
@@ -1455,6 +1651,7 @@ function setMode(next) {
   if (next !== "play" && padTuneDetails.open) padTuneDetails.open = false;
   replayLoader.hidden = next !== "replay";
   replayProgress.hidden = next !== "replay" || replayPlayback === null;
+  replayExport.hidden = next !== "replay" || replayPlayback === null;
   streakline.hidden = next === "replay";
   controlsHelp.hidden = next !== "play";
   rerollButton.hidden = next === "replay";
@@ -1966,6 +2163,11 @@ async function boot() {
   replayBack15Button.addEventListener("click", () => jumpReplay(-REPLAY_JUMP_SECONDS));
   replayForward15Button.addEventListener("click", () => jumpReplay(REPLAY_JUMP_SECONDS));
   replaySpeedButton.addEventListener("click", cycleReplaySpeed);
+  replayExportPreset.addEventListener("change", syncReplayExportEstimate);
+  replayExportStart.addEventListener("click", exportReplayVideo);
+  replayExportCancel.addEventListener("click", () => {
+    if (replayExportJob) replayExportJob.canceled = true;
+  });
   langToggle.addEventListener("click", toggleLanguage);
   window.addEventListener("resize", () => {
     renderer.resize();
