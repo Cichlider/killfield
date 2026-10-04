@@ -358,6 +358,7 @@ const EXPORT_PRESETS = Object.freeze({
   hd: { width: 1920, height: 1080, fps: 60, bitrate: 8_000_000 },
   ultra: { width: 1920, height: 1080, fps: 120, bitrate: 12_000_000 },
 });
+const EXPORT_AUDIO_BITRATE = 128_000;
 const sounds = new SoundEffects();
 let keyboardFirePressed = false;
 let touchFirePressed = false;
@@ -653,6 +654,61 @@ function draw(buf, colors, previous, alpha, localPlayer = null, target = rendere
     const number = buf[o + 4] | 0;
     drawTank(ctx, ox + x, oy + y, rotation, buf[o + 5], colors[number % colors.length]);
   }
+}
+
+/** Burn the DOM scoreboard into exported frames so the MP4 is self-contained. */
+function drawExportScoreboard(target, buf, colors, names) {
+  const ctx = target.ctx;
+  const width = target.pixelWidth;
+  const unit = width / 1280;
+  const panelWidth = Math.min(width - 32 * unit, 600 * unit);
+  const panelHeight = 72 * unit;
+  const x = (width - panelWidth) / 2;
+  const y = 16 * unit;
+  const scoreGap = 48 * unit;
+
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.beginPath();
+  ctx.roundRect(x, y, panelWidth, panelHeight, 18 * unit);
+  ctx.fillStyle = "rgba(247, 247, 245, 0.9)";
+  ctx.fill();
+  ctx.strokeStyle = "rgba(34, 34, 34, 0.16)";
+  ctx.lineWidth = Math.max(1, 1.5 * unit);
+  ctx.stroke();
+
+  const center = width / 2;
+  const scoreY = y + 43 * unit;
+  ctx.textBaseline = "middle";
+  ctx.fillStyle = THEME.outline;
+  ctx.font = `700 ${30 * unit}px ui-rounded, system-ui, sans-serif`;
+  ctx.textAlign = "right";
+  ctx.fillText(String(buf[10] | 0), center - scoreGap / 2, scoreY);
+  ctx.textAlign = "left";
+  ctx.fillText(String(buf[11] | 0), center + scoreGap / 2, scoreY);
+  ctx.textAlign = "center";
+  ctx.font = `600 ${16 * unit}px ui-rounded, system-ui, sans-serif`;
+  ctx.fillStyle = "rgba(34, 34, 34, 0.56)";
+  ctx.fillText("vs", center, scoreY);
+
+  const nameY = y + 18 * unit;
+  const swatchRadius = 5 * unit;
+  const nameOffset = panelWidth * 0.27;
+  ctx.font = `650 ${17 * unit}px ui-rounded, system-ui, sans-serif`;
+  ctx.fillStyle = THEME.outline;
+  ctx.textAlign = "center";
+  ctx.fillText(String(names[0]).slice(0, 22), center - nameOffset, nameY);
+  ctx.fillText(String(names[1]).slice(0, 22), center + nameOffset, nameY);
+  for (const [index, direction] of [[0, -1], [1, 1]]) {
+    ctx.beginPath();
+    ctx.arc(center + direction * (panelWidth * 0.45), nameY, swatchRadius, 0, Math.PI * 2);
+    ctx.fillStyle = colors[index].turret;
+    ctx.fill();
+    ctx.strokeStyle = colors[index].base;
+    ctx.lineWidth = Math.max(1, 2 * unit);
+    ctx.stroke();
+  }
+  ctx.restore();
 }
 
 // ------------------------------------------------------------------ sound
@@ -1035,7 +1091,7 @@ function syncReplayExportEstimate() {
   const preset = EXPORT_PRESETS[replayExportPreset.value] || EXPORT_PRESETS.recommended;
   const seconds = replayPlayback.session.frames.length / C.FPS;
   replayExportStatus.textContent = t().replayExportEstimate(
-    formatBytes(seconds * preset.bitrate / 8),
+    formatBytes(seconds * (preset.bitrate + EXPORT_AUDIO_BITRATE) / 8),
   );
 }
 
@@ -1102,9 +1158,10 @@ function createReplayExportSimulation() {
 function stepReplayExportSimulation(simulation) {
   const { session } = replayPlayback;
   const index = simulation.frameIndex;
+  let immediateFires = 0;
   while (simulation.eventIndex < session.events.length
       && session.events[simulation.eventIndex].frame === index) {
-    wasm.kf_set_fire_immediate(
+    immediateFires += wasm.kf_set_fire_immediate(
       simulation.handle, HUMAN_SEAT, session.events[simulation.eventIndex].value,
     );
     simulation.eventIndex += 1;
@@ -1120,6 +1177,7 @@ function stepReplayExportSimulation(simulation) {
   const flags = wasm.kf_step(simulation.handle);
   simulation.driver.afterStep(wasm, simulation.handle, flags);
   simulation.frameIndex += 1;
+  return { flags, immediateFires };
 }
 
 async function exportReplayVideo() {
@@ -1135,32 +1193,44 @@ async function exportReplayVideo() {
   let simulation = null;
   let destination = null;
   try {
-    const video = await import("./src/video-export.js?v=a032d51c");
+    const video = await import("./src/video-export.js?v=3bf492a9");
     const filename = video.safeVideoFilename(replayPlayback.record.name);
-    const expectedBytes = durationForReplay() * preset.bitrate / 8;
+    const expectedBytes = durationForReplay() * (preset.bitrate + video.AUDIO_BITRATE) / 8;
     destination = await video.chooseVideoDestination(filename, expectedBytes);
-    if (!(await video.supportsVideoPreset(preset))) {
+    if (!(await video.supportsVideoPreset(preset, true))) {
       if (destination.stream) await destination.stream.close();
       replayExportStatus.textContent = t().replayExportUnsupported;
       return;
     }
 
     const target = new ExportRenderer(preset.width, preset.height);
-    writer = await video.createVideoWriter(target.canvas, preset, destination);
+    const soundBank = await video.loadReplaySoundBank();
+    writer = await video.createVideoWriter(target.canvas, preset, destination, { withAudio: true });
     simulation = createReplayExportSimulation();
     const colors = activeTankColors();
+    const names = [seatDisplayName(0), seatDisplayName(1)];
     const totalFrames = replayPlayback.session.frames.length;
     const duration = totalFrames / C.FPS;
     const outputFrames = Math.ceil(duration * preset.fps);
+    const totalAudioSamples = Math.round(duration * video.AUDIO_SAMPLE_RATE);
+    const audioChunkSamples = video.AUDIO_SAMPLE_RATE;
+    const soundEvents = [];
+    let audioSample = 0;
     let outputIndex = 0;
 
     for (let simulationIndex = 0; simulationIndex < totalFrames; simulationIndex += 1) {
       if (job.canceled) break;
       const previous = captureRenderState(renderBufferFor(simulation.handle));
-      stepReplayExportSimulation(simulation);
+      const stepResult = stepReplayExportSimulation(simulation);
       const current = renderBufferFor(simulation.handle);
       const intervalStart = simulationIndex / C.FPS;
       const intervalEnd = (simulationIndex + 1) / C.FPS;
+      for (let count = 0; count < stepResult.immediateFires; count += 1) {
+        soundEvents.push({ kind: "fire", time: intervalStart });
+      }
+      if (stepResult.flags & 2) soundEvents.push({ kind: "fire", time: intervalEnd });
+      if (stepResult.flags & 16) soundEvents.push({ kind: "destroy", time: intervalEnd });
+      if (stepResult.flags & 32) soundEvents.push({ kind: "expire", time: intervalEnd });
 
       while (outputIndex < outputFrames
           && outputIndex / preset.fps < intervalEnd - Number.EPSILON) {
@@ -1168,6 +1238,7 @@ async function exportReplayVideo() {
         const timestamp = outputIndex / preset.fps;
         const alpha = Math.max(0, Math.min(1, (timestamp - intervalStart) * C.FPS));
         draw(current, colors, previous, alpha, null, target);
+        drawExportScoreboard(target, current, colors, names);
         await writer.addFrame(outputIndex);
         outputIndex += 1;
         if (outputIndex % Math.min(60, preset.fps) === 0 || outputIndex === outputFrames) {
@@ -1176,6 +1247,18 @@ async function exportReplayVideo() {
           replayExportStatus.textContent = t().replayExportEncoding(Math.round(progress * 100));
           await new Promise(requestAnimationFrame);
         }
+      }
+
+      const knownAudioSamples = Math.min(totalAudioSamples,
+        Math.round(intervalEnd * video.AUDIO_SAMPLE_RATE));
+      while (knownAudioSamples - audioSample >= audioChunkSamples
+          || (simulationIndex === totalFrames - 1 && audioSample < totalAudioSamples)) {
+        const endSample = Math.min(totalAudioSamples, audioSample + audioChunkSamples);
+        const samples = video.mixReplaySoundChunk(
+          soundBank, soundEvents, audioSample, endSample, video.AUDIO_SAMPLE_RATE,
+        );
+        await writer.addAudioChunk(samples);
+        audioSample = endSample;
       }
     }
 
@@ -1698,7 +1781,9 @@ function setMode(next) {
   closeThemedPickers();
   keyboard.clear();
   touchControls.clear();
-  stage.classList.toggle("rail-mode", next === "play" || next === "replay");
+  // Every mobile fullscreen mode uses the same unobstructed three-rail frame:
+  // score on the left, arena in the middle, utility buttons on the right.
+  stage.classList.toggle("rail-mode", next === "watch" || next === "play" || next === "replay");
   watchButton.classList.toggle("active", next === "watch");
   playButton.classList.toggle("active", next === "play");
   replayButton.classList.toggle("active", next === "replay");

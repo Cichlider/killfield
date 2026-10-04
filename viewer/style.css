@@ -1128,10 +1128,9 @@ header { gap: 4px; }
   .range-field output { grid-column: 2; grid-row: 1; }
 }
 
-/* Play and replay fullscreen share the mobile three-rail composition:
+/* Watch, play and replay fullscreen share the mobile three-rail composition:
    score and movement on the left, an unobstructed arena in the middle, and
-   utility buttons plus fire on the right in Play. Watch mode keeps the simpler
-   centred fullscreen layout above. */
+   utility buttons plus fire on the right in Play. */
 @media (max-width: 980px), (pointer: coarse) {
   .stage.rail-mode:fullscreen,
   .stage.rail-mode:-webkit-full-screen,
