@@ -1,5 +1,5 @@
 {
-  "updated": "2026-10-03T13:38:14.918Z",
+  "updated": "2026-10-04T22:49:46.679Z",
   "entries": [
     {
       "name": "Human",
@@ -300,6 +300,26 @@
       "issue": 62,
       "trackHash": "23877d512a16fd8fa9bbb1900ac86a7a",
       "verifiedAt": "2026-09-27T16:45:39.217Z"
+    },
+    {
+      "name": "pryo-lowkey trolling ngl",
+      "github": null,
+      "submitter": "ae326ec008c2d459",
+      "board": "killfield",
+      "score": 19,
+      "wins": 19,
+      "losses": 25,
+      "doubleKills": 7,
+      "rounds": 51,
+      "seed": 3655837811,
+      "frames": 16896,
+      "playerClass": "human",
+      "hybridMovementMatch": 0.1670217803030303,
+      "hybridMovementMatches": 2822,
+      "hybridMovementFrames": 16896,
+      "issue": 83,
+      "trackHash": "7192c74169e365d72052439ca60e18b8",
+      "verifiedAt": "2026-10-04T22:49:46.679Z"
     },
     {
       "name": "Lichen (won a 1v1 😛)",
