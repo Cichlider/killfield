@@ -661,53 +661,58 @@ function drawExportScoreboard(target, buf, colors, names) {
   const ctx = target.ctx;
   const width = target.pixelWidth;
   const unit = width / 1280;
-  const panelWidth = Math.min(width - 32 * unit, 600 * unit);
-  const panelHeight = 72 * unit;
-  const x = (width - panelWidth) / 2;
-  const y = 16 * unit;
-  const scoreGap = 48 * unit;
+  // The 16:9 export has pillar space on both sides of the 712×500 arena.
+  // Keep the whole score card inside the left pillar so it never covers play.
+  const railInset = 10 * unit;
+  const panelWidth = Math.max(1, target.offsetX - railInset * 2);
+  const panelHeight = 92 * unit;
+  const x = railInset;
+  const y = 14 * unit;
 
   ctx.save();
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.beginPath();
-  ctx.roundRect(x, y, panelWidth, panelHeight, 18 * unit);
-  ctx.fillStyle = "rgba(247, 247, 245, 0.9)";
+  ctx.roundRect(x, y, panelWidth, panelHeight, 12 * unit);
+  ctx.fillStyle = "rgba(34, 34, 34, 0.76)";
   ctx.fill();
-  ctx.strokeStyle = "rgba(34, 34, 34, 0.16)";
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.16)";
   ctx.lineWidth = Math.max(1, 1.5 * unit);
   ctx.stroke();
 
-  const center = width / 2;
-  const scoreY = y + 43 * unit;
   ctx.textBaseline = "middle";
-  ctx.fillStyle = THEME.outline;
-  ctx.font = `700 ${30 * unit}px ui-rounded, system-ui, sans-serif`;
-  ctx.textAlign = "right";
-  ctx.fillText(String(buf[10] | 0), center - scoreGap / 2, scoreY);
-  ctx.textAlign = "left";
-  ctx.fillText(String(buf[11] | 0), center + scoreGap / 2, scoreY);
-  ctx.textAlign = "center";
-  ctx.font = `600 ${16 * unit}px ui-rounded, system-ui, sans-serif`;
-  ctx.fillStyle = "rgba(34, 34, 34, 0.56)";
-  ctx.fillText("vs", center, scoreY);
-
-  const nameY = y + 18 * unit;
-  const swatchRadius = 5 * unit;
-  const nameOffset = panelWidth * 0.27;
-  ctx.font = `650 ${17 * unit}px ui-rounded, system-ui, sans-serif`;
-  ctx.fillStyle = THEME.outline;
-  ctx.textAlign = "center";
-  ctx.fillText(String(names[0]).slice(0, 22), center - nameOffset, nameY);
-  ctx.fillText(String(names[1]).slice(0, 22), center + nameOffset, nameY);
-  for (const [index, direction] of [[0, -1], [1, 1]]) {
+  const swatchX = x + 12 * unit;
+  const nameX = x + 22 * unit;
+  const scoreX = x + panelWidth - 10 * unit;
+  const maxNameWidth = Math.max(1, scoreX - nameX - 22 * unit);
+  for (let index = 0; index < 2; index += 1) {
+    const rowY = y + (25 + index * 32) * unit;
     ctx.beginPath();
-    ctx.arc(center + direction * (panelWidth * 0.45), nameY, swatchRadius, 0, Math.PI * 2);
+    ctx.arc(swatchX, rowY, 4.5 * unit, 0, Math.PI * 2);
     ctx.fillStyle = colors[index].turret;
     ctx.fill();
     ctx.strokeStyle = colors[index].base;
-    ctx.lineWidth = Math.max(1, 2 * unit);
+    ctx.lineWidth = Math.max(1, 1.5 * unit);
     ctx.stroke();
+
+    ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
+    ctx.font = `650 ${12 * unit}px ui-rounded, system-ui, sans-serif`;
+    ctx.textAlign = "left";
+    let label = String(names[index]);
+    while (label.length > 1 && ctx.measureText(label).width > maxNameWidth) {
+      label = `${label.slice(0, -2)}…`;
+    }
+    ctx.fillText(label, nameX, rowY);
+
+    ctx.fillStyle = "#fff";
+    ctx.font = `750 ${21 * unit}px ui-rounded, system-ui, sans-serif`;
+    ctx.textAlign = "right";
+    ctx.fillText(String(buf[10 + index] | 0), scoreX, rowY);
   }
+
+  ctx.fillStyle = "rgba(255, 255, 255, 0.58)";
+  ctx.font = `550 ${10 * unit}px ui-rounded, system-ui, sans-serif`;
+  ctx.textAlign = "left";
+  ctx.fillText(`round ${Math.max(1, buf[9] | 0)}`, x + 10 * unit, y + 78 * unit);
   ctx.restore();
 }
 
