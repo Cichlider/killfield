@@ -1,5 +1,5 @@
 {
-  "updated": "2026-10-04T22:49:46.679Z",
+  "updated": "2026-10-05T07:19:42.633Z",
   "entries": [
     {
       "name": "Human",
@@ -1500,6 +1500,26 @@
       "issue": 68,
       "trackHash": "6b2c06e0060d1f71f96c4cfcbb56639b",
       "verifiedAt": "2026-09-30T11:32:48.834Z"
+    },
+    {
+      "name": "zengwenxi",
+      "github": "Cholecystoduodenostomy",
+      "submitter": "792a2dfa3bdb50c5",
+      "board": "hybrid",
+      "score": 1,
+      "wins": 1,
+      "losses": 13,
+      "doubleKills": 1,
+      "rounds": 15,
+      "seed": 1382540502,
+      "frames": 3658,
+      "playerClass": "human",
+      "hybridMovementMatch": 0.09240021869874249,
+      "hybridMovementMatches": 338,
+      "hybridMovementFrames": 3658,
+      "issue": 84,
+      "trackHash": "fa54a827d1a8eb733a4940551e6f5843",
+      "verifiedAt": "2026-10-05T07:19:42.632Z"
     },
     {
       "name": "damn",
