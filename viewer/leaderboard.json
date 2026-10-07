@@ -1,5 +1,5 @@
 {
-  "updated": "2026-10-05T07:19:42.633Z",
+  "updated": "2026-10-07T07:27:42.465Z",
   "entries": [
     {
       "name": "Human",
@@ -600,6 +600,26 @@
       "issue": 69,
       "trackHash": "c6051e13a9ac60b099cee3c1e7fbb3a3",
       "verifiedAt": "2026-09-30T15:16:09.361Z"
+    },
+    {
+      "name": "Human",
+      "github": null,
+      "submitter": "6bc729d7efc05a1a",
+      "board": "hybrid",
+      "score": 9,
+      "wins": 9,
+      "losses": 15,
+      "doubleKills": 4,
+      "rounds": 28,
+      "seed": 2683607693,
+      "frames": 23578,
+      "playerClass": "human",
+      "hybridMovementMatch": 0.10615828314530494,
+      "hybridMovementMatches": 2503,
+      "hybridMovementFrames": 23578,
+      "issue": 85,
+      "trackHash": "1f3f37b0b976ff72125ffe15e9c66116",
+      "verifiedAt": "2026-10-07T07:27:42.465Z"
     },
     {
       "name": "kaag's number",
