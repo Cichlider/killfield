@@ -67,12 +67,6 @@ jobs:
           LEADERBOARD_GATEWAY_AUTHOR: Cichlider
         run: node tools/verify_replay.mjs --write
 
-      - name: Post the verdict
-        env:
-          GH_TOKEN: ${{ github.token }}
-          ISSUE_NUMBER: ${{ github.event.issue.number }}
-        run: gh issue comment "$ISSUE_NUMBER" --body-file comment.md
-
       - name: Commit the board
         if: steps.replay.outcome == 'success'
         env:
@@ -85,12 +79,33 @@ jobs:
           git commit -m "Add a verified leaderboard record"
           git push
 
-      - name: Close the issue
-        if: steps.replay.outcome == 'success'
+      # GitHub's comment API can fail after the replay has succeeded. Keep
+      # issue notifications independent of the accepted record and its publish.
+      - name: Post the verdict
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
-        run: gh issue close "$ISSUE_NUMBER" --reason completed
+          REPOSITORY: ${{ github.repository }}
+        run: bash tools/post_verdict.sh
+
+      - name: Close the issue
+        if: steps.replay.outcome == 'success'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          for attempt in 1 2 3; do
+            if gh api "repos/$REPOSITORY/issues/$ISSUE_NUMBER" \
+              --method PATCH -f state=closed -f state_reason=completed >/dev/null; then
+              exit 0
+            fi
+            if (( attempt < 3 )); then sleep $((attempt * 2)); fi
+          done
+          echo '::warning::Could not close the accepted issue; the board was committed.'
+          exit 1
 
       - name: Fail the run when the record was rejected
         if: steps.replay.outcome != 'success'
