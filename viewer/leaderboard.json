@@ -1,5 +1,5 @@
 {
-  "updated": "2026-10-07T23:54:57.674Z",
+  "updated": "2026-10-08T11:43:08.225Z",
   "entries": [
     {
       "name": "Human",
@@ -640,6 +640,26 @@
       "issue": 85,
       "trackHash": "1f3f37b0b976ff72125ffe15e9c66116",
       "verifiedAt": "2026-10-07T07:27:42.465Z"
+    },
+    {
+      "name": "Lichen (dang not bad)",
+      "github": null,
+      "submitter": "e8e2ef8aa6df42e0",
+      "board": "hybrid",
+      "score": 8,
+      "wins": 8,
+      "losses": 9,
+      "doubleKills": 1,
+      "rounds": 18,
+      "seed": 3236783262,
+      "frames": 15371,
+      "playerClass": "human",
+      "hybridMovementMatch": 0.11176891549020883,
+      "hybridMovementMatches": 1718,
+      "hybridMovementFrames": 15371,
+      "issue": 88,
+      "trackHash": "20798e5fbbaf9bd8123421433c7142c9",
+      "verifiedAt": "2026-10-08T11:43:08.225Z"
     },
     {
       "name": "kaag's number",
