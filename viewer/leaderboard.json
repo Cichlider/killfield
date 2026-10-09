@@ -1,5 +1,5 @@
 {
-  "updated": "2026-10-08T13:28:46.536Z",
+  "updated": "2026-10-09T15:38:01.042Z",
   "entries": [
     {
       "name": "Human",
@@ -360,6 +360,26 @@
       "issue": 89,
       "trackHash": "c5471d5cf131ad2bbc5317bd96902c61",
       "verifiedAt": "2026-10-08T13:28:46.536Z"
+    },
+    {
+      "name": "ayer_name",
+      "github": null,
+      "submitter": "246cce0409ff0fb4",
+      "board": "hybrid",
+      "score": 17,
+      "wins": 17,
+      "losses": 169,
+      "doubleKills": 14,
+      "rounds": 200,
+      "seed": 737245712,
+      "frames": 100086,
+      "playerClass": "human",
+      "hybridMovementMatch": 0.14102871530483785,
+      "hybridMovementMatches": 14115,
+      "hybridMovementFrames": 100086,
+      "issue": 90,
+      "trackHash": "667920086844fbab68a0c3088bc90dbc",
+      "verifiedAt": "2026-10-09T15:38:01.042Z"
     },
     {
       "name": "interstellar",
