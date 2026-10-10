@@ -1,5 +1,5 @@
 {
-  "updated": "2026-10-10T17:00:54.105Z",
+  "updated": "2026-10-10T18:27:53.374Z",
   "entries": [
     {
       "name": "Human",
@@ -400,6 +400,26 @@
       "hybridMovementMatch": 0.8099468615078047,
       "hybridMovementMatches": 9755,
       "hybridMovementFrames": 12044
+    },
+    {
+      "name": "Human will beat Hybrid",
+      "github": null,
+      "submitter": "6bc729d7efc05a1a",
+      "board": "hybrid",
+      "score": 14,
+      "wins": 14,
+      "losses": 15,
+      "doubleKills": 3,
+      "rounds": 32,
+      "seed": 142667067,
+      "frames": 16962,
+      "playerClass": "human",
+      "hybridMovementMatch": 0.10930314821365406,
+      "hybridMovementMatches": 1854,
+      "hybridMovementFrames": 16962,
+      "issue": 92,
+      "trackHash": "2a84e058042c1070f516a36d478c89ba",
+      "verifiedAt": "2026-10-10T18:27:53.374Z"
     },
     {
       "name": "plexx",
