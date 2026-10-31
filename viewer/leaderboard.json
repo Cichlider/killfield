@@ -1,5 +1,5 @@
 {
-  "updated": "2026-10-16T21:31:41.945Z",
+  "updated": "2026-10-31T04:49:44.733Z",
   "entries": [
     {
       "name": "Human",
@@ -924,6 +924,27 @@
       "trackHash": "20798e5fbbaf9bd8123421433c7142c9",
       "verifiedAt": "2026-10-08T11:43:08.225Z",
       "replay": "replays/20798e5fbbaf9bd8123421433c7142c9.json"
+    },
+    {
+      "name": "back on the grind",
+      "github": null,
+      "submitter": "beb20cd7791c6375",
+      "board": "hybrid",
+      "score": 8,
+      "wins": 8,
+      "losses": 15,
+      "doubleKills": 0,
+      "rounds": 23,
+      "seed": 2964241634,
+      "frames": 9312,
+      "playerClass": "human",
+      "hybridMovementMatch": 0.17880154639175258,
+      "hybridMovementMatches": 1665,
+      "hybridMovementFrames": 9312,
+      "issue": 110,
+      "trackHash": "f848a8dcddf721df5f2b571051060e3f",
+      "replay": "replays/f848a8dcddf721df5f2b571051060e3f.json",
+      "verifiedAt": "2026-10-31T04:49:44.732Z"
     },
     {
       "name": "kaag's number",
