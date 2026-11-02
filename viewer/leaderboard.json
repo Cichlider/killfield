@@ -1,5 +1,5 @@
 {
-  "updated": "2026-11-02T02:19:11.711Z",
+  "updated": "2026-11-02T03:18:41.224Z",
   "entries": [
     {
       "name": "Human",
@@ -819,6 +819,27 @@
       "trackHash": "bdfe632acbc381d4e2747d7ca0e609cd",
       "replay": "replays/bdfe632acbc381d4e2747d7ca0e609cd.json",
       "verifiedAt": "2026-10-16T15:52:19.513Z"
+    },
+    {
+      "name": "sigh a really good run",
+      "github": null,
+      "submitter": "beb20cd7791c6375",
+      "board": "hybrid",
+      "score": 9,
+      "wins": 9,
+      "losses": 15,
+      "doubleKills": 2,
+      "rounds": 26,
+      "seed": 3144540108,
+      "frames": 10053,
+      "playerClass": "human",
+      "hybridMovementMatch": 0.17178951556749228,
+      "hybridMovementMatches": 1727,
+      "hybridMovementFrames": 10053,
+      "issue": 113,
+      "trackHash": "9df8bfa3cbdba878abaa5183215d3c5e",
+      "replay": "replays/9df8bfa3cbdba878abaa5183215d3c5e.json",
+      "verifiedAt": "2026-11-02T03:18:41.223Z"
     },
     {
       "name": "kaag's sub 10 ig",
