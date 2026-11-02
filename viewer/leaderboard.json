@@ -1,5 +1,5 @@
 {
-  "updated": "2026-11-01T11:03:00.375Z",
+  "updated": "2026-11-02T02:19:11.711Z",
   "entries": [
     {
       "name": "Human",
@@ -903,6 +903,27 @@
       "trackHash": "1f3f37b0b976ff72125ffe15e9c66116",
       "verifiedAt": "2026-10-07T07:27:42.465Z",
       "replay": "replays/1f3f37b0b976ff72125ffe15e9c66116.json"
+    },
+    {
+      "name": "sigh a really good run",
+      "github": null,
+      "submitter": "beb20cd7791c6375",
+      "board": "hybrid",
+      "score": 9,
+      "wins": 9,
+      "losses": 15,
+      "doubleKills": 5,
+      "rounds": 29,
+      "seed": 3910839559,
+      "frames": 11164,
+      "playerClass": "human",
+      "hybridMovementMatch": 0.15899319240415621,
+      "hybridMovementMatches": 1775,
+      "hybridMovementFrames": 11164,
+      "issue": 112,
+      "trackHash": "054a66664878d2cc0924a42d5901d718",
+      "replay": "replays/054a66664878d2cc0924a42d5901d718.json",
+      "verifiedAt": "2026-11-02T02:19:11.710Z"
     },
     {
       "name": "Lichen (dang not bad)",
