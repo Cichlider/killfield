@@ -1,5 +1,5 @@
 {
-  "updated": "2026-11-02T03:18:41.224Z",
+  "updated": "2026-11-02T23:44:10.062Z",
   "entries": [
     {
       "name": "Human",
@@ -882,6 +882,27 @@
       "trackHash": "e5a0e654c73d735157a6cdfa198b8d3f",
       "replay": "replays/e5a0e654c73d735157a6cdfa198b8d3f.json",
       "verifiedAt": "2026-10-14T04:42:12.274Z"
+    },
+    {
+      "name": ".",
+      "github": null,
+      "submitter": "beb20cd7791c6375",
+      "board": "hybrid",
+      "score": 9,
+      "wins": 9,
+      "losses": 15,
+      "doubleKills": 3,
+      "rounds": 27,
+      "seed": 2657527081,
+      "frames": 9455,
+      "playerClass": "human",
+      "hybridMovementMatch": 0.19365415124272872,
+      "hybridMovementMatches": 1831,
+      "hybridMovementFrames": 9455,
+      "issue": 114,
+      "trackHash": "d04380cfdb000109262a68669a89a7cf",
+      "replay": "replays/d04380cfdb000109262a68669a89a7cf.json",
+      "verifiedAt": "2026-11-02T23:44:10.061Z"
     },
     {
       "name": "bruh",
