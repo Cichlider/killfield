@@ -1,5 +1,5 @@
 {
-  "updated": "2026-11-03T00:16:04.174Z",
+  "updated": "2026-11-03T00:48:43.790Z",
   "entries": [
     {
       "name": "Human",
@@ -546,6 +546,27 @@
       "trackHash": "cc5ed8cd6612685ccb8b16b2a3916435",
       "verifiedAt": "2026-09-22T23:53:17.314Z",
       "replay": "replays/cc5ed8cd6612685ccb8b16b2a3916435.json"
+    },
+    {
+      "name": "kaag's sub win",
+      "github": null,
+      "submitter": "beb20cd7791c6375",
+      "board": "hybrid",
+      "score": 14,
+      "wins": 14,
+      "losses": 16,
+      "doubleKills": 9,
+      "rounds": 39,
+      "seed": 1146137972,
+      "frames": 14765,
+      "playerClass": "human",
+      "hybridMovementMatch": 0.15022011513714867,
+      "hybridMovementMatches": 2218,
+      "hybridMovementFrames": 14765,
+      "issue": 116,
+      "trackHash": "4cdc07215b4d6efe21974e164c930eef",
+      "replay": "replays/4cdc07215b4d6efe21974e164c930eef.json",
+      "verifiedAt": "2026-11-03T00:48:43.789Z"
     },
     {
       "name": "Lichen (I'm gonna win)",
