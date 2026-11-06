@@ -1,5 +1,5 @@
 {
-  "updated": "2026-11-06T07:42:55.841Z",
+  "updated": "2026-11-06T20:43:35.592Z",
   "entries": [
     {
       "name": "Human",
@@ -672,6 +672,27 @@
       "trackHash": "9a48cd08b0f255abbbef4a9a3a83b3c1",
       "verifiedAt": "2026-10-07T23:54:57.674Z",
       "replay": "replays/9a48cd08b0f255abbbef4a9a3a83b3c1.json"
+    },
+    {
+      "name": "unknown",
+      "github": null,
+      "submitter": "9e55681c9f1bbc0c",
+      "board": "hybrid",
+      "score": 11,
+      "wins": 11,
+      "losses": 15,
+      "doubleKills": 4,
+      "rounds": 30,
+      "seed": 411370727,
+      "frames": 12474,
+      "playerClass": "human",
+      "hybridMovementMatch": 0.17259900593233926,
+      "hybridMovementMatches": 2153,
+      "hybridMovementFrames": 12474,
+      "issue": 119,
+      "trackHash": "5b8cffeb0ccce0fe1d77a99b31feba06",
+      "replay": "replays/5b8cffeb0ccce0fe1d77a99b31feba06.json",
+      "verifiedAt": "2026-11-06T20:43:35.591Z"
     },
     {
       "name": "Lichen (Doggy Bag :P)",
