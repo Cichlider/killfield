@@ -192,6 +192,7 @@ impl SeatHistory {
     }
 }
 
+#[derive(Clone, Copy)]
 pub struct DuelObservation {
     pub values: [f32; OBS_DIM],
     pub bullet_mask: [bool; BULLET_SLOTS],

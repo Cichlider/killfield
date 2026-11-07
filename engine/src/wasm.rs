@@ -91,6 +91,7 @@ pub struct Handle {
     paint_match_total: f64,
     semantic_state: SemanticObsState,
     semantic: SemanticObservation,
+    pred_safety: [f32; 9],
     semantic_buffer: Vec<f32>,
     hybrid_obs: [DuelObservation; 2],
     hybrid_history: [SeatHistory; 2],
@@ -177,6 +178,7 @@ pub extern "C" fn kf_new(seed: u32, laika_mask: u32) -> *mut Handle {
         paint_match_total: 0.0,
         semantic_state: SemanticObsState::default(),
         semantic: SemanticObservation::default(),
+        pred_safety: [1.0; 9],
         semantic_buffer: vec![0.0; OBS_DIM + BULLET_SLOTS],
         hybrid_obs: std::array::from_fn(|_| DuelObservation::default()),
         hybrid_history: [SeatHistory::default(), SeatHistory::default()],
@@ -737,6 +739,33 @@ pub unsafe extern "C" fn kf_hybrid_observation(h: *mut Handle, tank: u32) -> *co
 #[no_mangle]
 pub extern "C" fn kf_hybrid_observation_len() -> u32 {
     (DUEL_OBS_DIM + DUEL_BULLET_SLOTS) as u32
+}
+
+/// Nine no-fire movement candidates scored against bullets already in flight
+/// plus a predicted opponent shot. `predict_fire != 0` treats an opponent whose
+/// current barrel is on a hit line (or who is holding the trigger) as firing
+/// next; the filter injects a three-ray fan before rolling the candidate
+/// forward. This is a deterministic safety filter, not a second game engine.
+///
+/// # Safety
+/// `h` must come from `kf_new`.
+#[no_mangle]
+pub unsafe extern "C" fn kf_predictive_safety(
+    h: *mut Handle,
+    tank: u32,
+    horizon: u32,
+    predict_fire: u32,
+) -> *const f32 {
+    let h = &mut *h;
+    let horizon = (horizon as i32).clamp(1, 150);
+    let values = crate::score::predictive_dodge_safety(
+        &h.game,
+        (tank as usize).min(1),
+        horizon,
+        predict_fire != 0,
+    );
+    h.pred_safety = values;
+    h.pred_safety.as_ptr()
 }
 
 #[no_mangle]

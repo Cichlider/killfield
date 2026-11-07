@@ -1,0 +1,216 @@
+{
+  "format": "killfield-hybrid-f32-v1",
+  "checkpoint": "hybrid_night_final.pt",
+  "schema": 24,
+  "observation": 1028,
+  "bullet_slots": 10,
+  "actions": 18,
+  "floats": 261501,
+  "gated": {
+    "dodge": true,
+    "ammo": true
+  },
+  "tensors": {
+    "ammo_alpha_old": {
+      "shape": [
+        4
+      ],
+      "offset": 0,
+      "length": 4
+    },
+    "ammo_delta.0.weight": {
+      "shape": [
+        64,
+        256
+      ],
+      "offset": 4,
+      "length": 16384
+    },
+    "ammo_delta.0.bias": {
+      "shape": [
+        64
+      ],
+      "offset": 16388,
+      "length": 64
+    },
+    "ammo_delta.2.weight": {
+      "shape": [
+        4,
+        64
+      ],
+      "offset": 16452,
+      "length": 256
+    },
+    "ammo_delta.2.bias": {
+      "shape": [
+        4
+      ],
+      "offset": 16708,
+      "length": 4
+    },
+    "dodge_alpha_old": {
+      "shape": [],
+      "offset": 16712,
+      "length": 1
+    },
+    "dodge_delta.0.weight": {
+      "shape": [
+        64,
+        256
+      ],
+      "offset": 16713,
+      "length": 16384
+    },
+    "dodge_delta.0.bias": {
+      "shape": [
+        64
+      ],
+      "offset": 33097,
+      "length": 64
+    },
+    "dodge_delta.2.weight": {
+      "shape": [
+        1,
+        64
+      ],
+      "offset": 33161,
+      "length": 64
+    },
+    "dodge_delta.2.bias": {
+      "shape": [
+        1
+      ],
+      "offset": 33225,
+      "length": 1
+    },
+    "map.0.weight": {
+      "shape": [
+        16,
+        7,
+        3,
+        3
+      ],
+      "offset": 33226,
+      "length": 1008
+    },
+    "map.0.bias": {
+      "shape": [
+        16
+      ],
+      "offset": 34234,
+      "length": 16
+    },
+    "map.2.weight": {
+      "shape": [
+        32,
+        16,
+        3,
+        3
+      ],
+      "offset": 34250,
+      "length": 4608
+    },
+    "map.2.bias": {
+      "shape": [
+        32
+      ],
+      "offset": 38858,
+      "length": 32
+    },
+    "map.5.weight": {
+      "shape": [
+        128,
+        960
+      ],
+      "offset": 38890,
+      "length": 122880
+    },
+    "map.5.bias": {
+      "shape": [
+        128
+      ],
+      "offset": 161770,
+      "length": 128
+    },
+    "bullets.0.weight": {
+      "shape": [
+        32,
+        10
+      ],
+      "offset": 161898,
+      "length": 320
+    },
+    "bullets.0.bias": {
+      "shape": [
+        32
+      ],
+      "offset": 162218,
+      "length": 32
+    },
+    "bullets.2.weight": {
+      "shape": [
+        32,
+        32
+      ],
+      "offset": 162250,
+      "length": 1024
+    },
+    "bullets.2.bias": {
+      "shape": [
+        32
+      ],
+      "offset": 163274,
+      "length": 32
+    },
+    "scalars.0.weight": {
+      "shape": [
+        128,
+        88
+      ],
+      "offset": 163306,
+      "length": 11264
+    },
+    "scalars.0.bias": {
+      "shape": [
+        128
+      ],
+      "offset": 174570,
+      "length": 128
+    },
+    "trunk.0.weight": {
+      "shape": [
+        256,
+        320
+      ],
+      "offset": 174698,
+      "length": 81920
+    },
+    "trunk.0.bias": {
+      "shape": [
+        256
+      ],
+      "offset": 256618,
+      "length": 256
+    },
+    "actor.weight": {
+      "shape": [
+        18,
+        256
+      ],
+      "offset": 256874,
+      "length": 4608
+    },
+    "actor.bias": {
+      "shape": [
+        18
+      ],
+      "offset": 261482,
+      "length": 18
+    },
+    "idle_logit_penalty": {
+      "shape": [],
+      "offset": 261500,
+      "length": 1
+    }
+  }
+}

@@ -2,6 +2,10 @@
 # Build the engine for the browser and drop the module next to the page.
 set -euo pipefail
 cd "$(dirname "$0")"
+if [ -f kf_engine.wasm ] && [ "${FORCE_ENGINE:-0}" != "1" ]; then
+  echo 'refusing to overwrite frozen kf_engine.wasm; set FORCE_ENGINE=1 to replace it' >&2
+  exit 1
+fi
 cargo build --release --target wasm32-unknown-unknown --manifest-path ../engine/Cargo.toml
 cp ../engine/target/wasm32-unknown-unknown/release/kf_engine.wasm .
 wasm_stamp="$(shasum -a 256 kf_engine.wasm | cut -c1-8)"

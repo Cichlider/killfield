@@ -540,6 +540,78 @@ pub fn dodge_safety(g: &Game, me: usize, horizon: i32) -> [f32; 9] {
     out
 }
 
+pub fn predictive_dodge_safety(
+    g: &Game,
+    me: usize,
+    horizon: i32,
+    predict_fire: bool,
+) -> [f32; 9] {
+    let opponent = 1 - me;
+    let predicted_shot = predict_fire
+        && g.tanks[opponent].alive
+        && g.weapon_ready(opponent)
+        && (g.tanks[opponent].fire
+            || check_bullet_path(
+                g,
+                opponent,
+                g.tanks[opponent].rotation,
+                2.0 * g.scale,
+                2.0,
+            )
+            .outcome
+                == ShotOutcome::Hit);
+    if g.bullets.iter().all(|b| b.removed) && !predicted_shot {
+        return [1.0; 9];
+    }
+    let mut out = [0.0f32; 9];
+    for move_index in 0..9usize {
+        let a = CANDIDATES[move_index * 2];
+        let (throttle, turn) = (a[0], a[1]);
+        let mut sb = make_sandbox(g, me, OppModel::L1, 0);
+        if predicted_shot {
+            let source = sb.tanks[1];
+            let target = sb.tanks[0];
+            let base = (target.y - source.y)
+                .atan2(target.x - source.x)
+                .to_degrees()
+                + 90.0;
+            for offset in [-12.0, 0.0, 12.0] {
+                sb.inject_bullet(1, source.x, source.y, base + offset);
+            }
+        }
+        apply_action(&mut sb, [throttle, turn, 0]);
+
+        let mut min_clearance = 8.0f64;
+        let mut survived = true;
+        let mut elapsed = 0i32;
+        while elapsed < horizon {
+            let events = sb.step();
+            if !sb.tanks[0].alive {
+                survived = false;
+                break;
+            }
+            for b in &sb.bullets {
+                let d = (b.x - sb.tanks[0].x).hypot(b.y - sb.tanks[0].y)
+                    / f64::max(sb.scale, 1e-6);
+                if d < min_clearance {
+                    min_clearance = d;
+                }
+            }
+            if sb.frozen || events.iter().any(|e| matches!(e, Event::RoundEnd(_))) {
+                break;
+            }
+            elapsed += 1;
+        }
+
+        out[move_index] = if survived {
+            (min_clearance / 8.0).clamp(0.0, 1.0) as f32
+        } else {
+            (-1.0 + 0.5 * (elapsed as f64 / horizon as f64)) as f32
+        };
+    }
+    out
+}
+
 pub fn argmax(values: &[f64]) -> usize {
     let mut best = 0usize;
     for i in 1..values.len() {
@@ -563,6 +635,16 @@ mod tests {
         assert_eq!(wall_contact_penalty(36, MPC_HORIZON), 300.0);
         assert_eq!(wall_contact_penalty(100, MPC_HORIZON), 300.0);
         assert_eq!(wall_contact_penalty(-1, MPC_HORIZON), 0.0);
+    }
+
+    #[test]
+    fn predictive_safety_does_not_fire_a_phantom_shot_from_an_empty_magazine() {
+        let mut game = duel_game(20260904, Opponent::Laika);
+        assert!(game.bullets.iter().all(|b| b.removed));
+        game.tanks[1].fire = true;
+        game.tanks[1].bullets_fired = game.settings_max_bullets;
+        assert!(!game.weapon_ready(1));
+        assert_eq!(predictive_dodge_safety(&game, 0, 75, true), [1.0f32; 9]);
     }
 
     #[test]

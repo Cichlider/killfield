@@ -340,10 +340,57 @@ impl DuelState {
         self.own_history.record(action);
     }
 
+    /// Record an action for an arbitrary seat (0 = tank 0, 1 = tank 1).
+    pub fn record_action_for(&mut self, seat: usize, action: u16) {
+        if seat == 0 {
+            self.own_history.record(action);
+        } else {
+            self.opponent_history.record(action);
+        }
+    }
+
+    pub fn history_for(&self, seat: usize) -> SeatHistory {
+        if seat == 0 {
+            SeatHistory { frames: self.frames, ..self.own_history }
+        } else {
+            SeatHistory { frames: self.frames, ..self.opponent_history }
+        }
+    }
+
+    /// Clone the per-frame state for a training-only search teacher.
+    /// Only external (frozen-policy) opponents can be forked; MPC owns an
+    /// agent with caches that are intentionally not cloned.
+    pub fn fork_for_search(&self) -> Option<Self> {
+        if self.agent.is_some() {
+            return None;
+        }
+        Some(Self {
+            opponent: self.opponent,
+            agent: None,
+            frames: self.frames,
+            outcome: self.outcome,
+            start_round: self.start_round,
+            prev_pose: self.prev_pose,
+            boxes: self.boxes.clone(),
+            shots_fired: self.shots_fired,
+            hits: self.hits,
+            own_history: self.own_history,
+            opponent_history: self.opponent_history,
+        })
+    }
+
     /// How many frames chose a different action than the frame before. This is
     /// what `style_bonus` grades, and it counts the policy's seat only.
     pub fn action_changes(&self) -> u32 {
         self.own_history.changes
+    }
+
+    pub fn action_changes_for(&self, seat: usize) -> u32 {
+        if seat == 0 {
+            self.own_history.changes
+        } else {
+            self.opponent_history.changes
+        }
     }
 
     /// Each seat's own recent-action history, stamped with the round's frame
@@ -374,6 +421,17 @@ impl DuelState {
     /// As `before_step`, but for an opponent whose controller lives outside the
     /// engine. `opponent_action` is ignored unless this slot is running one.
     pub fn before_step_with(&mut self, game: &mut Game, opponent_action: Option<u16>) {
+        self.before_step_for(game, 0, opponent_action);
+    }
+
+    /// Seat-generic version: `learner` is the controlled tank; the supplied
+    /// action belongs to `1 - learner`.
+    pub fn before_step_for(
+        &mut self,
+        game: &mut Game,
+        learner: usize,
+        opponent_action: Option<u16>,
+    ) {
         self.prev_pose = poses(game);
         if let Some(agent) = self.agent.as_mut() {
             if game.tanks[1].alive && !game.frozen {
@@ -383,9 +441,14 @@ impl DuelState {
         }
         if self.opponent.is_external() {
             if let Some(action) = opponent_action {
-                self.opponent_history.record(action);
-                if game.tanks[1].alive && !game.frozen {
-                    apply_duel_action(game, 1, action);
+                if learner == 0 {
+                    self.opponent_history.record(action);
+                } else {
+                    self.own_history.record(action);
+                }
+                let opponent = 1 - learner;
+                if game.tanks[opponent].alive && !game.frozen {
+                    apply_duel_action(game, opponent, action);
                 }
             }
         }
@@ -427,22 +490,46 @@ fn round_end(events: &[Event]) -> Option<Option<usize>> {
 
 /// Advance one frame's bookkeeping. Call after `game.step()`.
 pub fn duel_settle(game: &Game, state: &mut DuelState, events: &[Event]) -> DuelStep {
+    duel_settle_for(game, state, events, 0)
+}
+
+/// Seat-aware settlement: the same bookkeeping, graded from `observer`'s
+/// chair. `Outcome::Win` means *the observer* won, the fired/hit/style inputs
+/// count the observer's own actions, and the reward prices the observer's
+/// outcome. This is how a seat-1 search branch gets the engine's reward
+/// definition for the seat it is training — negating seat 0's reward would
+/// pay a draw to seat 1 twice and flip double deaths, which are separate
+/// outcomes, not mirror images.
+pub fn duel_settle_for(
+    game: &Game,
+    state: &mut DuelState,
+    events: &[Event],
+    observer: usize,
+) -> DuelStep {
     state.frames += 1;
 
-    let fired = events.iter().any(|e| matches!(e, Event::Fire(0)));
-    let hit = events
+    let fired = events
         .iter()
-        .any(|e| matches!(e, Event::Hit { owner, victim } if *owner == 0 && *victim == 1));
-    if fired {
-        state.shots_fired += 1;
-    }
-    if hit {
-        state.hits += 1;
+        .any(|e| matches!(e, Event::Fire(seat) if *seat == observer));
+    let other = 1 - observer;
+    let hit = events.iter().any(|e| {
+        matches!(
+            e,
+            Event::Hit { owner, victim } if *owner == observer && *victim == other
+        )
+    });
+    if observer == 0 {
+        if fired {
+            state.shots_fired += 1;
+        }
+        if hit {
+            state.hits += 1;
+        }
     }
 
     let outcome = if let Some(winner) = round_end(events) {
         match winner {
-            Some(0) => Outcome::Win,
+            Some(w) if w == observer => Outcome::Win,
             Some(_) => Outcome::Loss,
             None => Outcome::DoubleDeath,
         }
@@ -465,7 +552,7 @@ pub fn duel_settle(game: &Game, state: &mut DuelState, events: &[Event]) -> Duel
     state.outcome = outcome;
     let mut reward = outcome.reward(state.frames);
     if outcome.terminal() {
-        reward += style_bonus(state.action_changes(), state.frames);
+        reward += style_bonus(state.action_changes_for(observer), state.frames);
     }
     DuelStep { reward, outcome, fired, hit }
 }
@@ -581,6 +668,45 @@ mod tests {
         assert!((last.reward(state.frames) - REWARD_DRAW).abs() < 1e-9);
         // Holding one action all round is the cleanest a round can be played.
         assert_eq!(state.action_changes(), 0);
+    }
+
+    /// A seat-1 branch is priced like the seat it trains. Negating seat 0's
+    /// reward — the pre-fix search transform — would pay seat 1 for a draw
+    /// (`REWARD_DRAW = -1` turned into `+1`), soften a double death into a
+    /// bonus (`REWARD_DOUBLE_DEATH = -0.1` turned into `+0.1`), and mirror
+    /// seat 0's smooth-move style bonus instead of grading seat 1's own.
+    #[test]
+    fn the_second_seat_is_priced_from_her_own_chair() {
+        // The same unplayed game settles from both chairs.
+        let events: Vec<Event> = Vec::new();
+
+        let mut game = duel_game(5, Opponent::Frozen);
+        let mut s0 = DuelState::new(5, Opponent::Frozen, &game);
+        let mut outcome0 = Outcome::Running;
+        for _ in 0..(DUEL_FRAMES + 2) {
+            outcome0 = duel_settle_for(&game, &mut s0, &events, 0).outcome;
+            if outcome0.terminal() {
+                break;
+            }
+        }
+        let mut game = duel_game(5, Opponent::Frozen);
+        let mut s1 = DuelState::new(5, Opponent::Frozen, &game);
+        let mut draw1 = 0.0;
+        for _ in 0..(DUEL_FRAMES + 2) {
+            let step = duel_settle_for(&game, &mut s1, &events, 1);
+            draw1 = step.reward;
+            if step.outcome.terminal() {
+                assert_eq!(step.outcome, Outcome::Draw);
+                break;
+            }
+        }
+        assert_eq!(outcome0, Outcome::Draw);
+        // Seat 0 draws at -1; seat 1 must draw at -1 too — not +1 — and the
+        // style grade counts the observer's own change count (zero here).
+        assert!(
+            (draw1 - (REWARD_DRAW + style_bonus(0, s1.frames))).abs() < 1e-9,
+            "seat 1 draw reward = {draw1}"
+        );
     }
 
     #[test]

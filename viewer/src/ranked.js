@@ -145,7 +145,9 @@ export class OpponentDriver {
    * down scrubbing without changing anything on screen.
    */
   decide(wasm, handle, { computePolicy = true } = {}) {
-    if (this.opponent !== "hybrid") return null;
+    if (this.opponent !== "hybrid" && this.opponent !== "hybrid_night"
+        && this.opponent !== "hybrid_night2" && this.opponent !== "anchor"
+        && this.opponent !== "anchor_v3") return null;
     if (this.pause > 0) return { action: NEUTRAL_ACTION, logits: null };
 
     if (computePolicy) {
@@ -170,7 +172,9 @@ export class OpponentDriver {
   }
 
   apply(wasm, handle, action) {
-    if (this.opponent !== "hybrid") return;
+    if (this.opponent !== "hybrid" && this.opponent !== "hybrid_night"
+        && this.opponent !== "hybrid_night2" && this.opponent !== "anchor"
+        && this.opponent !== "anchor_v3") return;
     wasm.kf_set_hybrid_action(handle, OPPONENT_SEAT, action);
   }
 

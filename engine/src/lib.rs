@@ -13,6 +13,8 @@ pub mod directional;
 pub mod field;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod ffi;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod ffi_duel24;
 pub mod game;
 pub mod laika;
 pub mod maze;
