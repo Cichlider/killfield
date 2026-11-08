@@ -25,7 +25,7 @@
  */
 
 import * as C from "./src/constants.js";
-import { STRINGS, loadLang, saveLang } from "./src/i18n.js?v=10281868";
+import { STRINGS, loadLang, saveLang } from "./src/i18n.js?v=9992aa11";
 import { Keyboard, TouchControls } from "./src/input.js?v=d3008c00";
 import {
   DEFAULT_PAD_TUNE,
@@ -101,9 +101,13 @@ const ROLE_COLORS = {
   red: { base: "#9E101B", turret: "#D82432" },
   black: { base: "#17191C", turret: "#35383D" },
 };
-const ANCHOR_V3 = "anchor_v3";
 const CONTROLLER_NAMES = {
-  killfield: "Killfield", laika: "Laika", hybrid: "Hybrid", [ANCHOR_V3]: "Anchor V3",
+  killfield: "Killfield", laika: "Laika", hybrid: "Hybrid",
+  anchor_v3: "Anchor V3", hybrid_night2: "Hybrid Night2",
+};
+const CASUAL_MODEL_ASSETS = {
+  anchor_v3: ["assets/anchor_v3.json?v=cda5955b", "assets/anchor_v3.bin?v=15d9e089"],
+  hybrid_night2: ["assets/hybrid_night2.json?v=b2c1a379", "assets/hybrid_night2.bin?v=de3b1d7e"],
 };
 
 /** Which role (red/black) each tank plays this mode. Watch: seat 0 (Left) is
@@ -369,7 +373,7 @@ let immediateFirePressed = false;
 
 let wasm = null;
 let hybridPolicy = null;
-let anchorV3Policy = null;
+const casualPolicies = new Map();
 let scratchPtr = null;
 let openingDelaySeconds = DEFAULT_OPENING_DELAY_SECONDS;
 try {
@@ -1000,8 +1004,7 @@ function controllerForSeat(seat) {
 }
 
 function policyForController(controller) {
-  if (controller === ANCHOR_V3) return anchorV3Policy;
-  return controller === "hybrid" ? hybridPolicy : null;
+  return controller === "hybrid" ? hybridPolicy : casualPolicies.get(controller) ?? null;
 }
 
 function activeTankColors() {
@@ -1571,7 +1574,8 @@ function syncRankedUI() {
   const s = t();
   const set = (node, key, value) => { if (node[key] !== value) node[key] = value; };
   const eligible = rankedResult !== null && rankedResult.stats.wins >= MIN_SUBMITTABLE_WINS;
-  const casualOnly = playOpponentSelect.value === ANCHOR_V3;
+  const opponent = playOpponentSelect.value;
+  const casualOnly = Object.hasOwn(CASUAL_MODEL_ASSETS, opponent);
   set(rankedRow, "hidden", mode !== "play");
   set(rankedStartButton, "textContent", ranked ? s.rankedStop : s.rankedStart);
   rankedStartButton.disabled = rankedSubmitting || casualOnly;
@@ -1598,7 +1602,7 @@ function syncRankedUI() {
   set(rankedUnit, "textContent", s.rankedUnit);
   rankedRow.classList.toggle("live", Boolean(ranked));
   rankedRow.classList.toggle("qualified", eligible);
-  let status = casualOnly ? s.rankedAnchorCasual : s.rankedIdle;
+  let status = casualOnly ? s.rankedCasualOnly(CONTROLLER_NAMES[opponent]) : s.rankedIdle;
   if (rankedSubmissionError) {
     status = rankedSubmissionError;
   } else if (rankedSubmitted) {
@@ -1798,7 +1802,7 @@ async function watchRankedReplay() {
  *  pause, and the turn-rate assist off. Anything that would make the opponent
  *  easier is reset here rather than merely rejected later. */
 function startRankedSession() {
-  if (playOpponentSelect.value === ANCHOR_V3) return;
+  if (Object.hasOwn(CASUAL_MODEL_ASSETS, playOpponentSelect.value)) return;
   if (mode !== "play") setMode("play");
   reactionDelayFrames = RANKED_DELAY_FRAMES;
   reactionDelaySelect.value = String(RANKED_DELAY_FRAMES);
@@ -2379,14 +2383,14 @@ async function boot() {
   requestAnimationFrame(frame);
   if (boardReplay !== null) loadBoardReplay(boardReplay);
 
-  // Enable the optional controller when its weights are ready.
-  HybridPolicy.load("assets/anchor_v3.json?v=cda5955b", "assets/anchor_v3.bin?v=15d9e089")
-    .then((policy) => {
-      anchorV3Policy = policy;
-      document.querySelectorAll('button[data-value="anchor_v3"], option[value="anchor_v3"]')
+  // Enable each optional controller when its weights are ready.
+  for (const [controller, [manifest, weights]] of Object.entries(CASUAL_MODEL_ASSETS)) {
+    HybridPolicy.load(manifest, weights).then((policy) => {
+      casualPolicies.set(controller, policy);
+      document.querySelectorAll(`button[data-value="${controller}"], option[value="${controller}"]`)
         .forEach((option) => { option.disabled = false; });
-    })
-    .catch((error) => console.warn("Anchor V3 unavailable", error));
+    }).catch((error) => console.warn(`${CONTROLLER_NAMES[controller]} unavailable`, error));
+  }
 }
 
 boot().catch((err) => {
