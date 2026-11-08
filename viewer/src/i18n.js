@@ -74,6 +74,7 @@ export const STRINGS = {
     rankedStart: "Ranked run",
     rankedStop: "End run",
     rankedIdle: "A ranked run records up to 200 rounds or 120,000 frames for replay verification.",
+    rankedAnchorCasual: "Anchor V3 is available in casual play.",
     rankedRecording: (stats, maxRounds) => `Recording · ${stats.wins} wins / ${stats.rounds}`
       + ` rounds · ${stats.losses} losses · ${stats.doubleKills} double KOs`
       + (stats.rounds >= maxRounds ? " · round limit reached" : ""),
@@ -253,6 +254,7 @@ export const STRINGS = {
     rankedStart: "排位记录",
     rankedStop: "结束记录",
     rankedIdle: "排位会逐帧记录最多 200 局或 120,000 帧，榜单靠重放核验成绩。",
+    rankedAnchorCasual: "Anchor V3 仅用于普通对战。",
     rankedRecording: (stats, maxRounds) => `录制中 · ${stats.wins} 胜 / ${stats.rounds} 局`
       + ` · ${stats.losses} 负 · ${stats.doubleKills} 双亡`
       + (stats.rounds >= maxRounds ? " · 已达局数上限" : ""),

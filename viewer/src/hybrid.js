@@ -91,6 +91,65 @@ export class HybridPolicy {
 
   scalar(name) { return this.tensor(name)[0]; }
 
+  // 27 derived floats mirroring training/night/hybrid_model.py derived(): ETA
+  // weighted threats, both fire windows, clock encoding, dodge safety stats.
+  // Slot columns per duel_obs.rs: 4 mine, 5 bounced, 7 reaches_me, 9 eta.
+  derivedFeatures(observation) {
+    const out = new Float32Array(27);
+    let threatIn = 0;
+    let threatAll = 0;
+    for (let slot = 0; slot < BULLET_SLOTS; slot += 1) {
+      const base = BULLET_OFFSET + slot * BULLET_DIM;
+      const eta = observation[base + 9];
+      const reach = observation[base + 7];
+      const invEta = eta < 0.999 ? 1 - eta : 0;
+      const w = reach * invEta;
+      threatAll += w;
+      if (reach <= 0.5) continue;
+      const mine = observation[base + 4] > 0.5;
+      const bounced = observation[base + 5] > 0.5;
+      if (mine && !bounced) continue;
+      threatIn += w;
+    }
+    out[0] = Math.tanh(6 * threatIn);
+    out[1] = Math.tanh(6 * threatAll);
+    const etaS = Math.max(0, Math.min(1, observation[893] * 3));
+    const oppEta = Math.max(0, Math.min(1, observation[898] * 3));
+    out[2] = observation[890] * (1 - etaS);
+    out[3] = (1 - etaS) * observation[892];
+    out[4] = observation[895] * (1 - oppEta);
+    out[5] = observation[895] * (1 - oppEta) * observation[876];
+    out[6] = etaS;
+    out[7] = oppEta;
+    out[8] = observation[863];
+    const clock = observation[1006] * 6.28318530718;
+    out[9] = Math.sin(clock);
+    out[10] = Math.cos(clock);
+    out[11] = observation[1010];
+    let dMin = Infinity;
+    let dMax = -Infinity;
+    let dSum = 0;
+    let dSumSq = 0;
+    let dArg = 0;
+    for (let i = 0; i < 9; i += 1) {
+      const d = observation[1018 + i];
+      if (d < dMin) { dMin = d; dArg = i; }
+      if (d > dMax) dMax = d;
+      dSum += d;
+      dSumSq += d * d;
+    }
+    const dMean = dSum / 9;
+    const dVar = Math.max(0, dSumSq / 9 - dMean * dMean);
+    out[12] = dMin;
+    out[13] = dMax;
+    out[14] = dMean;
+    out[15] = Math.sqrt(dVar);
+    for (let i = 0; i < 9; i += 1) out[16 + i] = i === dArg ? 1 : 0;
+    out[25] = observation[890];
+    out[26] = observation[895];
+    return out;
+  }
+
   logits(observation, mask, dodge) {
     const c1 = conv2d(toChw(observation), 7, 12, 10,
       this.tensor("map.0.weight"), this.tensor("map.0.bias"), 16, 1);
@@ -124,8 +183,14 @@ export class HybridPolicy {
       this.tensor("scalars.0.bias"), 128, "tanh");
     const joined = new Float32Array(320);
     joined.set(map, 0); joined.set(scalars, 128); joined.set(mean, 256); joined.set(peak, 288);
-    const features = dense(joined, this.tensor("trunk.0.weight"),
+    let features = dense(joined, this.tensor("trunk.0.weight"),
       this.tensor("trunk.0.bias"), 256, "tanh");
+    if (this.manifest.tensors && this.manifest.tensors["derived_up.weight"]) {
+      const derived = this.derivedFeatures(observation);
+      const delta = dense(derived, this.tensor("derived_up.weight"),
+        this.tensor("derived_up.bias"), 256);
+      for (let i = 0; i < 256; i += 1) features[i] += delta[i];
+    }
     const logits = dense(features, this.tensor("actor.weight"), this.tensor("actor.bias"), 18);
 
     const gated = this.manifest.gated || { dodge: false, ammo: false };

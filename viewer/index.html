@@ -54,10 +54,11 @@
       <button type="button" class="controller-trigger" aria-haspopup="listbox" aria-expanded="false"><span>Hybrid</span><i aria-hidden="true"></i></button>
       <div class="controller-menu" role="listbox" aria-hidden="true">
         <button type="button" role="option" data-value="hybrid" aria-selected="true">Hybrid</button>
+        <button type="button" role="option" data-value="anchor_v3" aria-selected="false" disabled>Anchor V3</button>
         <button type="button" role="option" data-value="laika" aria-selected="false">Laika</button>
         <button type="button" role="option" data-value="killfield" aria-selected="false">Killfield</button>
       </div>
-      <select id="controller-0" class="native-controller-select" tabindex="-1" aria-hidden="true"><option value="hybrid" selected>Hybrid</option><option value="laika">Laika</option><option value="killfield">Killfield</option></select>
+      <select id="controller-0" class="native-controller-select" tabindex="-1" aria-hidden="true"><option value="hybrid" selected>Hybrid</option><option value="anchor_v3" disabled>Anchor V3</option><option value="laika">Laika</option><option value="killfield">Killfield</option></select>
     </div>
     <span class="versus">vs</span>
     <div class="controller-picker role-black" data-theme-picker data-select-id="controller-1" data-label-id="watch-right-label">
@@ -66,9 +67,10 @@
       <div class="controller-menu" role="listbox" aria-hidden="true">
         <button type="button" role="option" data-value="laika" aria-selected="true">Laika</button>
         <button type="button" role="option" data-value="hybrid" aria-selected="false">Hybrid</button>
+        <button type="button" role="option" data-value="anchor_v3" aria-selected="false" disabled>Anchor V3</button>
         <button type="button" role="option" data-value="killfield" aria-selected="false">Killfield</button>
       </div>
-      <select id="controller-1" class="native-controller-select" tabindex="-1" aria-hidden="true"><option value="laika" selected>Laika</option><option value="hybrid">Hybrid</option><option value="killfield">Killfield</option></select>
+      <select id="controller-1" class="native-controller-select" tabindex="-1" aria-hidden="true"><option value="laika" selected>Laika</option><option value="hybrid">Hybrid</option><option value="anchor_v3" disabled>Anchor V3</option><option value="killfield">Killfield</option></select>
     </div>
   </section>
 
@@ -184,9 +186,10 @@
       <div class="controller-menu" role="listbox" aria-hidden="true">
         <button type="button" role="option" data-value="laika" aria-selected="false">Laika</button>
         <button type="button" role="option" data-value="hybrid" aria-selected="true">Hybrid</button>
+        <button type="button" role="option" data-value="anchor_v3" aria-selected="false" disabled>Anchor V3</button>
         <button type="button" role="option" data-value="killfield" aria-selected="false">Killfield</button>
       </div>
-      <select id="play-opponent" class="native-controller-select" tabindex="-1" aria-hidden="true"><option value="laika">Laika</option><option value="hybrid" selected>Hybrid</option><option value="killfield">Killfield</option></select>
+      <select id="play-opponent" class="native-controller-select" tabindex="-1" aria-hidden="true"><option value="laika">Laika</option><option value="hybrid" selected>Hybrid</option><option value="anchor_v3" disabled>Anchor V3</option><option value="killfield">Killfield</option></select>
     </div>
     <button id="instant-turn" type="button" aria-pressed="false" class="toggle wheel-only">No turn-rate limit: off</button>
     <label class="range-field wheel-only"><span id="forward-alignment-label">Wheel forward region</span><input id="forward-alignment" type="range" min="0" max="360" step="2.8125" value="360"><output id="forward-alignment-value" for="forward-alignment">360° / 360°</output></label>
@@ -279,6 +282,6 @@
   <footer class="site-footer"><a href="https://github.com/Cichlider/killfield" target="_blank" rel="noreferrer">github.com/Cichlider/killfield</a><span>© 2026 Cichlider. All rights reserved.</span></footer>
 </main>
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" defer></script>
-<script type="module" src="viewer.js?v=board-replay"></script>
+<script type="module" src="viewer.js?v=e9fe79bb"></script>
 </body>
 </html>

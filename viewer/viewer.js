@@ -25,7 +25,7 @@
  */
 
 import * as C from "./src/constants.js";
-import { STRINGS, loadLang, saveLang } from "./src/i18n.js?v=board-replay";
+import { STRINGS, loadLang, saveLang } from "./src/i18n.js?v=10281868";
 import { Keyboard, TouchControls } from "./src/input.js?v=d3008c00";
 import {
   DEFAULT_PAD_TUNE,
@@ -35,7 +35,7 @@ import {
 import { SoundEffects } from "./src/audio.js";
 import { Rng } from "./src/rng.js";
 import { interpolatePredictedPose, simulationBudget } from "./src/low-latency.js";
-import { HybridPolicy } from "./src/hybrid.js?v=9d9f54b9";
+import { HybridPolicy } from "./src/hybrid.js?v=3493a5d9";
 import {
   HUMAN_SEAT, LIMITS, MIN_SUBMITTABLE_WINS, NO_ACTION, summariseResults,
 } from "./src/replay.js?v=replay-player";
@@ -101,7 +101,10 @@ const ROLE_COLORS = {
   red: { base: "#9E101B", turret: "#D82432" },
   black: { base: "#17191C", turret: "#35383D" },
 };
-const CONTROLLER_NAMES = { killfield: "Killfield", laika: "Laika", hybrid: "Hybrid" };
+const ANCHOR_V3 = "anchor_v3";
+const CONTROLLER_NAMES = {
+  killfield: "Killfield", laika: "Laika", hybrid: "Hybrid", [ANCHOR_V3]: "Anchor V3",
+};
 
 /** Which role (red/black) each tank plays this mode. Watch: seat 0 (Left) is
  *  always red, seat 1 (Right) always black. Play: the human is red (the
@@ -366,6 +369,7 @@ let immediateFirePressed = false;
 
 let wasm = null;
 let hybridPolicy = null;
+let anchorV3Policy = null;
 let scratchPtr = null;
 let openingDelaySeconds = DEFAULT_OPENING_DELAY_SECONDS;
 try {
@@ -995,6 +999,11 @@ function controllerForSeat(seat) {
   return mode === "play" ? (seat === 1 ? "human" : playOpponentSelect.value) : seatController[seat];
 }
 
+function policyForController(controller) {
+  if (controller === ANCHOR_V3) return anchorV3Policy;
+  return controller === "hybrid" ? hybridPolicy : null;
+}
+
 function activeTankColors() {
   return [0, 1].map((seat) => ROLE_COLORS[roleForSeat(seat)]);
 }
@@ -1470,15 +1479,17 @@ function newGame({ ranked: startRanked = false } = {}) {
     // The planner's opponent model must be honest here — a human is not
     // Laika's script — so opp_l1 is always on when Killfield is playing.
     const opponent = playOpponentSelect.value;
+    const policy = policyForController(opponent);
     handle = wasm.kf_new(seed, opponent === "laika" ? 1 : 0);
-    hybridSeats = opponent === "hybrid" ? [0] : [];
+    hybridSeats = [];
     // The delay queue, the opening pause and Killfield's attachment all live
     // in the driver, which the leaderboard verifier replays with verbatim.
     opponentDriver = new OpponentDriver({
-      opponent,
+      // Both web policies use the same action and timing path.
+      opponent: policy ? "hybrid" : opponent,
       delayFrames: reactionDelayFrames,
       openingDelayFrames: openingDelayFrameCount(),
-      policy: hybridPolicy,
+      policy,
     });
     opponentDriver.attach(wasm, handle);
   } else {
@@ -1494,7 +1505,7 @@ function newGame({ ranked: startRanked = false } = {}) {
         // current buttons" model instead.
         const otherIsLaika = seatController[1 - i] === "laika";
         wasm.kf_attach_mpc(handle, i, i === 0 ? 7 : 11, KILLFIELD_RAYS, otherIsLaika ? 0 : 1);
-      } else if (c === "hybrid") {
+      } else if (policyForController(c)) {
         hybridSeats.push(i);
       }
     });
@@ -1560,9 +1571,10 @@ function syncRankedUI() {
   const s = t();
   const set = (node, key, value) => { if (node[key] !== value) node[key] = value; };
   const eligible = rankedResult !== null && rankedResult.stats.wins >= MIN_SUBMITTABLE_WINS;
+  const casualOnly = playOpponentSelect.value === ANCHOR_V3;
   set(rankedRow, "hidden", mode !== "play");
   set(rankedStartButton, "textContent", ranked ? s.rankedStop : s.rankedStart);
-  rankedStartButton.disabled = rankedSubmitting;
+  rankedStartButton.disabled = rankedSubmitting || casualOnly;
   rankedStartButton.classList.toggle("active", Boolean(ranked));
   set(rankedUploadButton, "textContent", rankedSubmitting ? s.rankedSubmittingButton : s.rankedUpload);
   set(rankedWatchButton, "textContent", eligible && !rankedSubmitted
@@ -1586,7 +1598,7 @@ function syncRankedUI() {
   set(rankedUnit, "textContent", s.rankedUnit);
   rankedRow.classList.toggle("live", Boolean(ranked));
   rankedRow.classList.toggle("qualified", eligible);
-  let status = s.rankedIdle;
+  let status = casualOnly ? s.rankedAnchorCasual : s.rankedIdle;
   if (rankedSubmissionError) {
     status = rankedSubmissionError;
   } else if (rankedSubmitted) {
@@ -1786,6 +1798,7 @@ async function watchRankedReplay() {
  *  pause, and the turn-rate assist off. Anything that would make the opponent
  *  easier is reset here rather than merely rejected later. */
 function startRankedSession() {
+  if (playOpponentSelect.value === ANCHOR_V3) return;
   if (mode !== "play") setMode("play");
   reactionDelayFrames = RANKED_DELAY_FRAMES;
   reactionDelaySelect.value = String(RANKED_DELAY_FRAMES);
@@ -1892,8 +1905,9 @@ function driveHybridSeats() {
     return decision;
   }
   for (const seat of hybridSeats) {
+    const policy = policyForController(seatController[seat]);
     const { observation, mask, dodge } = readObservation(wasm, handle, seat);
-    wasm.kf_set_hybrid_action(handle, seat, hybridPolicy.act(observation, mask, dodge));
+    wasm.kf_set_hybrid_action(handle, seat, policy.act(observation, mask, dodge));
   }
   return null;
 }
@@ -2364,6 +2378,15 @@ async function boot() {
   applyLanguage();
   requestAnimationFrame(frame);
   if (boardReplay !== null) loadBoardReplay(boardReplay);
+
+  // Enable the optional controller when its weights are ready.
+  HybridPolicy.load("assets/anchor_v3.json?v=cda5955b", "assets/anchor_v3.bin?v=15d9e089")
+    .then((policy) => {
+      anchorV3Policy = policy;
+      document.querySelectorAll('button[data-value="anchor_v3"], option[value="anchor_v3"]')
+        .forEach((option) => { option.disabled = false; });
+    })
+    .catch((error) => console.warn("Anchor V3 unavailable", error));
 }
 
 boot().catch((err) => {
