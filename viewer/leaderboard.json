@@ -1,5 +1,5 @@
 {
-  "updated": "2026-11-09T18:49:24.570Z",
+  "updated": "2026-11-09T19:04:33.758Z",
   "entries": [
     {
       "name": "Human",
@@ -1008,6 +1008,27 @@
       "trackHash": "1f3f37b0b976ff72125ffe15e9c66116",
       "verifiedAt": "2026-10-07T07:27:42.465Z",
       "replay": "replays/1f3f37b0b976ff72125ffe15e9c66116.json"
+    },
+    {
+      "name": "unknown",
+      "github": null,
+      "submitter": "5d81a2da88336dc0",
+      "board": "hybrid",
+      "score": 9,
+      "wins": 9,
+      "losses": 15,
+      "doubleKills": 4,
+      "rounds": 28,
+      "seed": 306210537,
+      "frames": 9578,
+      "playerClass": "human",
+      "hybridMovementMatch": 0.16548339945708918,
+      "hybridMovementMatches": 1585,
+      "hybridMovementFrames": 9578,
+      "issue": 125,
+      "trackHash": "1d64d54676e37abce88acbc41d957573",
+      "replay": "replays/1d64d54676e37abce88acbc41d957573.json",
+      "verifiedAt": "2026-11-09T19:04:33.757Z"
     },
     {
       "name": "sigh a really good run",
