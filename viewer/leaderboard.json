@@ -1,5 +1,5 @@
 {
-  "updated": "2026-11-09T01:57:26.556Z",
+  "updated": "2026-11-09T02:21:59.708Z",
   "entries": [
     {
       "name": "Human",
@@ -1239,6 +1239,27 @@
       "trackHash": "56d4ab6bb3c9dbc92ea622e8fc51be74",
       "replay": "replays/56d4ab6bb3c9dbc92ea622e8fc51be74.json",
       "verifiedAt": "2026-10-16T15:03:10.741Z"
+    },
+    {
+      "name": "unknown",
+      "github": null,
+      "submitter": "c02019b5d53c1255",
+      "board": "hybrid",
+      "score": 7,
+      "wins": 7,
+      "losses": 15,
+      "doubleKills": 3,
+      "rounds": 25,
+      "seed": 2175706994,
+      "frames": 9134,
+      "playerClass": "human",
+      "hybridMovementMatch": 0.17637398730019707,
+      "hybridMovementMatches": 1611,
+      "hybridMovementFrames": 9134,
+      "issue": 123,
+      "trackHash": "b3ca580ff28bf3d6658b1ddcd434675b",
+      "replay": "replays/b3ca580ff28bf3d6658b1ddcd434675b.json",
+      "verifiedAt": "2026-11-09T02:21:59.708Z"
     },
     {
       "name": "unknown",
