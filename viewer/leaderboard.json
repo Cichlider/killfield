@@ -1,5 +1,5 @@
 {
-  "updated": "2026-11-09T01:24:10.498Z",
+  "updated": "2026-11-09T01:57:26.556Z",
   "entries": [
     {
       "name": "Human",
@@ -1155,6 +1155,27 @@
       "hybridMovementMatches": 4551,
       "hybridMovementFrames": 5246,
       "replay": "replays/f381e9a1e8997c3926299f71a7b4f0f6.json"
+    },
+    {
+      "name": "unknown",
+      "github": null,
+      "submitter": "c02019b5d53c1255",
+      "board": "hybrid",
+      "score": 7,
+      "wins": 7,
+      "losses": 15,
+      "doubleKills": 1,
+      "rounds": 23,
+      "seed": 1952449306,
+      "frames": 7918,
+      "playerClass": "human",
+      "hybridMovementMatch": 0.15913109371053297,
+      "hybridMovementMatches": 1260,
+      "hybridMovementFrames": 7918,
+      "issue": 122,
+      "trackHash": "3215b307c113cd983645269632783f12",
+      "replay": "replays/3215b307c113cd983645269632783f12.json",
+      "verifiedAt": "2026-11-09T01:57:26.555Z"
     },
     {
       "name": "kaag's 2nd (bruh)",
