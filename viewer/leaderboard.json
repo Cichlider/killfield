@@ -1,5 +1,5 @@
 {
-  "updated": "2026-11-09T19:04:33.758Z",
+  "updated": "2026-11-10T18:22:11.495Z",
   "entries": [
     {
       "name": "Human",
@@ -882,6 +882,27 @@
       "trackHash": "9df8bfa3cbdba878abaa5183215d3c5e",
       "replay": "replays/9df8bfa3cbdba878abaa5183215d3c5e.json",
       "verifiedAt": "2026-11-02T03:18:41.223Z"
+    },
+    {
+      "name": "unknown",
+      "github": null,
+      "submitter": "c02019b5d53c1255",
+      "board": "hybrid",
+      "score": 9,
+      "wins": 9,
+      "losses": 15,
+      "doubleKills": 2,
+      "rounds": 26,
+      "seed": 3056141052,
+      "frames": 8566,
+      "playerClass": "human",
+      "hybridMovementMatch": 0.16997431706747607,
+      "hybridMovementMatches": 1456,
+      "hybridMovementFrames": 8566,
+      "issue": 126,
+      "trackHash": "3903c222731569e33c1b6e81c3a14ae0",
+      "replay": "replays/3903c222731569e33c1b6e81c3a14ae0.json",
+      "verifiedAt": "2026-11-10T18:22:11.494Z"
     },
     {
       "name": "kaag's sub 10 ig",
