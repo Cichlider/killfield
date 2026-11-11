@@ -1,5 +1,5 @@
 {
-  "updated": "2026-11-11T01:36:01.022Z",
+  "updated": "2026-11-11T06:47:39.924Z",
   "entries": [
     {
       "name": "Human",
@@ -567,6 +567,27 @@
       "trackHash": "cc5ed8cd6612685ccb8b16b2a3916435",
       "verifiedAt": "2026-09-22T23:53:17.314Z",
       "replay": "replays/cc5ed8cd6612685ccb8b16b2a3916435.json"
+    },
+    {
+      "name": "YO YO YO YO OY OY OYOYOY",
+      "github": null,
+      "submitter": "c02019b5d53c1255",
+      "board": "hybrid",
+      "score": 14,
+      "wins": 14,
+      "losses": 16,
+      "doubleKills": 3,
+      "rounds": 33,
+      "seed": 2832732950,
+      "frames": 13317,
+      "playerClass": "human",
+      "hybridMovementMatch": 0.20124652699556958,
+      "hybridMovementMatches": 2680,
+      "hybridMovementFrames": 13317,
+      "issue": 128,
+      "trackHash": "4f874f60a5120ad0c88b4e8b343d43f4",
+      "replay": "replays/4f874f60a5120ad0c88b4e8b343d43f4.json",
+      "verifiedAt": "2026-11-11T06:47:39.923Z"
     },
     {
       "name": "kaag's sub win",
