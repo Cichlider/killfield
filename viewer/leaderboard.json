@@ -1,5 +1,5 @@
 {
-  "updated": "2026-11-10T18:22:11.495Z",
+  "updated": "2026-11-11T01:36:01.022Z",
   "entries": [
     {
       "name": "Human",
@@ -525,6 +525,27 @@
       "trackHash": "2a84e058042c1070f516a36d478c89ba",
       "verifiedAt": "2026-10-10T18:27:53.374Z",
       "replay": "replays/2a84e058042c1070f516a36d478c89ba.json"
+    },
+    {
+      "name": "gonna kill myself",
+      "github": null,
+      "submitter": "c02019b5d53c1255",
+      "board": "hybrid",
+      "score": 14,
+      "wins": 14,
+      "losses": 16,
+      "doubleKills": 2,
+      "rounds": 32,
+      "seed": 1388136118,
+      "frames": 14097,
+      "playerClass": "human",
+      "hybridMovementMatch": 0.1645740228417394,
+      "hybridMovementMatches": 2320,
+      "hybridMovementFrames": 14097,
+      "issue": 127,
+      "trackHash": "4e954da9627eb2b818d2460fc758da7f",
+      "replay": "replays/4e954da9627eb2b818d2460fc758da7f.json",
+      "verifiedAt": "2026-11-11T01:36:01.021Z"
     },
     {
       "name": "plexx",
