@@ -1,5 +1,5 @@
 {
-  "updated": "2026-11-12T13:21:15.464Z",
+  "updated": "2026-11-12T21:38:19.237Z",
   "entries": [
     {
       "name": "Human",
@@ -2394,6 +2394,27 @@
       "trackHash": "75608a9094443dd1504e52911b78838e",
       "verifiedAt": "2026-09-24T18:01:58.717Z",
       "replay": "replays/75608a9094443dd1504e52911b78838e.json"
+    },
+    {
+      "name": ".",
+      "github": null,
+      "submitter": "5d81a2da88336dc0",
+      "board": "hybrid",
+      "score": 1,
+      "wins": 1,
+      "losses": 7,
+      "doubleKills": 3,
+      "rounds": 11,
+      "seed": 1575421584,
+      "frames": 5367,
+      "playerClass": "human",
+      "hybridMovementMatch": 0.16396497111980624,
+      "hybridMovementMatches": 880,
+      "hybridMovementFrames": 5367,
+      "issue": 131,
+      "trackHash": "c331732b1ba7e364703fbfd97857181e",
+      "replay": "replays/c331732b1ba7e364703fbfd97857181e.json",
+      "verifiedAt": "2026-11-12T21:38:19.237Z"
     },
     {
       "name": "chimaboy",
