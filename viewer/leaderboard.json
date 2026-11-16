@@ -1,5 +1,5 @@
 {
-  "updated": "2026-11-12T21:38:19.237Z",
+  "updated": "2026-11-16T23:11:09.286Z",
   "entries": [
     {
       "name": "Human",
@@ -840,6 +840,27 @@
       "trackHash": "37f41eb741b9f973240b4c46beb88f85",
       "verifiedAt": "2026-09-30T05:09:50.183Z",
       "replay": "replays/37f41eb741b9f973240b4c46beb88f85.json"
+    },
+    {
+      "name": "gonna be busy",
+      "github": null,
+      "submitter": "32edc12dc2eb4a88",
+      "board": "hybrid",
+      "score": 10,
+      "wins": 10,
+      "losses": 15,
+      "doubleKills": 5,
+      "rounds": 30,
+      "seed": 1619814165,
+      "frames": 9823,
+      "playerClass": "human",
+      "hybridMovementMatch": 0.16817672808714243,
+      "hybridMovementMatches": 1652,
+      "hybridMovementFrames": 9823,
+      "issue": 132,
+      "trackHash": "5f89cb6e305d7f5ff056c5417fc80a87",
+      "replay": "replays/5f89cb6e305d7f5ff056c5417fc80a87.json",
+      "verifiedAt": "2026-11-16T23:11:09.285Z"
     },
     {
       "name": "Corderox1",
