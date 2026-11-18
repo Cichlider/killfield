@@ -150,12 +150,16 @@ export class HybridPolicy {
     return out;
   }
 
-  logits(observation, mask, dodge) {
+  encodeMap(observation) {
     const c1 = conv2d(toChw(observation), 7, 12, 10,
       this.tensor("map.0.weight"), this.tensor("map.0.bias"), 16, 1);
     const c2 = conv2d(c1, 16, 12, 10,
       this.tensor("map.2.weight"), this.tensor("map.2.bias"), 32, 2);
-    const map = dense(c2, this.tensor("map.5.weight"), this.tensor("map.5.bias"), 128, "tanh");
+    return dense(c2, this.tensor("map.5.weight"), this.tensor("map.5.bias"), 128, "tanh");
+  }
+
+  logits(observation, mask, dodge) {
+    const map = this.encodeMap(observation);
 
     const mean = new Float32Array(32);
     const peak = new Float32Array(32);
