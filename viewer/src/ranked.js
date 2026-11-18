@@ -150,10 +150,15 @@ export class OpponentDriver {
 
     if (computePolicy) {
       const { observation, mask, dodge } = readObservation(wasm, handle, OPPONENT_SEAT);
-      const logits = this.policy.logits(observation, mask, dodge);
-      let best = 0;
-      for (let i = 1; i < logits.length; i += 1) if (logits[i] > logits[best]) best = i;
-      this.queue.push({ action: best, logits });
+      if (this.policy.logits) {
+        const logits = this.policy.logits(observation, mask, dodge);
+        let best = 0;
+        for (let i = 1; i < logits.length; i += 1) if (logits[i] > logits[best]) best = i;
+        this.queue.push({ action: best, logits });
+      } else {
+        // Casual search controllers choose an action directly.
+        this.queue.push({ action: this.policy.act(observation, mask, dodge), logits: null });
+      }
     } else {
       // Whatever action shifts out of the queue later is never read by the
       // replay player, which drives the engine from `recorded.action`
