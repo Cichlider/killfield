@@ -1,5 +1,5 @@
 {
-  "updated": "2026-11-16T23:11:09.286Z",
+  "updated": "2026-11-22T05:09:25.421Z",
   "entries": [
     {
       "name": "Human",
@@ -1218,6 +1218,27 @@
       "trackHash": "4d2ba7106f223c9cc6773891ff330942",
       "verifiedAt": "2026-09-29T12:57:00.475Z",
       "replay": "replays/4d2ba7106f223c9cc6773891ff330942.json"
+    },
+    {
+      "name": "unkown",
+      "github": null,
+      "submitter": "32edc12dc2eb4a88",
+      "board": "hybrid",
+      "score": 8,
+      "wins": 8,
+      "losses": 15,
+      "doubleKills": 2,
+      "rounds": 25,
+      "seed": 4230871349,
+      "frames": 9543,
+      "playerClass": "human",
+      "hybridMovementMatch": 0.17028188200775438,
+      "hybridMovementMatches": 1625,
+      "hybridMovementFrames": 9543,
+      "issue": 134,
+      "trackHash": "66d63a25b3160899e0dfb5abbef751e4",
+      "replay": "replays/66d63a25b3160899e0dfb5abbef751e4.json",
+      "verifiedAt": "2026-11-22T05:09:25.420Z"
     },
     {
       "name": "still my lucky number",
