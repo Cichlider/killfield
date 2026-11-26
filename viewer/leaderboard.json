@@ -1,5 +1,5 @@
 {
-  "updated": "2026-11-22T05:47:24.590Z",
+  "updated": "2026-11-26T09:44:41.128Z",
   "entries": [
     {
       "name": "Human",
@@ -714,6 +714,27 @@
       "hybridMovementMatches": 1223,
       "hybridMovementFrames": 6473,
       "replay": "replays/bc4c300a621ebeebc3f8d04785be52c5.json"
+    },
+    {
+      "name": "Human feels it's a pity",
+      "github": null,
+      "submitter": "6bc729d7efc05a1a",
+      "board": "hybrid",
+      "score": 12,
+      "wins": 12,
+      "losses": 15,
+      "doubleKills": 2,
+      "rounds": 29,
+      "seed": 2445719010,
+      "frames": 21142,
+      "playerClass": "human",
+      "hybridMovementMatch": 0.1279916753381894,
+      "hybridMovementMatches": 2706,
+      "hybridMovementFrames": 21142,
+      "issue": 136,
+      "trackHash": "16b53f2058ffbc44dca0293288bec5f1",
+      "replay": "replays/16b53f2058ffbc44dca0293288bec5f1.json",
+      "verifiedAt": "2026-11-26T09:44:41.127Z"
     },
     {
       "name": "player_name",
