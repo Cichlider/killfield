@@ -1,5 +1,5 @@
 {
-  "updated": "2026-11-26T09:44:41.128Z",
+  "updated": "2026-11-28T07:55:52.334Z",
   "entries": [
     {
       "name": "Human",
@@ -777,6 +777,27 @@
       "trackHash": "5b8cffeb0ccce0fe1d77a99b31feba06",
       "replay": "replays/5b8cffeb0ccce0fe1d77a99b31feba06.json",
       "verifiedAt": "2026-11-06T20:43:35.591Z"
+    },
+    {
+      "name": "back on da grind",
+      "github": null,
+      "submitter": "a566ddbfca888d09",
+      "board": "hybrid",
+      "score": 11,
+      "wins": 11,
+      "losses": 15,
+      "doubleKills": 4,
+      "rounds": 30,
+      "seed": 3794069162,
+      "frames": 10167,
+      "playerClass": "human",
+      "hybridMovementMatch": 0.2094029703944133,
+      "hybridMovementMatches": 2129,
+      "hybridMovementFrames": 10167,
+      "issue": 137,
+      "trackHash": "597e04bdc22236faa564e94ba42f3366",
+      "replay": "replays/597e04bdc22236faa564e94ba42f3366.json",
+      "verifiedAt": "2026-11-28T07:55:52.334Z"
     },
     {
       "name": "Lichen (Doggy Bag :P)",
