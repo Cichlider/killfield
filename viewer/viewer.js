@@ -35,7 +35,7 @@ import {
 import { SoundEffects } from "./src/audio.js";
 import { Rng } from "./src/rng.js";
 import { interpolatePredictedPose, simulationBudget } from "./src/low-latency.js";
-import { HybridPolicy } from "./src/hybrid.js?v=3493a5d9";
+import { HybridPolicy } from "./src/hybrid.js?v=e0283fc2";
 import {
   HUMAN_SEAT, LIMITS, MIN_SUBMITTABLE_WINS, NO_ACTION, summariseResults,
 } from "./src/replay.js?v=replay-player";
@@ -52,7 +52,7 @@ import {
   RANKED_OPENING_DELAY_SECONDS,
   SessionRecorder,
   readObservation,
-} from "./src/ranked.js?v=replay-fast-seek";
+} from "./src/ranked.js?v=61b874c0";
 import {
   buildStamps, buildSubmission, openSubmissionIssue, submitToGateway,
 } from "./src/submit.js?v=chunked-replay";
@@ -103,7 +103,7 @@ const ROLE_COLORS = {
 };
 const CONTROLLER_NAMES = {
   killfield: "Killfield", laika: "Laika", hybrid: "Hybrid",
-  anchor_v3: "Anchor V3", hybrid_night2: "Hybrid Night2",
+  anchor_v3: "Anchor V3", hybrid_night2: "Hybrid Night2", prism2: "Prism 2",
 };
 const CASUAL_MODEL_ASSETS = {
   anchor_v3: ["assets/anchor_v3.json?v=cda5955b", "assets/anchor_v3.bin?v=15d9e089"],
@@ -373,7 +373,7 @@ let immediateFirePressed = false;
 
 let wasm = null;
 let hybridPolicy = null;
-const casualPolicies = new Map();
+const casualPolicyFactories = new Map();
 let scratchPtr = null;
 let openingDelaySeconds = DEFAULT_OPENING_DELAY_SECONDS;
 try {
@@ -955,8 +955,8 @@ let roundFrames = 0;
 let previousRenderState = null;
 /** Watch-mode controller assignment per seat, refreshed by newGame(). */
 let seatController = ["hybrid", "laika"];
-/** Seats a Hybrid policy must drive this tick — see driveHybridSeats(). */
-let hybridSeats = [];
+/** One policy per JS-controlled seat. Stateful controllers own their match resources. */
+const seatPolicies = [null, null];
 /** Play mode's opponent state machine: the actuation delay queue and the
  *  opening pause, in the same implementation the leaderboard verifier replays
  *  with (src/ranked.js). Null in Watch mode, which has neither. */
@@ -1003,8 +1003,17 @@ function controllerForSeat(seat) {
   return mode === "play" ? (seat === 1 ? "human" : playOpponentSelect.value) : seatController[seat];
 }
 
-function policyForController(controller) {
-  return controller === "hybrid" ? hybridPolicy : casualPolicies.get(controller) ?? null;
+function createSeatPolicy(controller) {
+  return controller === "hybrid" ? hybridPolicy : casualPolicyFactories.get(controller)?.() ?? null;
+}
+
+function releaseSeatPolicies() {
+  for (const policy of seatPolicies) policy?.close?.();
+  seatPolicies.fill(null);
+}
+
+function isCasualController(controller) {
+  return controller === "prism2" || Object.hasOwn(CASUAL_MODEL_ASSETS, controller);
 }
 
 function activeTankColors() {
@@ -1330,7 +1339,6 @@ function resetReplayEngine() {
     policy: hybridPolicy,
   });
   opponentDriver.attach(wasm, handle);
-  hybridSeats = [];
   replayPlayback.frameIndex = 0;
   replayPlayback.eventIndex = 0;
   matchScore = [0, 0];
@@ -1473,6 +1481,7 @@ async function loadBoardReplay(trackHash) {
 function newGame({ ranked: startRanked = false } = {}) {
   closeRankedSession();
   const seed = (Math.random() * 0xffffffff) >>> 0;
+  releaseSeatPolicies();
   if (handle !== null) wasm.kf_free(handle);
 
   syncPlayOpponentControls();
@@ -1482,13 +1491,13 @@ function newGame({ ranked: startRanked = false } = {}) {
     // The planner's opponent model must be honest here — a human is not
     // Laika's script — so opp_l1 is always on when Killfield is playing.
     const opponent = playOpponentSelect.value;
-    const policy = policyForController(opponent);
+    const policy = createSeatPolicy(opponent);
+    seatPolicies[0] = policy;
     handle = wasm.kf_new(seed, opponent === "laika" ? 1 : 0);
-    hybridSeats = [];
     // The delay queue, the opening pause and Killfield's attachment all live
     // in the driver, which the leaderboard verifier replays with verbatim.
     opponentDriver = new OpponentDriver({
-      // Both web policies use the same action and timing path.
+      // All web policies use the same action and timing path.
       opponent: policy ? "hybrid" : opponent,
       delayFrames: reactionDelayFrames,
       openingDelayFrames: openingDelayFrameCount(),
@@ -1500,7 +1509,6 @@ function newGame({ ranked: startRanked = false } = {}) {
     let laikaMask = 0;
     seatController.forEach((c, i) => { if (c === "laika") laikaMask |= (1 << i); });
     handle = wasm.kf_new(seed, laikaMask);
-    hybridSeats = [];
     seatController.forEach((c, i) => {
       if (c === "killfield") {
         // Only Laika's script is worth simulating exactly; a Hybrid or
@@ -1508,8 +1516,8 @@ function newGame({ ranked: startRanked = false } = {}) {
         // current buttons" model instead.
         const otherIsLaika = seatController[1 - i] === "laika";
         wasm.kf_attach_mpc(handle, i, i === 0 ? 7 : 11, KILLFIELD_RAYS, otherIsLaika ? 0 : 1);
-      } else if (policyForController(c)) {
-        hybridSeats.push(i);
+      } else {
+        seatPolicies[i] = createSeatPolicy(c);
       }
     });
   }
@@ -1575,7 +1583,7 @@ function syncRankedUI() {
   const set = (node, key, value) => { if (node[key] !== value) node[key] = value; };
   const eligible = rankedResult !== null && rankedResult.stats.wins >= MIN_SUBMITTABLE_WINS;
   const opponent = playOpponentSelect.value;
-  const casualOnly = Object.hasOwn(CASUAL_MODEL_ASSETS, opponent);
+  const casualOnly = isCasualController(opponent);
   set(rankedRow, "hidden", mode !== "play");
   set(rankedStartButton, "textContent", ranked ? s.rankedStop : s.rankedStart);
   rankedStartButton.disabled = rankedSubmitting || casualOnly;
@@ -1802,7 +1810,7 @@ async function watchRankedReplay() {
  *  pause, and the turn-rate assist off. Anything that would make the opponent
  *  easier is reset here rather than merely rejected later. */
 function startRankedSession() {
-  if (Object.hasOwn(CASUAL_MODEL_ASSETS, playOpponentSelect.value)) return;
+  if (isCasualController(playOpponentSelect.value)) return;
   if (mode !== "play") setMode("play");
   reactionDelayFrames = RANKED_DELAY_FRAMES;
   reactionDelaySelect.value = String(RANKED_DELAY_FRAMES);
@@ -1847,6 +1855,7 @@ function setMode(next) {
   streak.current = 0;
   saveStreak();
   if (next === "replay") {
+    releaseSeatPolicies();
     paused = replayPlayback === null;
     if (replayPlayback) resetReplayEngine();
     syncPauseButton();
@@ -1908,8 +1917,9 @@ function driveHybridSeats() {
     if (decision) opponentDriver.apply(wasm, handle, decision.action);
     return decision;
   }
-  for (const seat of hybridSeats) {
-    const policy = policyForController(seatController[seat]);
+  for (let seat = 0; seat < seatPolicies.length; seat++) {
+    const policy = seatPolicies[seat];
+    if (!policy) continue;
     const { observation, mask, dodge } = readObservation(wasm, handle, seat);
     wasm.kf_set_hybrid_action(handle, seat, policy.act(observation, mask, dodge));
   }
@@ -2163,6 +2173,16 @@ function toggleLanguage() {
 
 // -------------------------------------------------------------------- boot
 
+async function enableCasualController(controller, loading) {
+  try {
+    casualPolicyFactories.set(controller, await loading);
+    document.querySelectorAll(`button[data-value="${controller}"], option[value="${controller}"]`)
+      .forEach((option) => { option.disabled = false; });
+  } catch (error) {
+    console.warn(`${CONTROLLER_NAMES[controller]} unavailable`, error);
+  }
+}
+
 async function boot() {
   const [wasmBytes, hybrid] = await Promise.all([
     fetch("kf_engine.wasm?v=7aea2a29").then((res) => res.arrayBuffer()),
@@ -2383,14 +2403,15 @@ async function boot() {
   requestAnimationFrame(frame);
   if (boardReplay !== null) loadBoardReplay(boardReplay);
 
-  // Enable each optional controller when its weights are ready.
+  // Each option becomes available independently. Prism reuses these same model loads.
+  const models = {};
   for (const [controller, [manifest, weights]] of Object.entries(CASUAL_MODEL_ASSETS)) {
-    HybridPolicy.load(manifest, weights).then((policy) => {
-      casualPolicies.set(controller, policy);
-      document.querySelectorAll(`button[data-value="${controller}"], option[value="${controller}"]`)
-        .forEach((option) => { option.disabled = false; });
-    }).catch((error) => console.warn(`${CONTROLLER_NAMES[controller]} unavailable`, error));
+    models[controller] = HybridPolicy.load(manifest, weights);
+    enableCasualController(controller, models[controller].then((policy) => () => policy));
   }
+  enableCasualController("prism2", Promise.all([
+    import("./src/prism2.js?v=1f2928a2"), models.anchor_v3, models.hybrid_night2,
+  ]).then(([{ loadPrism2 }, anchor, night]) => loadPrism2(hybrid, anchor, night)));
 }
 
 boot().catch((err) => {

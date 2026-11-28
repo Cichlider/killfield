@@ -4,6 +4,7 @@ set -euo pipefail
 cd "$(dirname "$0")"
 cargo build --release --target wasm32-unknown-unknown --manifest-path ../engine/Cargo.toml
 cp ../engine/target/wasm32-unknown-unknown/release/kf_engine.wasm .
+../engine/prism2/build.sh
 wasm_stamp="$(shasum -a 256 kf_engine.wasm | cut -c1-8)"
 style_stamp="$(shasum -a 256 style.css | cut -c1-8)"
 i18n_stamp="$(shasum -a 256 src/i18n.js | cut -c1-8)"
@@ -11,20 +12,32 @@ video_export_stamp="$(shasum -a 256 src/video-export.js | cut -c1-8)"
 hybrid_js_stamp="$(shasum -a 256 src/hybrid.js | cut -c1-8)"
 hybrid_manifest_stamp="$(shasum -a 256 assets/hybrid.json | cut -c1-8)"
 hybrid_weights_stamp="$(shasum -a 256 assets/hybrid.bin | cut -c1-8)"
-sed -i '' -E \
+ranked_js_stamp="$(shasum -a 256 src/ranked.js | cut -c1-8)"
+prism_wasm_stamp="$(shasum -a 256 assets/prism2.wasm | cut -c1-8)"
+# BSD sed takes a separate empty argument for in-place editing.
+sed_flags=(-E -i)
+if [[ "$(uname -s)" == Darwin ]]; then sed_flags+=(''); fi
+sed "${sed_flags[@]}" \
+  "s#assets/prism2\.wasm\?v=[0-9A-Za-z._-]+#assets/prism2.wasm?v=$prism_wasm_stamp#; \
+   s#hybrid\.js\?v=[0-9A-Za-z._-]+#hybrid.js?v=$hybrid_js_stamp#" \
+  src/prism2.js
+prism_js_stamp="$(shasum -a 256 src/prism2.js | cut -c1-8)"
+sed "${sed_flags[@]}" \
   "s/fetch\(\"kf_engine\.wasm(\?v=[0-9A-Za-z._-]+)?\"\)/fetch(\"kf_engine.wasm?v=$wasm_stamp\")/" \
   viewer.js
-sed -i '' -E \
+sed "${sed_flags[@]}" \
   "s#src/video-export\.js\?v=[0-9A-Za-z._-]+#src/video-export.js?v=$video_export_stamp#" \
   viewer.js
-sed -i '' -E \
+sed "${sed_flags[@]}" \
   "s#src/i18n\.js\?v=[0-9A-Za-z._-]+#src/i18n.js?v=$i18n_stamp#; \
+   s#src/prism2\.js\?v=[0-9A-Za-z._-]+#src/prism2.js?v=$prism_js_stamp#; \
+   s#src/ranked\.js\?v=[0-9A-Za-z._-]+#src/ranked.js?v=$ranked_js_stamp#; \
    s#src/hybrid\.js\?v=[0-9A-Za-z._-]+#src/hybrid.js?v=$hybrid_js_stamp#; \
    s#assets/hybrid\.json\?v=[0-9A-Za-z._-]+#assets/hybrid.json?v=$hybrid_manifest_stamp#; \
    s#assets/hybrid\.bin\?v=[0-9A-Za-z._-]+#assets/hybrid.bin?v=$hybrid_weights_stamp#" \
   viewer.js
 viewer_stamp="$(shasum -a 256 viewer.js | cut -c1-8)"
-sed -i '' -E \
+sed "${sed_flags[@]}" \
   "s/style\.css(\?v=[0-9A-Za-z._-]+)?/style.css?v=$style_stamp/; \
    s/viewer\.js(\?v=[0-9A-Za-z._-]+)?/viewer.js?v=$viewer_stamp/" \
   index.html
